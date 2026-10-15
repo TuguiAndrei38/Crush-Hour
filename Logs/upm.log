@@ -1,0 +1,63 @@
+[2026-10-15T19:20:13.042Z][INFO] Command-line: 'C:\\Program Files\\Unity\\Hub\\Editor\\6000.6.6f1\\Editor\\Data\\Resources\\PackageManager\\Server\\UnityPackageManager.exe' server -s 11172 --ipc-path Unity-Upm-11172 -l 2 --log-file 'C:\\Users\\Tutu\\Crush Hour 2/Logs/upm.log'
+[2026-10-15T19:20:13.188Z][INFO] IPC server started (IPC path=Unity-Upm-11172).
+[2026-10-15T19:20:13.189Z][INFO] Hint: To connect to this UPM instance, launch Unity with the command-line parameter -upmIpcPath Upm-11172.
+[2026-10-15T19:20:21.528Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T19:20:21.856Z][INFO] project:list-packages --> 200 (328 ms)
+[2026-10-15T19:20:22.393Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T19:20:22.411Z][INFO] config:project:get-registries <-- Request received
+params: {}
+[2026-10-15T19:20:22.442Z][INFO] config:project:get-registries --> 200 (31 ms)
+[2026-10-15T19:20:22.479Z][INFO] project:update-dependencies <-- Request received
+params: {}
+[2026-10-15T19:20:22.525Z][INFO] project:update-dependencies --> 200 (45 ms)
+[2026-10-15T19:20:22.567Z][INFO] project:resolve-packages <-- Request received
+params: {}
+[2026-10-15T19:20:22.688Z][INFO] project:list-packages --> 200 (296 ms)
+[2026-10-15T19:20:24.856Z][INFO] Downloading package [com.unity.ide.rider@3.0.40] from registry 'https://packages.unity.com'
+[2026-10-15T19:20:24.861Z][INFO] Downloading package [com.unity.ide.visualstudio@2.0.28] from registry 'https://packages.unity.com'
+[2026-10-15T19:20:25.494Z][INFO] Finished downloading package [com.unity.ide.rider@3.0.40] from registry 'https://packages.unity.com' (size: 165 kB, time: 636ms)
+[2026-10-15T19:20:25.698Z][INFO] Finished downloading package [com.unity.ide.visualstudio@2.0.28] from registry 'https://packages.unity.com' (size: 890 kB, time: 837ms)
+[2026-10-15T19:21:12.158Z][INFO] project:resolve-packages --> 200 (49591 ms)
+[2026-10-15T19:22:39.477Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T19:22:39.599Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T19:22:39.870Z][INFO] project:list-packages --> 200 (393 ms)
+[2026-10-15T19:22:39.965Z][INFO] project:list-packages --> 200 (366 ms)
+[2026-10-15T19:22:40.137Z][INFO] config:project:get-registries <-- Request received
+params: {}
+[2026-10-15T19:22:40.149Z][INFO] config:project:get-registries --> 200 (12 ms)
+[2026-10-15T19:22:56.651Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T19:22:56.839Z][INFO] project:list-packages --> 200 (188 ms)
+[2026-10-15T19:22:59.683Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T19:22:59.984Z][INFO] project:list-packages --> 200 (301 ms)
+[2026-10-15T19:23:01.514Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T19:23:03.027Z][INFO] project:list-packages --> 200 (1513 ms)
+[2026-10-15T19:35:12.418Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T19:35:12.566Z][INFO] project:list-packages --> 200 (148 ms)
+[2026-10-15T19:35:12.969Z][INFO] config:project:get-registries <-- Request received
+params: {}
+[2026-10-15T19:35:12.978Z][INFO] config:project:get-registries --> 200 (10 ms)
+[2026-10-15T19:58:10.667Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T19:58:10.825Z][INFO] project:list-packages --> 200 (158 ms)
+[2026-10-15T19:58:11.236Z][INFO] config:project:get-registries <-- Request received
+params: {}
+[2026-10-15T19:58:11.246Z][INFO] config:project:get-registries --> 200 (10 ms)
+[2026-10-15T20:04:58.297Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-15T20:04:58.439Z][INFO] project:list-packages --> 200 (142 ms)
+[2026-10-15T20:04:58.887Z][INFO] config:project:get-registries <-- Request received
+params: {}
+[2026-10-15T20:04:58.894Z][INFO] config:project:get-registries --> 200 (7 ms)
+[2026-10-15T20:14:26.673Z][INFO] packages:get-packageinfo <-- Request received
+params: {
+  "packageId": "com.unity.collab-proxy"
+}
+[2026-10-15T20:14:27.221Z][INFO] packages:get-packageinfo --> 200 (548 ms)
