@@ -8,42 +8,89 @@ namespace CrushHour
 {
     /// <summary>
     /// Crush Hour prototype: top-down crowd safety at a summer music festival.
-    /// Plan with barriers and stewards, start the show, then get everyone out when the incident hits,
-    /// using emergency gates, stewards and PA announcements. Scored on people saved, injuries and time.
+    /// Plan with barriers, stewards and police, start the show, then get everyone out when the fire breaks out,
+    /// using emergency gates, your team and PA announcements. Scored on people saved, injuries, panic attacks and time.
     /// </summary>
     public class CrushHourGame : MonoBehaviour
     {
         enum Phase { Planning, Live, Results }
         enum Tool { Command, Barrier }
+        enum Role { Steward, Megaphone }
+        enum Severity { Info, Good, Warning, Danger }
 
-        class Steward
+        /// <summary>A steward or police officer the player can send around.</summary>
+        class Unit
         {
+            public Role role;
+            public int number;
             public Vector2 position;
             public readonly List<Vector2> path = new();
             public Transform root;
             public LineRenderer ring;
+            public Transform wave;          // megaphone announcement ripple
+            public float announceTimer, waveTime = 1f;
+            public bool hasAnnounced;
+            public string Name => $"{RoleName(role)} {number}";
         }
 
         [Header("Materials (fallbacks are created when empty)")]
         public Material litMaterial;
         public Material unlitMaterial;
 
+        [Header("Crowd look (optional)")]
+        [Tooltip("Character prefabs to draw people with, e.g. from 'Low Poly People'. Empty = coloured cubes.\nTools > Crush Hour > Use Person Models fills this.")]
+        public GameObject[] personPrefabs;
+        [Tooltip("Idle / walk / run / wave clips baked into vertex animation textures. Matched to prefabs by name (\"normal man a\" uses \"normal walk\").")]
+        public AnimationClip[] crowdClips;
+        [Tooltip("CrushHour/CrowdVAT. Referenced here so it's included in builds.")]
+        public Shader crowdAnimationShader;
+        public float personHeight = 1.75f;
+        [Tooltip("Turn the models if they don't face +Z (forward).")]
+        public float modelYawOffset;
+        [Tooltip("Coloured tile under each person showing their state (only with person models).")]
+        public bool stateMarkers = true;
+
         [Header("Rules")]
         public int barrierBudget = 60;
-        public int stewardCount = 6;
+        public int stewardCount = 4;
+        [Tooltip("Police officers with megaphones who announce the situation to everyone in earshot.")]
+        public int megaphoneOfficers = 2;
         public float evacuationTimeLimit = 240f;
         public float announcementCooldown = 12f;
         [Range(0f, 1f)] public float announcementReach = 0.7f;
-        public int maxFireCells = 160;
+        public int maxFireCells = 320;
         public float stewardSpeed = 3.5f;
+        public float policeSpeed = 4f;
+        public float policeAnnounceInterval = 5f;
 
         public CrowdSettings crowd = new();
+
+        /// <summary>
+        /// Bump when the tuned defaults change: scenes saved with older values get the new rules, team size and
+        /// crowd settings instead of silently keeping stale serialized ones.
+        /// </summary>
+        const int CurrentSettingsVersion = 3;
+        [SerializeField, HideInInspector] int settingsVersion;
+
+        void OnValidate() => UpgradeSettings();
+        void Awake() => UpgradeSettings();
+
+        void UpgradeSettings()
+        {
+            if (settingsVersion >= CurrentSettingsVersion) return;
+            stewardCount = 4;
+            megaphoneOfficers = 2;
+            maxFireCells = 320;
+            crowd = new CrowdSettings();
+            settingsVersion = CurrentSettingsVersion;
+        }
 
         const int W = FestivalVenue.Width, H = FestivalVenue.Height;
         const float SimStep = 0.04f;
         const int MaxStepsPerFrame = 6;
         static readonly float[] Speeds = { 1f, 2f, 4f };
         static readonly Vector2[] StewardPosts = { new(52, 7), new(7, 24), new(30, 58), new(74, 58), new(21, 14), new(78, 38) };
+        static readonly Vector2[] MegaphonePosts = { new(40, 52), new(64, 52) };
 
         static readonly Color[] AgentColors =
         {
@@ -52,36 +99,50 @@ namespace CrushHour
             new(1f, 0.6f, 0.15f),     // alarmed
             new(0.95f, 0.1f, 0.1f),   // panicking
             new(0.3f, 0.05f, 0.3f),   // injured
+            new(1f, 0.45f, 0.85f),    // panic attack
         };
-        static readonly Color StewardColor = new(1f, 0.95f, 0.2f);
+        static readonly Color StewardColor = new(1f, 0.92f, 0.2f);
+        static readonly Color PoliceColor = new(0.08f, 0.14f, 0.42f);
+        static readonly Color MegaphoneColor = new(0.35f, 0.85f, 1f);
         static readonly Color FenceColor = new(0.25f, 0.25f, 0.27f);
         static readonly Color BarrierColor = new(0.9f, 0.9f, 0.85f);
-        static readonly Color GateClosedColor = new(0.85f, 0.15f, 0.15f);
-        static readonly Color GateOpeningColor = new(1f, 0.6f, 0.1f);
-        static readonly Color GateOpenColor = new(0.2f, 0.8f, 0.3f);
+        static readonly Color GateClosedColor = new(0.9f, 0.25f, 0.2f);
+        static readonly Color GateOpeningColor = new(1f, 0.65f, 0.15f);
+        static readonly Color GateOpenColor = new(0.25f, 0.85f, 0.4f);
         static readonly Color FireColor = new(1f, 0.35f, 0f);
         static readonly Color Grass = new(0.3f, 0.48f, 0.24f);
         static readonly Color Asphalt = new(0.28f, 0.28f, 0.3f);
         static readonly Color Scorched = new(0.12f, 0.08f, 0.05f);
         static readonly Color Blocked = new(0.18f, 0.18f, 0.18f);
+        static readonly Color[] SmokeColors = { new(0.2f, 0.2f, 0.22f), new(0.3f, 0.3f, 0.32f), new(0.42f, 0.41f, 0.4f) };
+        static readonly Vector3 Wind = new(0.7f, 0f, 0.35f);
+
+        /// <summary>A rising voxel of smoke.</summary>
+        class Puff
+        {
+            public Transform transform;
+            public Vector3 velocity;
+            public float age, life, size;
+        }
 
         FestivalVenue venue;
         CrowdSimulation sim;
-        FlowField knownField, allField;
+        CrowdRenderer crowdRenderer;
+        readonly List<PersonModel> personModels = new();
         System.Random rng;
         int seed;
 
         Phase phase;
         Tool tool;
-        bool paused, heatmap = true, fieldsDirty, incidentStarted;
-        int speedIndex, barriersUsed, lastInjured, gatesOpened, selectedSteward = -1;
-        float simAccumulator, fieldTimer, groundTimer, warningTimer;
+        bool paused, heatmap = true, incidentStarted;
+        int speedIndex, barriersUsed, lastInjured, lastAttacks, gatesOpened, selectedUnit = -1;
+        float simAccumulator, groundTimer, warningTimer, attackWarningTime = -99f;
         float incidentCountdown, evacuationTime, announcementTimer, calmStrength, lastProgressTime;
         int lastSafe;
         string incidentSite;
 
         // Results
-        int finalSafe, finalInjured, finalTrapped, finalScore, stars;
+        int finalSafe, finalInjured, finalTrapped, finalAttacks, finalScore, stars;
         string resultTitle, resultTip;
 
         Camera cam;
@@ -101,15 +162,17 @@ namespace CrushHour
         readonly Dictionary<int, GameObject> barrierViews = new();
         readonly Dictionary<int, Transform> fireViews = new();
         readonly List<MeshRenderer> gateViews = new();
-        readonly List<Steward> stewards = new();
+        readonly List<Unit> units = new();
+        readonly List<Puff> smoke = new();
+        float smokeBudget, lastSpotFireLog;
+        int lastSpotFires;
         readonly List<Vector2> stewardPositions = new();
         readonly List<Gate> changedGates = new();
         readonly List<(string text, Vector3 position)> labels = new();
-        readonly List<string> log = new();
+        readonly List<(string text, Severity severity, string time)> log = new();
         readonly Dictionary<string, float> lastWarning = new();
         readonly List<Rect> guiRects = new();
         readonly List<Action> deferred = new();
-        GUIStyle labelStyle, smallStyle, headerStyle, titleStyle, rightStyle, worldLabelStyle;
 
         void Start()
         {
@@ -140,7 +203,32 @@ namespace CrushHour
             dragLine.shadowCastingMode = ShadowCastingMode.Off;
             dragLine.enabled = false;
 
+            LoadPersonModels();
             NewGame();
+        }
+
+        void OnDestroy() => crowdRenderer?.Dispose();
+
+        void LoadPersonModels()
+        {
+            if (personPrefabs == null || personPrefabs.Length == 0) return;
+            var shader = crowdAnimationShader != null ? crowdAnimationShader : Shader.Find("CrushHour/CrowdVAT");
+#if UNITY_EDITOR
+            if (shader != null && UnityEditor.ShaderUtil.ShaderHasError(shader))
+            {
+                Debug.LogWarning("Crush Hour: CrowdVAT shader has errors, people won't be animated.");
+                shader = null;
+            }
+#endif
+            if (shader != null && !shader.isSupported) shader = null;
+            foreach (var prefab in personPrefabs)
+            {
+                if (prefab == null) continue;
+                var model = PersonModel.Build(prefab, Lit(Color.white), shader, crowdClips, personHeight, modelYawOffset);
+                if (model != null) personModels.Add(model);
+            }
+            int animated = personModels.FindAll(m => m.Animated).Count;
+            Debug.Log($"Crush Hour: {personModels.Count} person models loaded, {animated} animated.");
         }
 
         // ================================================================ Setup
@@ -150,11 +238,16 @@ namespace CrushHour
             if (world != null) Destroy(world.gameObject);
             if (groundTexture != null) Destroy(groundTexture);
             if (groundMaterial != null) Destroy(groundMaterial);
+            crowdRenderer?.Dispose();
             world = new GameObject("Festival (generated)").transform;
             barrierViews.Clear();
             fireViews.Clear();
             gateViews.Clear();
-            stewards.Clear();
+            units.Clear();
+            smoke.Clear();
+            smokeBudget = 0f;
+            lastSpotFires = 0;
+            lastSpotFireLog = -99f;
             labels.Clear();
             log.Clear();
             lastWarning.Clear();
@@ -163,28 +256,27 @@ namespace CrushHour
             rng = new System.Random(seed);
             venue = new FestivalVenue();
             sim = new CrowdSimulation(crowd, venue, rng);
-            knownField = new FlowField(FestivalVenue.CellCount);
-            allField = new FlowField(FestivalVenue.CellCount);
+            var bounds = new Bounds(new Vector3(W * 0.5f, 1f, H * 0.5f), new Vector3(W, 4f, H));
+            crowdRenderer = new CrowdRenderer(sim, cubeMesh, agentRenderParams, personModels, bounds, rng) { ShowMarkers = stateMarkers };
 
             phase = Phase.Planning;
             tool = Tool.Command;
             paused = incidentStarted = dragging = false;
-            selectedSteward = -1;
-            barriersUsed = lastInjured = gatesOpened = 0;
+            selectedUnit = -1;
+            barriersUsed = lastInjured = lastAttacks = gatesOpened = lastSafe = 0;
             simAccumulator = evacuationTime = announcementTimer = warningTimer = lastProgressTime = 0f;
-            lastSafe = 0;
+            attackWarningTime = -99f;
+            bannerTime = 0f;
             calmStrength = 0.35f;
             incidentSite = null;
             dragLine.enabled = false;
 
             BuildVenueViews();
-            SpawnStewards();
-            ComputeFields();
+            SpawnUnits();
             cameraRig.Focus(new Vector3(W * 0.5f, 0f, H * 0.45f), 85f);
 
-            Log($"Welcome, safety commander. {sim.count} fans are at the Summer Music Festival.");
-            Log("People only know the entrances they came in by. The red emergency gates are closed.");
-            Log("Plan: draw barriers [2], move stewards [1]. Then START THE SHOW - something will go wrong.");
+            Log($"{sim.count} fans are enjoying the Summer Music Festival.");
+            Log("Get ready: place your team and barriers, then start the show.");
         }
 
         void BuildVenueViews()
@@ -242,40 +334,74 @@ namespace CrushHour
             return go;
         }
 
-        void SpawnStewards()
+        void SpawnUnits()
         {
-            for (int i = 0; i < stewardCount; i++)
-            {
-                Vector2 post = i < StewardPosts.Length ? StewardPosts[i] : new Vector2(rng.Next(10, 94) + 0.5f, rng.Next(10, 60) + 0.5f);
-                if (!venue.IsWalkable(FestivalVenue.CellAt(post))) post = StewardPosts[0];
-
-                var root = new GameObject($"Steward {i + 1}").transform;
-                root.SetParent(world, false);
-                var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                Destroy(body.GetComponent<Collider>());
-                body.transform.SetParent(root, false);
-                body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
-                body.transform.localScale = new Vector3(0.6f, 1.8f, 0.6f);
-                body.GetComponent<MeshRenderer>().sharedMaterial = Lit(StewardColor);
-
-                // Influence radius.
-                var ring = root.gameObject.AddComponent<LineRenderer>();
-                ring.useWorldSpace = false;
-                ring.loop = true;
-                ring.positionCount = 48;
-                ring.widthMultiplier = 0.12f;
-                ring.sharedMaterial = Unlit(StewardColor);
-                ring.shadowCastingMode = ShadowCastingMode.Off;
-                for (int k = 0; k < ring.positionCount; k++)
-                {
-                    float a = k * Mathf.PI * 2f / ring.positionCount;
-                    ring.SetPosition(k, new Vector3(Mathf.Cos(a) * crowd.stewardRadius, 0.08f, Mathf.Sin(a) * crowd.stewardRadius));
-                }
-
-                root.position = new Vector3(post.x, 0f, post.y);
-                stewards.Add(new Steward { position = post, root = root, ring = ring });
-            }
+            for (int i = 0; i < stewardCount; i++) SpawnUnit(Role.Steward, i, StewardPosts);
+            for (int i = 0; i < megaphoneOfficers; i++) SpawnUnit(Role.Megaphone, i, MegaphonePosts);
         }
+
+        void SpawnUnit(Role role, int index, Vector2[] posts)
+        {
+            Vector2 post = index < posts.Length ? posts[index] : new Vector2(rng.Next(10, 94) + 0.5f, rng.Next(10, 60) + 0.5f);
+            if (!venue.IsWalkable(FestivalVenue.CellAt(post))) post = StewardPosts[0];
+
+            var unit = new Unit { role = role, number = index + 1, position = post };
+            var root = unit.root = new GameObject(unit.Name).transform;
+            root.SetParent(world, false);
+            root.position = new Vector3(post.x, 0f, post.y);
+            if (role == Role.Steward)
+            {
+                AddPart(root, new Vector3(0f, 0.9f, 0f), new Vector3(0.6f, 1.8f, 0.6f), StewardColor);
+            }
+            else
+            {
+                AddPart(root, new Vector3(0f, 0.9f, 0f), new Vector3(0.6f, 1.8f, 0.6f), PoliceColor);
+                AddPart(root, new Vector3(0f, 1.9f, 0f), new Vector3(0.7f, 0.2f, 0.7f), MegaphoneColor); // cap
+                var wave = new GameObject("Announcement").transform;
+                wave.SetParent(root, false);
+                var line = AddCircle(wave.gameObject, 1f, MegaphoneColor);
+                line.widthMultiplier = 0.25f;
+                line.enabled = false;
+                unit.wave = wave;
+            }
+            unit.ring = AddCircle(root.gameObject, RoleRadius(role), RoleColor(role));
+            units.Add(unit);
+        }
+
+        void AddPart(Transform parent, Vector3 position, Vector3 scale, Color color)
+        {
+            var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Destroy(part.GetComponent<Collider>());
+            part.transform.SetParent(parent, false);
+            part.transform.localPosition = position;
+            part.transform.localScale = scale;
+            part.GetComponent<MeshRenderer>().sharedMaterial = Lit(color);
+        }
+
+        LineRenderer AddCircle(GameObject owner, float radius, Color color)
+        {
+            var ring = owner.AddComponent<LineRenderer>();
+            ring.useWorldSpace = false;
+            ring.loop = true;
+            ring.positionCount = 48;
+            ring.widthMultiplier = 0.12f;
+            ring.sharedMaterial = Unlit(color);
+            ring.shadowCastingMode = ShadowCastingMode.Off;
+            for (int k = 0; k < ring.positionCount; k++)
+            {
+                float a = k * Mathf.PI * 2f / ring.positionCount;
+                ring.SetPosition(k, new Vector3(Mathf.Cos(a) * radius, 0.08f, Mathf.Sin(a) * radius));
+            }
+            return ring;
+        }
+
+        float RoleRadius(Role role) => role == Role.Megaphone ? crowd.policeAnnounceRadius : crowd.stewardRadius;
+        static Color RoleColor(Role role) => role == Role.Megaphone ? MegaphoneColor : StewardColor;
+        static string RoleName(Role role) => role == Role.Megaphone ? "Police" : "Steward";
+
+        static string RoleDescription(Role role) => role == Role.Megaphone
+            ? "Megaphone police: once the fire starts, announces it every few seconds to everyone in the big ring and tells them which gates are open."
+            : "Steward: lines people in the ring up in orderly, spaced-out queues so nobody gets squeezed, calms them, helps through panic attacks and tells them which gates are open.";
 
         Material Lit(Color color)
         {
@@ -314,6 +440,7 @@ namespace CrushHour
             HandleKeyboard();
             HandleMouse();
 
+            float simDt = 0f;
             if (phase != Phase.Results && !paused)
             {
                 simAccumulator += Time.deltaTime * Speeds[speedIndex];
@@ -322,13 +449,16 @@ namespace CrushHour
                 {
                     Simulate(SimStep);
                     simAccumulator -= SimStep;
+                    simDt += SimStep;
                     steps++;
                 }
                 if (steps == MaxStepsPerFrame) simAccumulator = 0f; // can't keep up: run slower rather than spiral
             }
 
             UpdateViews();
-            sim.Render(cubeMesh, agentRenderParams);
+            UpdateSmoke(paused ? 0f : phase == Phase.Results ? Time.deltaTime : Time.deltaTime * Speeds[speedIndex]);
+            crowdRenderer.ShowMarkers = stateMarkers;
+            crowdRenderer.Render(paused ? 0f : Mathf.Max(simDt, phase == Phase.Results ? Time.deltaTime : 0f));
         }
 
         void Simulate(float dt)
@@ -339,9 +469,8 @@ namespace CrushHour
                 {
                     if (!g.Passable)
                         foreach (var p in g.rect.allPositionsWithin) sim.Evict(FestivalVenue.Index(p.x, p.y), venue);
-                    Log(g.Passable ? $"{g.name} is open." : $"{g.name} is closed.");
+                    Log(g.Passable ? $"{g.name} is open." : $"{g.name} is closed.", g.Passable ? Severity.Good : Severity.Info);
                 }
-                fieldsDirty = true;
             }
 
             if (phase == Phase.Live && !incidentStarted)
@@ -352,17 +481,24 @@ namespace CrushHour
             else if (incidentStarted && venue.UpdateFire(dt, rng, maxFireCells))
             {
                 SyncFireViews();
-                fieldsDirty = true;
+                if (venue.SpotFires > lastSpotFires)
+                {
+                    lastSpotFires = venue.SpotFires;
+                    if (evacuationTime - lastSpotFireLog > 6f)
+                    {
+                        lastSpotFireLog = evacuationTime;
+                        Log($"Embers started a new fire near {venue.DescribeLocation(venue.LastSpotFireCell)}!", Severity.Danger);
+                    }
+                }
             }
 
-            MoveStewards(dt);
-            sim.Step(dt, venue, knownField, allField, incidentStarted);
+            venue.UpdateDoorFields(3);
+            MoveUnits(dt);
+            sim.Step(dt, venue, incidentStarted);
             sim.ApplyStewards(stewardPositions, dt, incidentStarted);
-
-            fieldTimer -= dt;
-            if (fieldsDirty || fieldTimer <= 0f) ComputeFields();
-
             if (!incidentStarted) return;
+
+            UpdateMegaphones(dt);
             evacuationTime += dt;
             announcementTimer = Mathf.Max(0f, announcementTimer - dt);
             CheckWarnings(dt);
@@ -376,20 +512,11 @@ namespace CrushHour
             if (sim.ActiveCount == 0 || stalled || evacuationTime >= evacuationTimeLimit) EndGame();
         }
 
-        void ComputeFields()
-        {
-            // Unaware people: only the entrances they know, and they follow the herd.
-            venue.ComputeFlowField(knownField, true, null, 0f);
-            // People following directions: every open exit, avoiding congestion.
-            venue.ComputeFlowField(allField, false, sim.density, 0.35f);
-            fieldsDirty = false;
-            fieldTimer = 0.5f;
-        }
-
         void StartShow()
         {
             if (phase != Phase.Planning) return;
             phase = Phase.Live;
+            welcomeDismissed = true;
             incidentCountdown = 4f + (float)rng.NextDouble() * 8f;
             Log("The headliner is on stage. Stay sharp...");
         }
@@ -402,8 +529,8 @@ namespace CrushHour
             evacuationTime = 0f;
             venue.StartFire(site.cell);
             SyncFireViews();
-            fieldsDirty = true;
-            Log($"FIRE at {site.name}! Get everyone out. Open gates, send stewards, use the PA.");
+            Log($"FIRE at {site.name}! People nearby are running from it.", Severity.Danger);
+            ShowBanner($"FIRE AT {site.name.ToUpperInvariant()}!", "Open the gates, send your team, use the PA.", Severity.Danger);
             cameraRig.Focus(new Vector3(site.cell.x, 0f, site.cell.y));
         }
 
@@ -431,29 +558,107 @@ namespace CrushHour
             }
         }
 
-        void MoveStewards(float dt)
+        /// <summary>Voxel smoke: puffs rise from random burning cells and drift with the wind; more fire, more smoke.</summary>
+        void UpdateSmoke(float dt)
+        {
+            if (dt <= 0f) return;
+            if (venue.fireCells.Count > 0)
+            {
+                smokeBudget += dt * Mathf.Min(45f, 3f + venue.fireCells.Count * 0.25f);
+                while (smokeBudget >= 1f)
+                {
+                    smokeBudget -= 1f;
+                    SpawnPuff();
+                }
+            }
+            foreach (var puff in smoke)
+            {
+                if (!puff.transform.gameObject.activeSelf) continue;
+                puff.age += dt;
+                if (puff.age >= puff.life)
+                {
+                    puff.transform.gameObject.SetActive(false);
+                    continue;
+                }
+                float t = puff.age / puff.life;
+                puff.transform.localPosition += puff.velocity * dt;
+                puff.transform.localScale = Vector3.one * (puff.size * Mathf.Sin(t * Mathf.PI) * (0.6f + t));
+                puff.transform.Rotate(0f, 40f * dt, 0f);
+            }
+        }
+
+        void SpawnPuff()
+        {
+            Puff puff = null;
+            foreach (var p in smoke)
+            {
+                if (p.transform.gameObject.activeSelf) continue;
+                puff = p;
+                break;
+            }
+            if (puff == null)
+            {
+                if (smoke.Count >= 160) return;
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                go.name = "Smoke";
+                Destroy(go.GetComponent<Collider>());
+                go.transform.SetParent(world, false);
+                var renderer = go.GetComponent<MeshRenderer>();
+                renderer.sharedMaterial = Unlit(SmokeColors[smoke.Count % SmokeColors.Length]);
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                puff = new Puff { transform = go.transform };
+                smoke.Add(puff);
+            }
+            int cell = venue.fireCells[UnityEngine.Random.Range(0, venue.fireCells.Count)];
+            var c = FestivalVenue.CellCenter(cell);
+            puff.transform.localPosition = new Vector3(c.x + UnityEngine.Random.Range(-0.4f, 0.4f), venue.blockHeight[cell] + 1.6f, c.y + UnityEngine.Random.Range(-0.4f, 0.4f));
+            puff.velocity = Wind + new Vector3(UnityEngine.Random.Range(-0.3f, 0.3f), UnityEngine.Random.Range(1.2f, 2.2f), UnityEngine.Random.Range(-0.3f, 0.3f));
+            puff.age = 0f;
+            puff.life = UnityEngine.Random.Range(2.5f, 4.5f);
+            puff.size = UnityEngine.Random.Range(0.7f, 1.5f);
+            puff.transform.localScale = Vector3.zero;
+            puff.transform.gameObject.SetActive(true);
+        }
+
+        void UpdateMegaphones(float dt)
+        {
+            foreach (var u in units)
+            {
+                if (u.role != Role.Megaphone) continue;
+                u.announceTimer -= dt;
+                if (u.announceTimer > 0f) continue;
+                u.announceTimer = policeAnnounceInterval;
+                u.waveTime = 0f;
+                int informed = sim.PoliceAnnouncement(u.position);
+                if (!u.hasAnnounced || informed >= 25)
+                    Log($"{u.Name} near {venue.DescribeLocation(FestivalVenue.CellAt(u.position))}: \"Fire at {incidentSite}! Walk to an open gate.\" ({informed} now know the way)");
+                u.hasAnnounced = true;
+            }
+        }
+
+        void MoveUnits(float dt)
         {
             stewardPositions.Clear();
-            foreach (var s in stewards)
+            foreach (var u in units)
             {
-                float budget = stewardSpeed * dt;
-                while (budget > 0f && s.path.Count > 0)
+                float budget = (u.role == Role.Steward ? stewardSpeed : policeSpeed) * dt;
+                while (budget > 0f && u.path.Count > 0)
                 {
-                    Vector2 delta = s.path[0] - s.position;
+                    Vector2 delta = u.path[0] - u.position;
                     float length = delta.magnitude;
                     if (length <= budget)
                     {
-                        s.position = s.path[0];
-                        s.path.RemoveAt(0);
+                        u.position = u.path[0];
+                        u.path.RemoveAt(0);
                         budget -= length;
                     }
                     else
                     {
-                        s.position += delta / length * budget;
+                        u.position += delta / length * budget;
                         budget = 0f;
                     }
                 }
-                stewardPositions.Add(s.position);
+                if (u.role == Role.Steward) stewardPositions.Add(u.position);
             }
         }
 
@@ -469,13 +674,29 @@ namespace CrushHour
                 if (!lastWarning.TryGetValue(where, out float last) || evacuationTime - last > 10f)
                 {
                     lastWarning[where] = evacuationTime;
-                    Log($"Dangerous crowd pressure near {where}!");
+                    Log($"Dangerous crush building near {where}!", Severity.Danger);
                 }
             }
             if (sim.InjuredCount > lastInjured)
             {
-                Log($"{sim.InjuredCount - lastInjured} more people injured (total {sim.InjuredCount}).");
+                Log($"{sim.InjuredCount - lastInjured} more people injured (total {sim.InjuredCount}).", Severity.Danger);
                 lastInjured = sim.InjuredCount;
+            }
+            if (sim.PanicAttacksTotal > lastAttacks)
+            {
+                if (evacuationTime - attackWarningTime > 8f)
+                {
+                    string where = "the crowd";
+                    for (int i = 0; i < sim.count; i++)
+                    {
+                        if (sim.attackTime[i] <= 0f) continue;
+                        where = venue.DescribeLocation(FestivalVenue.CellAt(sim.position[i]));
+                        break;
+                    }
+                    Log($"Panic attack near {where}. A steward nearby helps them recover.", Severity.Warning);
+                    attackWarningTime = evacuationTime;
+                }
+                lastAttacks = sim.PanicAttacksTotal;
             }
         }
 
@@ -486,7 +707,8 @@ namespace CrushHour
             finalSafe = sim.SafeCount;
             finalInjured = sim.InjuredCount;
             finalTrapped = sim.ActiveCount;
-            finalScore = finalSafe * 10 - finalInjured * 100 - finalTrapped * 25
+            finalAttacks = sim.PanicAttacksTotal;
+            finalScore = finalSafe * 10 - finalInjured * 100 - finalTrapped * 25 - finalAttacks * 10
                          + Mathf.Max(0, Mathf.RoundToInt(evacuationTimeLimit - evacuationTime)) * 10;
 
             float safeRatio = finalSafe / (float)sim.count;
@@ -495,16 +717,18 @@ namespace CrushHour
             if (stars == 1 && finalInjured <= sim.count / 100) stars = 2;
             if (stars == 2 && finalInjured == 0 && finalTrapped == 0 && evacuationTime <= evacuationTimeLimit * 0.5f) stars = 3;
 
-            resultTitle = finalTrapped == 0 ? "FESTIVAL EVACUATED" : evacuationTime >= evacuationTimeLimit ? "TIME'S UP" : "EVACUATION STALLED";
+            resultTitle = finalTrapped == 0 ? "Festival evacuated" : evacuationTime >= evacuationTimeLimit ? "Time's up" : "Evacuation stalled";
             if (gatesOpened == 0)
-                resultTip = "No emergency gate was opened. The two entrances alone can't take the whole crowd.";
+                resultTip = "No emergency gate was opened. People tried the gates, found them shut and all squeezed through the two narrow entrances.";
             else if (finalInjured > 0)
-                resultTip = "Crushes happen where panicking crowds hit bottlenecks. Calm them (stewards, PA) and spread them over more exits.";
+                resultTip = "Crushes happen where frightened crowds hit bottlenecks. Open gates early, calm crowds with stewards and the PA.";
+            else if (finalAttacks > 10)
+                resultTip = "Lots of panic attacks: people stuck in long queues or near the flames lose it. Spread them over more gates and keep stewards near jams.";
             else if (finalTrapped > 0)
-                resultTip = "Too slow. Announce the evacuation earlier: people far from the fire keep watching the show.";
+                resultTip = "Some people never heard about the fire. Use the PA and the megaphone police to reach everyone.";
             else
-                resultTip = "Clean evacuation! The crowd and the incident change every run. Try again.";
-            Log($"{resultTitle}: {finalSafe} safe, {finalInjured} injured, {finalTrapped} still inside.");
+                resultTip = "Clean evacuation! The crowd and the fire change every run. Try again.";
+            Log($"{resultTitle}: {finalSafe} safe, {finalInjured} injured, {finalTrapped} still inside.", stars >= 2 ? Severity.Good : Severity.Warning);
         }
 
         // ================================================================ Player actions
@@ -513,7 +737,7 @@ namespace CrushHour
         {
             tool = newTool;
             CancelDrag();
-            if (tool == Tool.Barrier) selectedSteward = -1;
+            if (tool == Tool.Barrier) selectedUnit = -1;
         }
 
         bool CanAnnounce() => phase == Phase.Live && incidentStarted && announcementTimer <= 0f;
@@ -521,57 +745,75 @@ namespace CrushHour
         void AnnounceEvacuation()
         {
             if (!CanAnnounce()) return;
-            int reached = sim.AnnounceEvacuation(rng, announcementReach);
+            int reached = sim.AnnounceEvacuation(announcementReach);
             announcementTimer = announcementCooldown;
-            Log($"PA: \"Please leave calmly and follow staff directions.\" ({reached} more people now follow directions)");
+            Log($"PA: \"Please leave calmly through the open gates.\" ({reached} more people now know which gates are open)", Severity.Good);
         }
 
         void AnnounceCalm()
         {
             if (!CanAnnounce()) return;
             sim.AnnounceCalm(calmStrength);
-            Log($"PA: \"Stay calm. Walk, don't run.\" (effect {calmStrength / 0.35f * 100f:0}%: people tune out repeats)");
+            Log($"PA: \"Stay calm. Walk, don't run.\" (effect {calmStrength / 0.35f * 100f:0}%: people tune out repeats)", Severity.Good);
             calmStrength *= 0.75f;
             announcementTimer = announcementCooldown;
         }
 
+        void ToggleGate(Gate gate)
+        {
+            gate.open = !gate.open;
+            if (gate.open) gatesOpened++;
+            Log(gate.open ? $"Opening {gate.name}..." : $"Closing {gate.name}...");
+        }
+
+        void OpenAllGates()
+        {
+            foreach (var g in venue.gates)
+                if (!g.open) ToggleGate(g);
+        }
+
+        void SelectUnit(int index, bool focus)
+        {
+            selectedUnit = index;
+            SetTool(Tool.Command);
+            if (focus && index >= 0) cameraRig.Focus(new Vector3(units[index].position.x, 0f, units[index].position.y));
+        }
+
         void CommandClick(Vector2 ground, int cell)
         {
-            int nearest = NearestSteward(ground, 1.5f);
+            int nearest = NearestUnit(ground, 1.5f);
             if (nearest >= 0)
             {
-                selectedSteward = nearest;
+                selectedUnit = nearest;
                 return;
             }
 
             var gate = venue.GateNear(cell);
             if (gate != null)
             {
-                gate.open = !gate.open;
-                if (gate.open) gatesOpened++;
-                Log(gate.open ? $"Opening {gate.name}..." : $"Closing {gate.name}...");
+                ToggleGate(gate);
                 return;
             }
 
-            int index = selectedSteward >= 0 ? selectedSteward : NearestSteward(ground, float.MaxValue);
+            int index = selectedUnit >= 0 ? selectedUnit : NearestUnit(ground, float.MaxValue);
             if (index < 0) return;
-            var path = venue.FindPath(stewards[index].position, ground);
+            var path = venue.FindPath(units[index].position, ground);
             if (path == null)
             {
-                Log("A steward can't get there.");
+                Log($"{units[index].Name} can't get there.", Severity.Warning);
                 return;
             }
-            stewards[index].path.Clear();
-            stewards[index].path.AddRange(path);
+            units[index].path.Clear();
+            units[index].path.AddRange(path);
         }
 
-        int NearestSteward(Vector2 point, float maxDistance)
+        int NearestUnit(Vector2 point, float maxDistance)
         {
             int best = -1;
             float bestSq = maxDistance * maxDistance;
-            for (int i = 0; i < stewards.Count; i++)
+            for (int i = 0; i < units.Count; i++)
             {
-                float d = (stewards[i].position - point).sqrMagnitude;
+                float d = (units[i].position - point).sqrMagnitude;
                 if (d < bestSq)
                 {
                     bestSq = d;
@@ -583,7 +825,7 @@ namespace CrushHour
 
         void PlaceBarrierLine(int from, int to)
         {
-            bool placed = false, outOfBudget = false;
+            bool outOfBudget = false;
             foreach (int c in LineCells(from, to))
             {
                 if (venue.cells[c] != CellType.Open) continue;
@@ -596,10 +838,8 @@ namespace CrushHour
                 sim.Evict(c, venue);
                 barrierViews[c] = CreateBlock("Barrier", new RectInt(c % W, c / W, 1, 1), 1f, BarrierColor, 0.1f);
                 barriersUsed++;
-                placed = true;
             }
-            if (placed) fieldsDirty = true;
-            if (outOfBudget) Log($"Out of barriers ({barrierBudget} sections). Right-click a barrier to pick it up.");
+            if (outOfBudget) Log($"Out of barriers ({barrierBudget} sections). Right-click a barrier to pick it up.", Severity.Warning);
         }
 
         void RemoveBarrier(int cell)
@@ -607,7 +847,6 @@ namespace CrushHour
             if (!venue.TryRemoveBarrier(cell)) return;
             if (barrierViews.Remove(cell, out var view)) Destroy(view);
             barriersUsed--;
-            fieldsDirty = true;
         }
 
         /// <summary>4-connected line, so a diagonal barrier has no gaps to squeeze through.</summary>
@@ -648,6 +887,8 @@ namespace CrushHour
                 return;
             }
             if (keyboard.hKey.wasPressedThisFrame) heatmap = !heatmap;
+            if (keyboard.mKey.wasPressedThisFrame) stateMarkers = !stateMarkers;
+            if (keyboard.lKey.wasPressedThisFrame) showLegend = !showLegend;
             if (phase == Phase.Results) return;
             if (keyboard.spaceKey.wasPressedThisFrame) paused = !paused;
             if (keyboard.tabKey.wasPressedThisFrame) speedIndex = (speedIndex + 1) % Speeds.Length;
@@ -656,6 +897,7 @@ namespace CrushHour
             if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame) StartShow();
             if (keyboard.fKey.wasPressedThisFrame) AnnounceEvacuation();
             if (keyboard.cKey.wasPressedThisFrame) AnnounceCalm();
+            if (keyboard.escapeKey.wasPressedThisFrame) selectedUnit = -1;
         }
 
         void HandleMouse()
@@ -698,7 +940,7 @@ namespace CrushHour
             else
             {
                 if (mouse.leftButton.wasPressedThisFrame && !overGui && onGround) CommandClick(ground, cell);
-                if (mouse.rightButton.wasPressedThisFrame) selectedSteward = -1;
+                if (mouse.rightButton.wasPressedThisFrame && !overGui) selectedUnit = -1;
             }
         }
 
@@ -721,9 +963,10 @@ namespace CrushHour
             return true;
         }
 
+        /// <summary>Is this screen point (pixels, bottom-left origin) over a UI panel?</summary>
         bool IsOverGui(Vector2 screen)
         {
-            var guiPoint = new Vector2(screen.x, Screen.height - screen.y);
+            var guiPoint = new Vector2(screen.x, Screen.height - screen.y) / uiScale;
             foreach (var r in guiRects)
                 if (r.Contains(guiPoint)) return true;
             return false;
@@ -733,10 +976,18 @@ namespace CrushHour
 
         void UpdateViews()
         {
-            for (int i = 0; i < stewards.Count; i++)
+            for (int i = 0; i < units.Count; i++)
             {
-                stewards[i].root.position = new Vector3(stewards[i].position.x, 0f, stewards[i].position.y);
-                stewards[i].ring.widthMultiplier = i == selectedSteward ? 0.35f : 0.12f;
+                var u = units[i];
+                u.root.position = new Vector3(u.position.x, 0f, u.position.y);
+                u.ring.widthMultiplier = i == selectedUnit ? 0.35f : 0.12f;
+                if (u.wave == null) continue;
+                // Announcement ripple: grows from the officer to the edge of earshot.
+                u.waveTime += paused ? 0f : Time.deltaTime;
+                bool visible = u.waveTime < 1f;
+                var line = u.wave.GetComponent<LineRenderer>();
+                if (line.enabled != visible) line.enabled = visible;
+                if (visible) u.wave.localScale = Vector3.one * Mathf.Max(0.01f, u.waveTime * crowd.policeAnnounceRadius);
             }
 
             for (int i = 0; i < venue.gates.Count; i++)
@@ -746,7 +997,7 @@ namespace CrushHour
                 float h = Mathf.Lerp(1.4f, 0.12f, g.progress);
                 t.localPosition = new Vector3(t.localPosition.x, h * 0.5f, t.localPosition.z);
                 t.localScale = new Vector3(t.localScale.x, h, t.localScale.z);
-                var material = Lit(g.Passable ? GateOpenColor : g.open ? GateOpeningColor : GateClosedColor);
+                var material = Lit(GateColor(g));
                 if (gateViews[i].sharedMaterial != material) gateViews[i].sharedMaterial = material;
             }
 
@@ -766,6 +1017,9 @@ namespace CrushHour
                 UpdateGroundTexture();
             }
         }
+
+        static Color GateColor(Gate g) => g.Passable ? GateOpenColor : g.open ? GateOpeningColor : GateClosedColor;
+        static string GateStatus(Gate g) => g.Passable ? "OPEN" : g.open ? "OPENING" : "CLOSED";
 
         void UpdateGroundTexture()
         {
@@ -795,10 +1049,9 @@ namespace CrushHour
             return Color.Lerp(danger, crush, Mathf.Clamp01((p - 7.5f) / 3f));
         }
 
-        void Log(string message)
+        void Log(string message, Severity severity = Severity.Info)
         {
-            float t = incidentStarted ? evacuationTime : 0f;
-            log.Add(incidentStarted ? $"[{FormatTime(t)}] {message}" : message);
+            log.Add((message, severity, incidentStarted ? FormatTime(evacuationTime) : ""));
             if (log.Count > 40) log.RemoveAt(0);
         }
 
@@ -806,159 +1059,441 @@ namespace CrushHour
 
         // ================================================================ UI
 
+        static bool welcomeDismissed;
+        bool showLegend = true;
+        float uiScale = 1f, vw, vh; // UI scale and the virtual screen size it works in
+        float bannerTime;
+        string bannerTitle, bannerText;
+        Severity bannerSeverity;
+
+        static readonly Color TextColor = new(0.95f, 0.96f, 0.98f);
+        static readonly Color MutedText = new(0.68f, 0.72f, 0.8f);
+        static readonly Color PanelColor = new(0.07f, 0.08f, 0.11f, 0.92f);
+        static readonly Color CardColor = new(0.13f, 0.15f, 0.2f, 1f);
+        static readonly Color ButtonColor = new(0.2f, 0.23f, 0.3f);
+        static readonly Color SelectedColor = new(0.22f, 0.45f, 0.9f);
+        static readonly Color GoodColor = new(0.2f, 0.66f, 0.38f);
+        static readonly Color WarningColor = new(0.95f, 0.62f, 0.15f);
+        static readonly Color DangerColor = new(0.9f, 0.27f, 0.2f);
+
+        GUIStyle panelStyle, cardStyle, tooltipStyle, buttonStyle, selectedButtonStyle, goodButtonStyle, dangerButtonStyle, rowStyle, rowSelectedStyle;
+        GUIStyle labelStyle, mutedStyle, smallStyle, headerStyle, titleStyle, bigTitleStyle, numberStyle, statCaptionStyle, worldLabelStyle, chipStyle;
+        readonly Dictionary<string, Texture2D> roundedCache = new();
+
         void OnGUI()
         {
             if (sim == null) return;
+            uiScale = Mathf.Clamp(Screen.height / 900f, 0.75f, 2f);
+            vw = Screen.width / uiScale;
+            vh = Screen.height / uiScale;
+            GUI.matrix = Matrix4x4.Scale(new Vector3(uiScale, uiScale, 1f));
             EnsureStyles();
             guiRects.Clear();
+
             DrawWorldLabels();
             DrawTopBar();
-            DrawSidePanel();
-            DrawLog();
+            DrawTeamPanel();
+            DrawControlPanel();
+            DrawEventFeed();
+            DrawLegend();
+            DrawBanner();
             DrawHoverInfo();
+            if (phase == Phase.Planning && !welcomeDismissed) DrawWelcome();
             if (phase == Phase.Results) DrawResults();
+        }
+
+        // ---------------------------------------------------------------- Styles
+
+        Texture2D Rounded(Color fill, int radius)
+        {
+            string key = $"{fill}{radius}";
+            if (roundedCache.TryGetValue(key, out var cached) && cached != null) return cached;
+            int size = radius * 2 + 2;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                hideFlags = HideFlags.DontSave,
+            };
+            var pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    var p = new Vector2(x + 0.5f, y + 0.5f);
+                    var inner = new Vector2(Mathf.Clamp(p.x, radius, size - radius), Mathf.Clamp(p.y, radius, size - radius));
+                    float alpha = Mathf.Clamp01(radius + 0.5f - Vector2.Distance(p, inner));
+                    pixels[y * size + x] = new Color(fill.r, fill.g, fill.b, fill.a * alpha);
+                }
+            }
+            texture.SetPixels(pixels);
+            texture.Apply();
+            return roundedCache[key] = texture;
+        }
+
+        GUIStyle BoxStyle(Color fill, int radius, int padding)
+        {
+            var style = new GUIStyle { border = new RectOffset(radius, radius, radius, radius), padding = new RectOffset(padding, padding, padding, padding) };
+            style.normal.background = Rounded(fill, radius);
+            style.normal.textColor = TextColor;
+            return style;
+        }
+
+        GUIStyle ButtonStyle(Color fill, int fontSize = 13, TextAnchor alignment = TextAnchor.MiddleCenter)
+        {
+            var style = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = fontSize,
+                fontStyle = FontStyle.Bold,
+                alignment = alignment,
+                border = new RectOffset(6, 6, 6, 6),
+                padding = new RectOffset(10, 10, 6, 6),
+                margin = new RectOffset(0, 0, 3, 3),
+            };
+            var normal = Rounded(fill, 6);
+            var hover = Rounded(Color.Lerp(fill, Color.white, 0.15f), 6);
+            var pressed = Rounded(Color.Lerp(fill, Color.black, 0.2f), 6);
+            style.normal.background = style.onNormal.background = style.focused.background = style.onFocused.background = normal;
+            style.hover.background = style.onHover.background = hover;
+            style.active.background = style.onActive.background = pressed;
+            foreach (var state in new[] { style.normal, style.onNormal, style.hover, style.onHover, style.active, style.onActive, style.focused, style.onFocused })
+                state.textColor = TextColor;
+            return style;
+        }
+
+        GUIStyle TextStyle(int size, Color color, FontStyle font = FontStyle.Normal, TextAnchor alignment = TextAnchor.UpperLeft, bool wrap = false)
+        {
+            var style = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = font, alignment = alignment, wordWrap = wrap, richText = true };
+            style.normal.textColor = color;
+            return style;
         }
 
         void EnsureStyles()
         {
-            if (labelStyle != null) return;
-            labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
-            labelStyle.normal.textColor = Color.white;
-            smallStyle = new GUIStyle(labelStyle) { fontSize = 11, wordWrap = true };
-            smallStyle.normal.textColor = new Color(0.82f, 0.82f, 0.82f);
-            headerStyle = new GUIStyle(labelStyle) { fontSize = 14, fontStyle = FontStyle.Bold };
-            titleStyle = new GUIStyle(headerStyle) { fontSize = 22 };
-            rightStyle = new GUIStyle(labelStyle) { alignment = TextAnchor.UpperRight };
-            worldLabelStyle = new GUIStyle(labelStyle) { fontSize = 11, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            if (panelStyle != null && panelStyle.normal.background != null) return;
+            panelStyle = BoxStyle(PanelColor, 10, 12);
+            cardStyle = BoxStyle(CardColor, 8, 10);
+            tooltipStyle = BoxStyle(new Color(0.05f, 0.06f, 0.08f, 0.95f), 6, 8);
+            tooltipStyle.fontSize = 13;
+            tooltipStyle.wordWrap = true;
+            chipStyle = BoxStyle(Color.white, 8, 4);
+            chipStyle.alignment = TextAnchor.MiddleCenter;
+            chipStyle.fontSize = 11;
+            chipStyle.fontStyle = FontStyle.Bold;
+
+            buttonStyle = ButtonStyle(ButtonColor);
+            selectedButtonStyle = ButtonStyle(SelectedColor);
+            goodButtonStyle = ButtonStyle(GoodColor, 15);
+            dangerButtonStyle = ButtonStyle(new Color(0.75f, 0.3f, 0.15f));
+            rowStyle = ButtonStyle(CardColor, 13, TextAnchor.MiddleLeft);
+            rowStyle.padding = new RectOffset(30, 10, 6, 6);
+            rowStyle.fontStyle = FontStyle.Normal;
+            rowSelectedStyle = ButtonStyle(SelectedColor, 13, TextAnchor.MiddleLeft);
+            rowSelectedStyle.padding = rowStyle.padding;
+            rowSelectedStyle.fontStyle = FontStyle.Normal;
+
+            labelStyle = TextStyle(13, TextColor, wrap: true);
+            mutedStyle = TextStyle(12, MutedText, wrap: true);
+            smallStyle = TextStyle(11, MutedText);
+            headerStyle = TextStyle(12, MutedText, FontStyle.Bold);
+            titleStyle = TextStyle(20, TextColor, FontStyle.Bold);
+            bigTitleStyle = TextStyle(26, TextColor, FontStyle.Bold, TextAnchor.UpperCenter);
+            numberStyle = TextStyle(20, TextColor, FontStyle.Bold, TextAnchor.MiddleCenter);
+            statCaptionStyle = TextStyle(10, MutedText, FontStyle.Bold, TextAnchor.MiddleCenter);
+            worldLabelStyle = TextStyle(11, TextColor, FontStyle.Bold, TextAnchor.MiddleCenter);
         }
 
-        void Panel(Rect rect)
+        // ---------------------------------------------------------------- Widgets
+
+        Rect Panel(Rect rect, GUIStyle style = null)
         {
-            GUI.Box(rect, GUIContent.none);
-            GUI.Box(rect, GUIContent.none);
+            GUI.Box(rect, GUIContent.none, style ?? panelStyle);
             guiRects.Add(rect);
+            return rect;
+        }
+
+        void Chip(Rect rect, string text, Color color)
+        {
+            var old = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(color.r, color.g, color.b, 0.3f);
+            var oldText = chipStyle.normal.textColor;
+            chipStyle.normal.textColor = Color.Lerp(color, Color.white, 0.35f);
+            GUI.Box(rect, text, chipStyle);
+            chipStyle.normal.textColor = oldText;
+            GUI.backgroundColor = old;
+        }
+
+        void Swatch(Rect rect, Color color)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            var old = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(rect, Rounded(Color.white, 3));
+            GUI.color = old;
+        }
+
+        void ProgressBar(Rect rect, float value, Color color)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            var old = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, 0.12f);
+            GUI.DrawTexture(rect, Rounded(Color.white, 4));
+            GUI.color = color;
+            GUI.DrawTexture(new Rect(rect.x, rect.y, Mathf.Max(rect.height, rect.width * Mathf.Clamp01(value)), rect.height), Rounded(Color.white, 4));
+            GUI.color = old;
         }
 
         void ShadowLabel(Rect rect, string text, GUIStyle style)
         {
             var color = style.normal.textColor;
-            style.normal.textColor = Color.black;
+            style.normal.textColor = new Color(0f, 0f, 0f, 0.8f);
             GUI.Label(new Rect(rect.x + 1, rect.y + 1, rect.width, rect.height), text, style);
             style.normal.textColor = color;
             GUI.Label(rect, text, style);
         }
 
-        void DrawWorldLabels()
+        static Color SeverityColor(Severity severity) => severity switch
         {
-            foreach (var (text, position) in labels) WorldLabel(position, text);
-            foreach (var g in venue.gates)
-            {
-                string status = g.Passable ? "OPEN" : g.open ? "opening..." : "closed";
-                WorldLabel(new Vector3(g.rect.center.x, 2f, g.rect.center.y), $"{g.name.ToUpperInvariant()}\n{status}");
-            }
+            Severity.Good => GoodColor,
+            Severity.Warning => WarningColor,
+            Severity.Danger => DangerColor,
+            _ => MutedText,
+        };
+
+        void ShowBanner(string title, string text, Severity severity)
+        {
+            bannerTitle = title;
+            bannerText = text;
+            bannerSeverity = severity;
+            bannerTime = 5f;
         }
 
-        void WorldLabel(Vector3 position, string text)
-        {
-            Vector3 sp = cam.WorldToScreenPoint(position);
-            if (sp.z < 0f) return;
-            ShadowLabel(new Rect(sp.x - 80f, Screen.height - sp.y - 16f, 160f, 32f), text, worldLabelStyle);
-        }
+        // ---------------------------------------------------------------- Panels
 
         void DrawTopBar()
         {
-            Panel(new Rect(0, 0, Screen.width, 50));
-            GUI.Label(new Rect(12, 5, 420, 22), "CRUSH HOUR  -  Summer Music Festival", headerStyle);
-            string phaseText = phase switch
+            var bar = Panel(new Rect(0, 0, vw, 64), BoxStyle(PanelColor, 0, 0));
+            GUI.Label(new Rect(16, 8, 220, 28), "CRUSH HOUR", titleStyle);
+            GUI.Label(new Rect(17, 36, 220, 20), "Summer Music Festival", smallStyle);
+
+            // What's happening now.
+            float x = 230;
+            switch (phase)
             {
-                Phase.Planning => "PLANNING: place barriers and stewards, then start the show.",
-                Phase.Live when !incidentStarted => "Show in progress... something is about to go wrong.",
-                Phase.Live => $"EVACUATION  {FormatTime(evacuationTime)} / {FormatTime(evacuationTimeLimit)}   Fire at {incidentSite}",
-                _ => "RESULTS",
-            };
-            GUI.Label(new Rect(12, 26, 640, 20), phaseText, labelStyle);
-            GUI.Label(new Rect(Screen.width - 700, 5, 688, 20),
-                $"Inside {sim.ActiveCount}    Safe {sim.SafeCount}    Injured {sim.InjuredCount}    Panicking {sim.PanickedCount}    Peak pressure {sim.MaxPressure:0.0}",
-                rightStyle);
-            GUI.Label(new Rect(Screen.width - 700, 26, 688, 20), $"Speed x{Speeds[speedIndex]:0}{(paused ? "   PAUSED" : "")}    Seed {seed}", rightStyle);
+                case Phase.Planning:
+                    Chip(new Rect(x, 12, 120, 22), "PLANNING", SelectedColor);
+                    GUI.Label(new Rect(x, 38, 380, 20), "Position your team and barriers, then start the show.", smallStyle);
+                    break;
+                case Phase.Live when !incidentStarted:
+                    Chip(new Rect(x, 12, 120, 22), "SHOW ON", GoodColor);
+                    GUI.Label(new Rect(x, 38, 380, 20), "Everything's fine... for now.", smallStyle);
+                    break;
+                case Phase.Live:
+                    Chip(new Rect(x, 12, 120, 22), "EVACUATION", DangerColor);
+                    GUI.Label(new Rect(x + 130, 12, 120, 22), $"{FormatTime(evacuationTime)} / {FormatTime(evacuationTimeLimit)}", labelStyle);
+                    ProgressBar(new Rect(x + 230, 17, 140, 10), evacuationTime / evacuationTimeLimit,
+                        Color.Lerp(GoodColor, DangerColor, evacuationTime / evacuationTimeLimit));
+                    GUI.Label(new Rect(x, 38, 380, 20), $"Fire at {incidentSite}", smallStyle);
+                    break;
+                default:
+                    Chip(new Rect(x, 12, 120, 22), "RESULTS", MutedText);
+                    break;
+            }
+
+            // Simulation speed.
+            float sx = x + 400;
+            if (GUI.Button(new Rect(sx, 14, 70, 34), paused ? "Play" : "Pause", paused ? selectedButtonStyle : buttonStyle)) paused = !paused;
+            for (int i = 0; i < Speeds.Length; i++)
+                if (GUI.Button(new Rect(sx + 76 + i * 46, 14, 42, 34), $"{Speeds[i]:0}x", speedIndex == i && !paused ? selectedButtonStyle : buttonStyle))
+                {
+                    speedIndex = i;
+                    paused = false;
+                }
+
+            // Headline numbers.
+            float right = vw - 12;
+            right = Stat(right, "PANIC ATTACKS", sim.PanicAttackCount.ToString(), AgentColors[5]);
+            right = Stat(right, "INJURED", sim.InjuredCount.ToString(), DangerColor);
+            right = Stat(right, "SAFE", sim.SafeCount.ToString(), GoodColor);
+            Stat(right, "INSIDE", sim.ActiveCount.ToString(), TextColor);
+            _ = bar;
         }
 
-        void DrawSidePanel()
+        float Stat(float right, string caption, string value, Color color)
         {
-            var rect = new Rect(8, 58, 270, 600);
-            Panel(rect);
-            GUILayout.BeginArea(new Rect(rect.x + 10, rect.y + 8, rect.width - 20, rect.height - 16));
+            const float width = 104;
+            var rect = new Rect(right - width, 8, width - 6, 48);
+            GUI.Box(rect, GUIContent.none, cardStyle);
+            var old = numberStyle.normal.textColor;
+            numberStyle.normal.textColor = color;
+            GUI.Label(new Rect(rect.x, rect.y + 3, rect.width, 26), value, numberStyle);
+            numberStyle.normal.textColor = old;
+            GUI.Label(new Rect(rect.x, rect.y + 29, rect.width, 14), caption, statCaptionStyle);
+            return right - width;
+        }
+
+        void DrawTeamPanel()
+        {
+            float height = (phase == Phase.Planning ? 64 : 0) + 60 + units.Count * 34 + 130;
+            var rect = Panel(new Rect(12, 76, 280, height));
+            GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
 
             if (phase == Phase.Planning)
             {
-                if (GUILayout.Button("START THE SHOW  [Enter]", GUILayout.Height(32))) deferred.Add(StartShow);
-                GUILayout.Space(6);
+                if (GUILayout.Button("START THE SHOW", goodButtonStyle, GUILayout.Height(44))) deferred.Add(StartShow);
+                GUILayout.Label("Press Enter. A fire will break out somewhere soon after.", smallStyle);
+                GUILayout.Space(4);
             }
 
-            GUILayout.Label("TOOLS", headerStyle);
-            if (GUILayout.Toggle(tool == Tool.Command, "[1] Command: stewards & gates", "Button") && tool != Tool.Command) SetTool(Tool.Command);
-            if (GUILayout.Toggle(tool == Tool.Barrier, $"[2] Barriers  ({barrierBudget - barriersUsed} left)", "Button") && tool != Tool.Barrier) SetTool(Tool.Barrier);
-            GUILayout.Label(tool == Tool.Command
-                    ? "Click ground: send the selected (or nearest) steward. Click a steward to select it, right-click to deselect. Click a gate to open/close it."
-                    : "Drag to draw a barrier line. Right-click a barrier to pick it up.",
-                smallStyle);
+            GUILayout.Label("YOUR TEAM", headerStyle);
+            GUILayout.Label("Click someone, then click the map to send them.", mutedStyle);
+            for (int i = 0; i < units.Count; i++)
+            {
+                var u = units[i];
+                string status = u.path.Count > 0 ? "on the move" : u.role == Role.Megaphone && incidentStarted ? "announcing" : "in position";
+                if (GUILayout.Button(u.Name, i == selectedUnit ? rowSelectedStyle : rowStyle, GUILayout.Height(30))) SelectUnit(i, true);
+                var row = GUILayoutUtility.GetLastRect();
+                Swatch(new Rect(row.x + 10, row.y + 9, 12, 12), RoleColor(u.role));
+                GUI.Label(new Rect(row.x, row.y + 8, row.width - 10, 16), status, TextStyle(11, MutedText, FontStyle.Normal, TextAnchor.UpperRight));
+            }
 
-            GUILayout.Space(6);
+            GUILayout.Space(8);
+            GUILayout.Label("TOOLS", headerStyle);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Command  [1]", tool == Tool.Command ? selectedButtonStyle : buttonStyle, GUILayout.Height(32))) SetTool(Tool.Command);
+            if (GUILayout.Button($"Barriers {barrierBudget - barriersUsed}  [2]", tool == Tool.Barrier ? selectedButtonStyle : buttonStyle, GUILayout.Height(32))) SetTool(Tool.Barrier);
+            GUILayout.EndHorizontal();
+            GUILayout.Label(tool == Tool.Command
+                ? "Click a gate on the map to open or close it. Right-click or Esc to deselect."
+                : "Drag on the map to draw a barrier line. Right-click a barrier to pick it up.", mutedStyle);
+            GUILayout.EndArea();
+        }
+
+        void DrawControlPanel()
+        {
+            var rect = Panel(new Rect(vw - 312, 76, 300, 120 + venue.gates.Count * 34 + 190));
+            GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
+
+            GUILayout.Label("EMERGENCY GATES", headerStyle);
+            GUILayout.Label("Wide exits, closed until you open them. People who find a gate shut look for another.", mutedStyle);
+            foreach (var g in venue.gates)
+            {
+                GUILayout.BeginHorizontal(GUILayout.Height(30));
+                if (GUILayout.Button(g.name, rowStyle, GUILayout.Height(30), GUILayout.Width(130)))
+                    cameraRig.Focus(new Vector3(g.rect.center.x, 0f, g.rect.center.y));
+                var chip = GUILayoutUtility.GetRect(70, 30, GUILayout.Width(70));
+                Chip(new Rect(chip.x + 4, chip.y + 6, chip.width - 8, 20), GateStatus(g), GateColor(g));
+                if (GUILayout.Button(g.open ? "Close" : "Open", g.open ? buttonStyle : goodButtonStyle, GUILayout.Height(30))) ToggleGate(g);
+                GUILayout.EndHorizontal();
+                Swatch(new Rect(GUILayoutUtility.GetLastRect().x + 10, GUILayoutUtility.GetLastRect().y + 10, 10, 10), GateColor(g));
+            }
+            if (GUILayout.Button("Open all gates", buttonStyle, GUILayout.Height(30))) OpenAllGates();
+
+            GUILayout.Space(8);
             GUILayout.Label("PA ANNOUNCEMENTS", headerStyle);
             GUI.enabled = CanAnnounce();
-            if (GUILayout.Button("[F] \"Evacuate, follow staff\"")) AnnounceEvacuation();
-            if (GUILayout.Button("[C] \"Stay calm, walk, don't run\"")) AnnounceCalm();
+            if (GUILayout.Button("Evacuate: use the open gates  [F]", dangerButtonStyle, GUILayout.Height(34))) AnnounceEvacuation();
+            if (GUILayout.Button("Stay calm, walk, don't run  [C]", buttonStyle, GUILayout.Height(34))) AnnounceCalm();
             GUI.enabled = true;
+            var barRect = GUILayoutUtility.GetRect(10, 8, GUILayout.ExpandWidth(true));
+            if (incidentStarted) ProgressBar(barRect, 1f - announcementTimer / announcementCooldown, announcementTimer > 0f ? WarningColor : GoodColor);
             GUILayout.Label(!incidentStarted ? "Available once something happens."
-                : announcementTimer > 0f ? $"PA busy: ready in {Mathf.CeilToInt(announcementTimer)}s" : "PA ready.", smallStyle);
+                : announcementTimer > 0f ? $"PA busy, ready in {Mathf.CeilToInt(announcementTimer)} s" : "PA ready.", smallStyle);
 
             GUILayout.Space(6);
-            GUILayout.Label("SIMULATION", headerStyle);
+            GUILayout.Label("VIEW", headerStyle);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(paused ? "Resume [Space]" : "Pause [Space]")) paused = !paused;
-            if (GUILayout.Button($"Speed x{Speeds[speedIndex]:0} [Tab]")) speedIndex = (speedIndex + 1) % Speeds.Length;
+            if (GUILayout.Button($"Pressure map [H]", heatmap ? selectedButtonStyle : buttonStyle)) heatmap = !heatmap;
+            if (crowdRenderer.UsesModels && GUILayout.Button($"State tiles [M]", stateMarkers ? selectedButtonStyle : buttonStyle)) stateMarkers = !stateMarkers;
             GUILayout.EndHorizontal();
-            GUILayout.BeginHorizontal();
-            heatmap = GUILayout.Toggle(heatmap, " Pressure map [H]");
-            if (GUILayout.Button("Restart [R]")) deferred.Add(NewGame);
-            GUILayout.EndHorizontal();
+            GUILayout.EndArea();
+        }
 
-            GUILayout.Space(6);
+        void DrawEventFeed()
+        {
+            int lines = Mathf.Min(6, log.Count);
+            if (lines == 0) return;
+            const float lineHeight = 22;
+            var rect = Panel(new Rect(12, vh - 24 - lines * lineHeight, 560, lines * lineHeight + 12));
+            for (int i = 0; i < lines; i++)
+            {
+                var (text, severity, time) = log[log.Count - lines + i];
+                float y = rect.y + 6 + i * lineHeight;
+                Swatch(new Rect(rect.x + 12, y + 6, 8, 8), SeverityColor(severity));
+                GUI.Label(new Rect(rect.x + 26, y, 44, lineHeight), time, smallStyle);
+                var style = i == lines - 1 ? labelStyle : mutedStyle;
+                GUI.Label(new Rect(rect.x + (time.Length > 0 ? 66 : 28), y + 1, rect.width - 76, lineHeight), text, style);
+            }
+        }
+
+        void DrawLegend()
+        {
+            if (!showLegend)
+            {
+                var button = new Rect(vw - 132, vh - 48, 120, 34);
+                guiRects.Add(button);
+                if (GUI.Button(button, "Legend  [L]", buttonStyle)) deferred.Add(() => showLegend = true);
+                return;
+            }
+            var rect = Panel(new Rect(vw - 312, vh - 300, 300, 288));
+            GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
+            GUILayout.BeginHorizontal();
             GUILayout.Label("LEGEND", headerStyle);
-            LegendRow(AgentColors[0], "Calm: unaware / watching the show");
-            LegendRow(AgentColors[1], "Following staff directions");
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Hide [L]", buttonStyle, GUILayout.Width(80))) deferred.Add(() => showLegend = false);
+            GUILayout.EndHorizontal();
+            LegendRow(AgentColors[0], "Calm: watching the show");
+            LegendRow(AgentColors[1], "Knows which gates are open");
             LegendRow(AgentColors[2], "Alarmed");
-            LegendRow(AgentColors[3], "Panicking: pushes, ignores staff");
-            LegendRow(AgentColors[4], "Injured (crushed or burnt)");
-            LegendRow(StewardColor, "Steward: calms & directs people in ring");
-            LegendRow(GateClosedColor, "Emergency gate (closed)");
-            GUILayout.Label("Ground: green = space, orange = dense, red/purple = crush danger. Camera: WASD, scroll, Q/E, middle-drag.", smallStyle);
+            LegendRow(AgentColors[3], "Panicking: runs, pushes");
+            LegendRow(AgentColors[5], "Panic attack: frozen for a while");
+            LegendRow(AgentColors[4], "Injured");
+            LegendRow(StewardColor, "Steward: orderly queues in the ring");
+            LegendRow(MegaphoneColor, "Police with megaphone");
+            GUILayout.Space(4);
+            GUILayout.Label("Ground colour: green = room to move, orange = packed, red/purple = crush danger.", mutedStyle);
             GUILayout.EndArea();
         }
 
         void LegendRow(Color color, string text)
         {
             GUILayout.BeginHorizontal();
-            var swatch = GUILayoutUtility.GetRect(14, 14, GUILayout.Width(14), GUILayout.Height(14));
-            if (Event.current.type == EventType.Repaint)
-            {
-                var old = GUI.color;
-                GUI.color = color;
-                GUI.DrawTexture(swatch, Texture2D.whiteTexture);
-                GUI.color = old;
-            }
-            GUILayout.Label(text, smallStyle);
+            var swatch = GUILayoutUtility.GetRect(14, 18, GUILayout.Width(14));
+            Swatch(new Rect(swatch.x, swatch.y + 3, 12, 12), color);
+            GUILayout.Label(text, labelStyle);
             GUILayout.EndHorizontal();
         }
 
-        void DrawLog()
+        void DrawBanner()
         {
-            int lines = Mathf.Min(6, log.Count);
-            if (lines == 0) return;
-            var rect = new Rect(8, Screen.height - 20 - lines * 20, 640, lines * 20 + 12);
-            Panel(rect);
-            for (int i = 0; i < lines; i++)
-                GUI.Label(new Rect(rect.x + 10, rect.y + 6 + i * 20, rect.width - 20, 20), log[log.Count - lines + i], labelStyle);
+            if (bannerTime <= 0f) return;
+            bannerTime -= Event.current.type == EventType.Repaint ? Time.unscaledDeltaTime : 0f;
+            float alpha = Mathf.Clamp01(bannerTime);
+            var old = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, alpha);
+            var rect = new Rect(vw * 0.5f - 260, 78, 520, 70);
+            GUI.Box(rect, GUIContent.none, BoxStyle(SeverityColor(bannerSeverity), 10, 0));
+            GUI.Label(new Rect(rect.x, rect.y + 8, rect.width, 32), bannerTitle, bigTitleStyle);
+            GUI.Label(new Rect(rect.x, rect.y + 42, rect.width, 20), bannerText, TextStyle(13, TextColor, FontStyle.Normal, TextAnchor.UpperCenter));
+            GUI.color = old;
+        }
+
+        void DrawWorldLabels()
+        {
+            foreach (var (text, position) in labels) WorldLabel(position, text, worldLabelStyle);
+            foreach (var g in venue.gates)
+            {
+                var style = TextStyle(11, Color.Lerp(GateColor(g), Color.white, 0.4f), FontStyle.Bold, TextAnchor.MiddleCenter);
+                WorldLabel(new Vector3(g.rect.center.x, 2f, g.rect.center.y), $"{g.name.ToUpperInvariant()}\n{GateStatus(g)}", style);
+            }
+        }
+
+        void WorldLabel(Vector3 position, string text, GUIStyle style)
+        {
+            Vector3 sp = cam.WorldToScreenPoint(position);
+            if (sp.z < 0f) return;
+            var p = new Vector2(sp.x, Screen.height - sp.y) / uiScale;
+            ShadowLabel(new Rect(p.x - 80f, p.y - 16f, 160f, 32f), text, style);
         }
 
         void DrawHoverInfo()
@@ -966,16 +1501,11 @@ namespace CrushHour
             var mouse = Mouse.current;
             if (mouse == null || phase == Phase.Results) return;
             Vector2 screen = mouse.position.ReadValue();
-            if (IsOverGui(screen) || !TryGetCellUnderMouse(screen, out int cell, out _)) return;
+            if (IsOverGui(screen) || !TryGetCellUnderMouse(screen, out int cell, out Vector2 ground)) return;
 
-            string text = venue.cells[cell] switch
-            {
-                CellType.Open => $"{sim.density[cell]:0.0} people/m²   pressure {sim.pressure[cell]:0.0}",
-                CellType.Fire => "Fire",
-                CellType.Barrier => "Barrier (right-click with Barrier tool to remove)",
-                CellType.Outside => "Outside: safe zone",
-                _ => venue.DescribeLocation(cell),
-            };
+            string text;
+            int hovered = NearestUnit(ground, 1.5f);
+            var gate = venue.GateNear(cell);
             if (dragging)
             {
                 int free = 0;
@@ -983,28 +1513,104 @@ namespace CrushHour
                     if (venue.cells[c] == CellType.Open) free++;
                 text = $"{free} barrier sections ({barrierBudget - barriersUsed} left)";
             }
-            ShadowLabel(new Rect(screen.x + 18, Screen.height - screen.y + 6, 420, 22), text, labelStyle);
+            else if (hovered >= 0) text = $"<b>{units[hovered].Name}</b>\n{RoleDescription(units[hovered].role)}";
+            else if (gate != null) text = $"<b>{gate.name}</b>: {GateStatus(gate).ToLowerInvariant()}. Click to {(gate.open ? "close" : "open")} it.";
+            else
+            {
+                text = venue.cells[cell] switch
+                {
+                    CellType.Open => $"{sim.density[cell]:0.0} people per m²   pressure {sim.pressure[cell]:0.0}" +
+                                     (sim.pressure[cell] > crowd.crushThreshold * 0.8f ? "  <b>CRUSH RISK</b>" : ""),
+                    CellType.Fire => "Fire",
+                    CellType.Barrier => "Barrier (right-click with the Barrier tool to remove)",
+                    CellType.Outside => "Outside: safe",
+                    _ => venue.DescribeLocation(cell),
+                };
+                if (selectedUnit >= 0 && tool == Tool.Command && venue.cells[cell] == CellType.Open)
+                    text += $"\nClick to send {units[selectedUnit].Name} here.";
+            }
+
+            var content = new GUIContent(text);
+            float width = Mathf.Min(320f, tooltipStyle.CalcSize(content).x + 4f);
+            float height = tooltipStyle.CalcHeight(content, width);
+            var p = new Vector2(screen.x, Screen.height - screen.y) / uiScale;
+            var rect = new Rect(Mathf.Min(p.x + 18, vw - width - 8), Mathf.Min(p.y + 14, vh - height - 8), width, height);
+            GUI.Box(rect, content, tooltipStyle);
+        }
+
+        void DrawWelcome()
+        {
+            var rect = Panel(new Rect(vw * 0.5f - 280, vh * 0.5f - 210, 560, 420), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
+            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 22, rect.width - 56, rect.height - 44));
+            GUILayout.Label("Welcome, safety commander", titleStyle);
+            GUILayout.Space(4);
+            GUILayout.Label($"{sim.count} fans are at the Summer Music Festival. Soon a fire will break out somewhere. " +
+                            "People will run from it, then head for the nearest gate. If it's shut, they try another, and the queues grow.", labelStyle);
+            GUILayout.Space(10);
+            WelcomeStep("1", "Plan", "Move your 4 stewards and 2 megaphone police (click them, then click the map). Draw barriers to steer the crowd.");
+            WelcomeStep("2", "React", "When the fire starts, open the emergency gates and make the evacuation announcement.");
+            WelcomeStep("3", "Keep them calm", "Panicked crowds push and crush, and too much panic causes panic attacks. Put stewards where queues form: they line people up with room to breathe.");
+            GUILayout.FlexibleSpace();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Camera: WASD, scroll to zoom, Q/E to rotate.", smallStyle);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Let's go", goodButtonStyle, GUILayout.Width(140), GUILayout.Height(40))) deferred.Add(() => welcomeDismissed = true);
+            GUILayout.EndHorizontal();
+            GUILayout.EndArea();
+        }
+
+        void WelcomeStep(string number, string title, string text)
+        {
+            GUILayout.BeginHorizontal();
+            var badge = GUILayoutUtility.GetRect(30, 30, GUILayout.Width(30), GUILayout.Height(30));
+            GUI.Box(badge, number, BoxStyle(SelectedColor, 15, 0));
+            GUI.Label(badge, number, numberStyle);
+            GUILayout.Space(10);
+            GUILayout.BeginVertical();
+            GUILayout.Label($"<b>{title}</b>", labelStyle);
+            GUILayout.Label(text, mutedStyle);
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+            GUILayout.Space(8);
         }
 
         void DrawResults()
         {
-            var rect = new Rect(Screen.width * 0.5f - 230, Screen.height * 0.5f - 170, 460, 340);
-            Panel(rect);
-            Panel(rect);
-            GUILayout.BeginArea(new Rect(rect.x + 20, rect.y + 16, rect.width - 40, rect.height - 32));
-            GUILayout.Label(resultTitle, titleStyle);
+            var rect = Panel(new Rect(vw * 0.5f - 250, vh * 0.5f - 220, 500, 440), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
+            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 22, rect.width - 56, rect.height - 44));
+            GUILayout.Label(resultTitle, bigTitleStyle);
+            GUILayout.Space(6);
+
+            // Star rating as three badges.
+            var starsRow = GUILayoutUtility.GetRect(10, 34, GUILayout.ExpandWidth(true));
+            for (int i = 0; i < 3; i++)
+            {
+                var badge = new Rect(starsRow.center.x - 75 + i * 52, starsRow.y, 46, 30);
+                GUI.Box(badge, GUIContent.none, BoxStyle(i < stars ? new Color(1f, 0.78f, 0.2f) : new Color(1f, 1f, 1f, 0.12f), 8, 0));
+            }
+            GUILayout.Label($"{stars} of 3 stars", TextStyle(12, MutedText, FontStyle.Normal, TextAnchor.UpperCenter));
             GUILayout.Space(8);
-            GUILayout.Label($"Safe:  {finalSafe} / {sim.count}  ({finalSafe * 100f / sim.count:0}%)", labelStyle);
-            GUILayout.Label($"Injured:  {finalInjured}", labelStyle);
-            GUILayout.Label($"Still inside:  {finalTrapped}", labelStyle);
-            GUILayout.Label($"Evacuation time:  {FormatTime(evacuationTime)}", labelStyle);
-            GUILayout.Space(6);
-            GUILayout.Label($"SCORE  {finalScore}      RATING  {new string('*', stars)}{new string('-', 3 - stars)}", headerStyle);
-            GUILayout.Space(6);
-            GUILayout.Label(resultTip, smallStyle);
+
+            ResultRow("Safe", $"{finalSafe} / {sim.count}  ({finalSafe * 100f / sim.count:0}%)", GoodColor);
+            ResultRow("Injured", finalInjured.ToString(), finalInjured > 0 ? DangerColor : TextColor);
+            ResultRow("Panic attacks", finalAttacks.ToString(), finalAttacks > 0 ? AgentColors[5] : TextColor);
+            ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : TextColor);
+            ResultRow("Evacuation time", FormatTime(evacuationTime), TextColor);
+            ResultRow("Score", finalScore.ToString(), TextColor);
+            GUILayout.Space(8);
+            GUILayout.Label(resultTip, mutedStyle);
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Play again: new crowd, new incident  [R]", GUILayout.Height(32))) deferred.Add(NewGame);
+            if (GUILayout.Button("Play again: new crowd, new fire  [R]", goodButtonStyle, GUILayout.Height(42))) deferred.Add(NewGame);
             GUILayout.EndArea();
+        }
+
+        void ResultRow(string caption, string value, Color color)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(caption, labelStyle, GUILayout.Width(180));
+            GUILayout.FlexibleSpace();
+            GUILayout.Label($"<b>{value}</b>", TextStyle(14, color, FontStyle.Normal, TextAnchor.UpperRight));
+            GUILayout.EndHorizontal();
         }
     }
 }

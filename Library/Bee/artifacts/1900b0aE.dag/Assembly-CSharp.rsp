@@ -492,6 +492,8 @@
 -analyzer:"C:/Program Files/Unity/Hub/Editor/6000.6.6f1/Editor/Data/Tools/BuildPipeline/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll"
 -analyzer:"C:/Program Files/Unity/Hub/Editor/6000.6.6f1/Editor/Data/Tools/BuildPipeline/Unity.SourceGenerators/Unity.SourceGenerators.dll"
 -analyzer:"C:/Program Files/Unity/Hub/Editor/6000.6.6f1/Editor/Data/Tools/BuildPipeline/Unity.SourceGenerators/Unity.UIToolkit.SourceGenerator.dll"
+"Assets/DavidJalbert/LowPolyPeople/Example/Scripts/AnimationController.cs"
+"Assets/Scripts/CrushHour/CrowdRenderer.cs"
 "Assets/Scripts/CrushHour/CrowdSimulation.cs"
 "Assets/Scripts/CrushHour/CrushHourGame.cs"
 "Assets/Scripts/CrushHour/FestivalVenue.cs"

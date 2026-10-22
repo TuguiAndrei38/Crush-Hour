@@ -150,27 +150,78 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CrushHour.CrushHourGame
   litMaterial: {fileID: 2100000, guid: a0034c0234cb7034c97b0917f01ac52c, type: 2}
   unlitMaterial: {fileID: 2100000, guid: c0ed5d3901b96e84381f421be9467850, type: 2}
+  personPrefabs:
+  - {fileID: 1303869121318198912, guid: 3625b8aaa69cde2449bff0b4bc37913b, type: 3}
+  - {fileID: 881727876305094050, guid: 31f7f201748fd9b4d889cc2da865ce8b, type: 3}
+  - {fileID: 5388624719327353857, guid: 49121edd22c328c47a8918cf7e48e4ee, type: 3}
+  - {fileID: 1795324668599551850, guid: 8ae6f14760063a642a1231cc1984ae09, type: 3}
+  - {fileID: 6707088506844094187, guid: 12470d56d64eadc48915ac53abe53e25, type: 3}
+  - {fileID: 5481669548617104346, guid: 532a2fc3185beb5458e02f15f6ed2886, type: 3}
+  - {fileID: 4797605776506193496, guid: 7ab456b87d847a94ca9a43844bda4a6a, type: 3}
+  - {fileID: 5339130301091616328, guid: fddebf1006faf8243bfa4f250660e465, type: 3}
+  - {fileID: 644397509381971841, guid: d65bb4016db8bce48abb258b5fa2ff61, type: 3}
+  - {fileID: 4580932072721803307, guid: 94e78e2feccd9d34387a5424c6414d13, type: 3}
+  - {fileID: 1498406759276418755, guid: e036460edacb75b4888239cb963b79fa, type: 3}
+  - {fileID: 2774808727293773313, guid: 8c63c2444bb17774a8c2a25fd87ae63b, type: 3}
+  - {fileID: 1356401782610545678, guid: 79d0c604612fad54c934936f094ec850, type: 3}
+  - {fileID: 8085793654713421506, guid: 4e90a33f5b1393648906ce1be40f2c30, type: 3}
+  - {fileID: 6071001267492883238, guid: 65715c24c975a454cac9fb6ba576d8a6, type: 3}
+  - {fileID: 4859127903178767532, guid: bde2ebe98386b884bb311314cf5dc4cb, type: 3}
+  - {fileID: 5562802720801047418, guid: d22ae6c998fdcfd4d8072fad0f4058bb, type: 3}
+  - {fileID: 8253660353099379518, guid: 793466d81ca4b404b8fe9ec6dc657307, type: 3}
+  crowdClips:
+  - {fileID: 7400000, guid: 1b14bbc4776455a4893c422ae3e7067c, type: 2}
+  - {fileID: 7400000, guid: e1ab9b9572579b646a261d3035e7e7e0, type: 2}
+  - {fileID: 7400000, guid: 069f0bdf7b1f7524fa7544f4d07ffaa2, type: 2}
+  - {fileID: 7400000, guid: 64770a29a26e3c8429af47ffd5e84084, type: 2}
+  - {fileID: 7400000, guid: 3c0ccfed82c24d94e910eab13f4ac2c0, type: 2}
+  - {fileID: 7400000, guid: 32dcfac7dd7551146a3b1a58b0f01549, type: 2}
+  - {fileID: 7400000, guid: 0e426ae24fbff854daa79e491ca5ebd5, type: 2}
+  - {fileID: 7400000, guid: 0380d24f9e8e28c448d4d5f9fbf0f3f0, type: 2}
+  - {fileID: 7400000, guid: dfbd6845f157e1c41b4506408535083a, type: 2}
+  - {fileID: 7400000, guid: 44f398402ed429948981023407f165b1, type: 2}
+  - {fileID: 7400000, guid: 5d1cd1f99161121439140504a7ae1d6d, type: 2}
+  - {fileID: 7400000, guid: a0a71ddca95e8ea47b5b74140665bc4e, type: 2}
+  crowdAnimationShader: {fileID: 4800000, guid: a52c808c1f114db47be503f2d5dbfab8, type: 3}
+  personHeight: 1.75
+  modelYawOffset: 0
+  stateMarkers: 1
   barrierBudget: 60
-  stewardCount: 6
+  stewardCount: 4
+  megaphoneOfficers: 2
   evacuationTimeLimit: 240
   announcementCooldown: 12
   announcementReach: 0.7
-  maxFireCells: 160
+  maxFireCells: 320
   stewardSpeed: 3.5
+  policeSpeed: 4
+  policeAnnounceInterval: 5
   crowd:
     agentCount: 2000
     radius: 0.22
     walkSpeed: 1.3
     panicSpeedBoost: 0.9
     acceleration: 6
-    fireSightRange: 16
-    panicContagion: 0.6
+    fireSightRange: 25
+    awarenessSpread: 1
+    fleeDistance: 10
+    closedDoorSight: 6
+    doorCrowdWeight: 1
+    panicContagion: 0.8
     contagionFalloff: 0.85
     panicDecay: 0.02
+    panicAttackThreshold: 0.88
+    panicAttackDelay: 2.5
+    panicAttackDuration: {x: 6, y: 12}
     crushThreshold: 8.5
     injuryRate: 0.08
     stewardRadius: 6
     stewardCalming: 0.5
+    stewardQueueSpacing: 0.52
+    orderlyMemory: 4
+    policeAnnounceRadius: 14
+    policeInformChance: 0.8
+  settingsVersion: 3
 --- !u!4 &1362576001
 Transform:
   m_ObjectHideFlags: 0

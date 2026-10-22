@@ -15,6 +15,24 @@ namespace CrushHour
         public bool Passable => progress >= 1f;
     }
 
+    /// <summary>A way out through the fence: an entrance (always open) or an emergency gate.</summary>
+    public class Door
+    {
+        public string name;
+        public RectInt rect;
+        public Gate gate; // null for entrances
+        public FlowField field;
+        public bool dirty = true;
+        /// <summary>Inside cells right in front of the door, where people find out it's shut.</summary>
+        public readonly List<int> approach = new();
+        /// <summary>Safe-zone cells right behind the door.</summary>
+        public readonly List<int> beyond = new();
+
+        public bool IsOpen => gate == null || gate.Passable;
+        public Vector2 Center => rect.center;
+        public int Width => Mathf.Max(rect.width, rect.height);
+    }
+
     public class Landmark
     {
         public string name;
@@ -33,7 +51,7 @@ namespace CrushHour
     }
 
     /// <summary>
-    /// Grid model of the festival grounds (1 cell = 1 m²): layout, gates, fire and the evacuation flow fields.
+    /// Grid model of the festival grounds (1 cell = 1 m²): layout, doors, fire, and the route fields people follow.
     /// Everything outside the fence is the safe zone.
     /// </summary>
     public class FestivalVenue
@@ -41,7 +59,7 @@ namespace CrushHour
         public const int Width = 104, Height = 76, CellCount = Width * Height;
         public const int MaxFireDistance = 32;
         const int FenceLeft = 3, FenceRight = Width - 4, FenceBottom = 3, FenceTop = Height - 4;
-        const float GateOpenTime = 2.5f, GateCloseTime = 1.5f, FireSpreadInterval = 1.2f;
+        const float GateOpenTime = 2.5f, GateCloseTime = 1.5f, FireSpreadInterval = 0.8f;
 
         static readonly int[] DX = { 1, -1, 0, 0, 1, 1, -1, -1 };
         static readonly int[] DY = { 0, 0, 1, -1, 1, -1, 1, -1 };
@@ -52,16 +70,23 @@ namespace CrushHour
         public readonly bool[] flammable = new bool[CellCount];
         public readonly float[] blockHeight = new float[CellCount];
         public readonly int[] fireDistance = new int[CellCount];
+        /// <summary>Per cell: the step that gets you further from the fire (zero when there's no fire nearby).</summary>
+        public readonly Vector2[] fleeDirection = new Vector2[CellCount];
         public readonly bool[] seesOpenGate = new bool[CellCount];
         public readonly List<Gate> gates = new();
+        public readonly List<Door> doors = new();
         public readonly List<Landmark> landmarks = new();
         public readonly List<(string name, Vector2Int cell)> fireSites = new();
         public readonly List<(RectInt rect, float weight, bool stageFacing)> crowdZones = new();
         public readonly List<int> fireCells = new();
+        /// <summary>Spot fires started by embers so far, and the cell of the latest one.</summary>
+        public int SpotFires { get; private set; }
+        public int LastSpotFireCell { get; private set; } = -1;
 
         readonly MinHeap heap = new(CellCount * 2);
         readonly int[] queue = new int[CellCount];
         readonly int[] parent = new int[CellCount];
+        readonly bool[] isSource = new bool[CellCount];
         float fireTimer;
 
         public FestivalVenue()
@@ -80,11 +105,11 @@ namespace CrushHour
                 }
             }
 
-            // Entrances everybody knows about: they came in through them. Narrow, like ticket lanes.
+            // Entrances: always open, narrow like ticket lanes.
             AddEntrance("Main Entrance", new RectInt(50, 3, 4, 1));
             AddEntrance("West Entrance", new RectInt(3, 23, 1, 2));
 
-            // Emergency gates: closed, and the crowd does not know they exist.
+            // Emergency gates: wider, but closed until the player opens them.
             AddGate("East Gate A", new RectInt(100, 47, 1, 5));
             AddGate("East Gate B", new RectInt(100, 16, 1, 5));
             AddGate("North Gate", new RectInt(14, 72, 5, 1));
@@ -120,6 +145,23 @@ namespace CrushHour
             crowdZones.Add((new RectInt(8, 6, 24, 18), 0.12f, false));  // food court
             crowdZones.Add((new RectInt(74, 24, 24, 18), 0.1f, false));  // bar
             crowdZones.Add((new RectInt(4, 4, 96, 68), 0.16f, false));   // anywhere
+
+            foreach (var door in doors)
+            {
+                door.field = new FlowField(CellCount);
+                foreach (var p in door.rect.allPositionsWithin)
+                {
+                    for (int k = 0; k < 4; k++)
+                    {
+                        int x = p.x + DX[k], y = p.y + DY[k];
+                        if (!InBounds(x, y) || door.rect.Contains(new Vector2Int(x, y))) continue;
+                        int n = Index(x, y);
+                        if (cells[n] == CellType.Outside) door.beyond.Add(n);
+                        else if (cells[n] == CellType.Open) door.approach.Add(n);
+                    }
+                }
+            }
+            UpdateDoorFields(doors.Count);
         }
 
         void AddEntrance(string name, RectInt rect)
@@ -130,6 +172,7 @@ namespace CrushHour
                 blockHeight[Index(p.x, p.y)] = 0f;
             }
             landmarks.Add(new Landmark { name = name, rect = rect, solid = false });
+            doors.Add(new Door { name = name, rect = rect });
         }
 
         void AddGate(string name, RectInt rect)
@@ -139,7 +182,9 @@ namespace CrushHour
                 cells[Index(p.x, p.y)] = CellType.Gate;
                 gateOf[Index(p.x, p.y)] = (sbyte)gates.Count;
             }
-            gates.Add(new Gate { name = name, rect = rect });
+            var gate = new Gate { name = name, rect = rect };
+            gates.Add(gate);
+            doors.Add(new Door { name = name, rect = rect, gate = gate });
         }
 
         void AddBlock(string name, RectInt rect, Color color, float height, bool burns)
@@ -160,20 +205,32 @@ namespace CrushHour
         public static int CellAt(Vector2 p) =>
             Index(Mathf.Clamp(Mathf.FloorToInt(p.x), 0, Width - 1), Mathf.Clamp(Mathf.FloorToInt(p.y), 0, Height - 1));
 
-        /// <param name="knownRoutesOnly">Treat emergency gates as walls (how people who haven't been told about them see the venue).</param>
-        public bool IsWalkable(int i, bool knownRoutesOnly = false) => cells[i] switch
+        public bool IsWalkable(int i) => cells[i] switch
         {
             CellType.Open or CellType.Outside => true,
-            CellType.Gate => !knownRoutesOnly && gates[gateOf[i]].Passable,
+            CellType.Gate => gates[gateOf[i]].Passable,
             _ => false,
         };
 
         public bool IsWalkableAt(int x, int y) => InBounds(x, y) && IsWalkable(Index(x, y));
 
+        /// <summary>Bit d set when doors[d] is open right now.</summary>
+        public int OpenDoorMask
+        {
+            get
+            {
+                int mask = 0;
+                for (int d = 0; d < doors.Count; d++)
+                    if (doors[d].IsOpen) mask |= 1 << d;
+                return mask;
+            }
+        }
+
         public bool TryPlaceBarrier(int i)
         {
             if (cells[i] != CellType.Open) return false;
             cells[i] = CellType.Barrier;
+            MarkRoutesDirty();
             return true;
         }
 
@@ -181,6 +238,7 @@ namespace CrushHour
         {
             if (cells[i] != CellType.Barrier) return false;
             cells[i] = CellType.Open;
+            MarkRoutesDirty();
             return true;
         }
 
@@ -203,8 +261,10 @@ namespace CrushHour
                 g.progress = Mathf.MoveTowards(g.progress, g.open ? 1f : 0f, dt / (g.open ? GateOpenTime : GateCloseTime));
                 if (was != g.Passable) changed.Add(g);
             }
-            if (changed.Count > 0) RecomputeGateSight();
-            return changed.Count > 0;
+            if (changed.Count == 0) return false;
+            RecomputeGateSight();
+            MarkRoutesDirty();
+            return true;
         }
 
         void RecomputeGateSight()
@@ -261,12 +321,29 @@ namespace CrushHour
                     int n = Index(nx, ny);
                     float chance = cells[n] switch
                     {
-                        CellType.Obstacle => flammable[n] ? 0.35f : 0.02f,
-                        CellType.Barrier => 0.1f,
-                        CellType.Open => 0.04f,
+                        CellType.Obstacle => flammable[n] ? 0.5f : 0.03f,
+                        CellType.Barrier => 0.2f,
+                        CellType.Open => 0.07f, // dry grass, litter, dropped drinks cups...
                         _ => 0f,
                     };
                     if (chance > 0f && rng.NextDouble() < chance && Ignite(n)) changed = true;
+                }
+            }
+
+            // Embers: burning debris carried a few metres starts new spot fires. Bigger fire, more embers.
+            float emberChance = Mathf.Min(0.45f, fireCells.Count / 60f);
+            if (fireCells.Count < maxCells && rng.NextDouble() < emberChance)
+            {
+                int source = fireCells[rng.Next(fireCells.Count)];
+                double angle = rng.NextDouble() * Math.PI * 2.0;
+                int distance = rng.Next(3, 8);
+                int x = source % Width + (int)Math.Round(Math.Cos(angle) * distance);
+                int y = source / Width + (int)Math.Round(Math.Sin(angle) * distance);
+                if (InBounds(x, y) && Ignite(Index(x, y)))
+                {
+                    SpotFires++;
+                    LastSpotFireCell = Index(x, y);
+                    changed = true;
                 }
             }
             if (changed) RecomputeFireDistance();
@@ -298,35 +375,76 @@ namespace CrushHour
                     queue[tail++] = n;
                 }
             }
+
+            // Running away: step to the walkable neighbour furthest from the flames.
+            for (int c = 0; c < CellCount; c++)
+            {
+                fleeDirection[c] = Vector2.zero;
+                if (fireDistance[c] >= MaxFireDistance - 1 || !IsWalkable(c)) continue;
+                int cx = c % Width, cy = c / Width, bestK = -1, best = fireDistance[c];
+                for (int k = 0; k < 8; k++)
+                {
+                    if (CanStep(cx, cy, k, out int n) && fireDistance[n] > best)
+                    {
+                        best = fireDistance[n];
+                        bestK = k;
+                    }
+                }
+                if (bestK >= 0) fleeDirection[c] = new Vector2(DX[bestK], DY[bestK]).normalized;
+            }
+            MarkRoutesDirty();
         }
 
-        // ---------------------------------------------------------------- Navigation
+        // ---------------------------------------------------------------- Routes
 
-        bool CanStep(int cx, int cy, int k, bool knownRoutesOnly, out int n)
+        public void MarkRoutesDirty()
+        {
+            foreach (var door in doors) door.dirty = true;
+        }
+
+        /// <summary>Recomputes up to <paramref name="max"/> stale door fields (spread over steps to avoid spikes).</summary>
+        public int UpdateDoorFields(int max)
+        {
+            int done = 0;
+            foreach (var door in doors)
+            {
+                if (done >= max) break;
+                if (!door.dirty) continue;
+                ComputeDoorField(door);
+                door.dirty = false;
+                done++;
+            }
+            return done;
+        }
+
+        bool CanStep(int cx, int cy, int k, out int n)
         {
             n = -1;
             int nx = cx + DX[k], ny = cy + DY[k];
             if (!InBounds(nx, ny)) return false;
             n = Index(nx, ny);
-            if (!IsWalkable(n, knownRoutesOnly)) return false;
+            // Routes stay inside the fence; only a door's own safe-zone cells count as outside.
+            if (!IsWalkable(n) || (cells[n] == CellType.Outside && !isSource[n])) return false;
             // No cutting corners diagonally past walls.
-            return k < 4 || (IsWalkable(Index(nx, cy), knownRoutesOnly) && IsWalkable(Index(cx, ny), knownRoutesOnly));
+            return k < 4 || (IsWalkable(Index(nx, cy)) && IsWalkable(Index(cx, ny)));
         }
 
         /// <summary>
-        /// Dijkstra from the safe zone outwards. Each walkable cell gets the direction to step towards safety.
-        /// Cells near the fire cost more; with <paramref name="density"/>, crowded cells cost more too, which spreads people across exits.
+        /// Route to one door. An open door leads through to the safe zone behind it; a closed one only up to the
+        /// front of it, which is where people discover it's shut. Cells near the fire cost more.
         /// </summary>
-        public void ComputeFlowField(FlowField field, bool knownRoutesOnly, float[] density, float congestionWeight)
+        void ComputeDoorField(Door door)
         {
-            var dist = field.distance;
+            var dist = door.field.distance;
             Array.Fill(dist, float.PositiveInfinity);
             heap.Clear();
-            for (int i = 0; i < CellCount; i++)
+            var sources = door.IsOpen ? door.beyond : door.approach;
+            foreach (int s in sources)
             {
-                if (cells[i] != CellType.Outside) continue;
-                dist[i] = 0f;
-                heap.Push(i, 0f);
+                if (!IsWalkable(s)) continue;
+                isSource[s] = true;
+                dist[s] = 0f;
+                heap.Push(s, 0f);
             }
 
             while (heap.TryPop(out int c, out float d))
@@ -335,11 +453,9 @@ namespace CrushHour
                 int cx = c % Width, cy = c / Width;
                 for (int k = 0; k < 8; k++)
                 {
-                    if (!CanStep(cx, cy, k, knownRoutesOnly, out int n)) continue;
-                    float extra = 0f;
+                    if (!CanStep(cx, cy, k, out int n)) continue;
                     int fd = fireDistance[n];
-                    if (fd < 5) extra += (5 - fd) * 2f;
-                    if (density != null) extra += density[n] * congestionWeight;
+                    float extra = fd < 5 ? (5 - fd) * 2f : 0f;
                     float nd = d + StepLength[k] * (1f + extra);
                     if (nd < dist[n])
                     {
@@ -351,20 +467,21 @@ namespace CrushHour
 
             for (int c = 0; c < CellCount; c++)
             {
-                field.direction[c] = Vector2.zero;
-                if (float.IsPositiveInfinity(dist[c]) || cells[c] == CellType.Outside) continue;
+                door.field.direction[c] = Vector2.zero;
+                if (float.IsPositiveInfinity(dist[c]) || isSource[c]) continue;
                 int cx = c % Width, cy = c / Width, bestK = -1;
                 float best = dist[c];
                 for (int k = 0; k < 8; k++)
                 {
-                    if (CanStep(cx, cy, k, knownRoutesOnly, out int n) && dist[n] < best)
+                    if (CanStep(cx, cy, k, out int n) && dist[n] < best)
                     {
                         best = dist[n];
                         bestK = k;
                     }
                 }
-                if (bestK >= 0) field.direction[c] = new Vector2(DX[bestK], DY[bestK]).normalized;
+                if (bestK >= 0) door.field.direction[c] = new Vector2(DX[bestK], DY[bestK]).normalized;
             }
+            foreach (int s in sources) isSource[s] = false;
         }
 
         /// <summary>Shortest walkable path (cell centres, ending exactly at <paramref name="to"/>), or null.</summary>
@@ -382,7 +499,7 @@ namespace CrushHour
                 int c = queue[head++], cx = c % Width, cy = c / Width;
                 for (int k = 0; k < 8; k++)
                 {
-                    if (!CanStep(cx, cy, k, false, out int n) || parent[n] != -1) continue;
+                    if (!CanStep(cx, cy, k, out int n) || parent[n] != -1) continue;
                     parent[n] = c;
                     queue[tail++] = n;
                 }

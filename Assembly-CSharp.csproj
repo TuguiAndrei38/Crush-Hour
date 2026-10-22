@@ -52,7 +52,9 @@
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\6000.6.6f1\Editor\Data\BCLExtensions\TargetingPacks\netstandard2.1\analyzers\dotnet\roslyn4.0\cs\System.Text.Json.SourceGeneration.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\DavidJalbert\LowPolyPeople\Example\Scripts\AnimationController.cs" />
     <Compile Include="Assets\Scripts\CubeTerrain.cs" />
+    <Compile Include="Assets\Scripts\CrushHour\CrowdRenderer.cs" />
     <Compile Include="Assets\Scripts\CrushHour\FestivalVenue.cs" />
     <Compile Include="Assets\Scripts\FirstPersonController.cs" />
     <Compile Include="Assets\TutorialInfo\Readme.cs" />
@@ -62,6 +64,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\TutorialInfo\StyleSheets\ReadmeEditor.uss" />
+    <None Include="Assets\Scripts\CrushHour\CrowdVAT.shader" />
+    <None Include="Assets\DavidJalbert\LowPolyPeople\readme.txt" />
     <None Include="Assets\TutorialInfo\StyleSheets\ReadmeEditorLight.uss" />
     <None Include="Assets\TutorialInfo\StyleSheets\ReadmeEditorDark.uss" />
   </ItemGroup>
