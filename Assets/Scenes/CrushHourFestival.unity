@@ -299,70 +299,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 2034449490}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1820590025
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1820590027}
-  - component: {fileID: 1820590026}
-  m_Layer: 0
-  m_Name: Cube Terrain
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1820590026
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1820590025}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a2915ec6819771148ab0e0b310fff250, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CubeTerrain
-  sizeX: 128
-  sizeZ: 128
-  chunkSize: 16
-  seed: 1234
-  noiseScale: 0.02
-  octaves: 4
-  persistence: 0.5
-  lacunarity: 2
-  baseHeight: 4
-  heightAmplitude: 32
-  heightExponent: 1.8
-  sandLevel: 7
-  rockLevel: 22
-  snowLevel: 28
-  dirtDepth: 3
-  grassMaterial: {fileID: 2100000, guid: 2d38925660d357641b5e1d71f9e9f5ba, type: 2}
-  dirtMaterial: {fileID: 2100000, guid: ce4eb247fbcfee24a928d428c8dfec29, type: 2}
-  stoneMaterial: {fileID: 2100000, guid: fa0da69a651c32a4f9d17ce15d7cf7c8, type: 2}
-  sandMaterial: {fileID: 2100000, guid: 1a7eaf0ca6d75824e8d927747b18bf7f, type: 2}
-  snowMaterial: {fileID: 2100000, guid: c7447502a5ac09541b3d9a924867e9df, type: 2}
---- !u!4 &1820590027
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1820590025}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -64, y: 0, z: -64}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1977363523
 GameObject:
   m_ObjectHideFlags: 0
@@ -581,5 +517,4 @@ SceneRoots:
   m_Roots:
   - {fileID: 1977363526}
   - {fileID: 1362576001}
-  - {fileID: 1820590027}
   - {fileID: 2034449490}

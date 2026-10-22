@@ -11,7 +11,7 @@ namespace CrushHour
     /// Plan with barriers and stewards, start the show, then get everyone out when the incident hits,
     /// using emergency gates, stewards and PA announcements. Scored on people saved, injuries and time.
     /// </summary>
-    public class CrushHourGame : MonoBehaviour
+    public partial class CrushHourGame : MonoBehaviour
     {
         enum Phase { Planning, Live, Results }
         enum Tool { Command, Barrier }
@@ -141,6 +141,7 @@ namespace CrushHour
             dragLine.enabled = false;
 
             NewGame();
+            OpenMenu(MenuScreen.Main);
         }
 
         // ================================================================ Setup
@@ -309,6 +310,15 @@ namespace CrushHour
                 var actions = deferred.ToArray();
                 deferred.Clear();
                 foreach (var action in actions) action();
+            }
+
+            HandleMenuKeys();
+            if (MenuOpen)
+            {
+                // Menu open: freeze the simulation and the game input, keep the world visible behind it.
+                UpdateViews();
+                sim.Render(cubeMesh, agentRenderParams);
+                return;
             }
 
             HandleKeyboard();
@@ -811,6 +821,11 @@ namespace CrushHour
             if (sim == null) return;
             EnsureStyles();
             guiRects.Clear();
+            if (MenuOpen)
+            {
+                DrawMenu();
+                return;
+            }
             DrawWorldLabels();
             DrawTopBar();
             DrawSidePanel();
@@ -885,7 +900,7 @@ namespace CrushHour
 
         void DrawSidePanel()
         {
-            var rect = new Rect(8, 58, 270, 600);
+            var rect = new Rect(8, 58, 270, 630);
             Panel(rect);
             GUILayout.BeginArea(new Rect(rect.x + 10, rect.y + 8, rect.width - 20, rect.height - 16));
 
@@ -922,6 +937,7 @@ namespace CrushHour
             heatmap = GUILayout.Toggle(heatmap, " Pressure map [H]");
             if (GUILayout.Button("Restart [R]")) deferred.Add(NewGame);
             GUILayout.EndHorizontal();
+            if (GUILayout.Button("Menu [Esc]")) deferred.Add(() => OpenMenu(MenuScreen.Pause));
 
             GUILayout.Space(6);
             GUILayout.Label("LEGEND", headerStyle);
@@ -1004,6 +1020,7 @@ namespace CrushHour
             GUILayout.Label(resultTip, smallStyle);
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("Play again: new crowd, new incident  [R]", GUILayout.Height(32))) deferred.Add(NewGame);
+            if (GUILayout.Button("Main menu", GUILayout.Height(26))) deferred.Add(GoToMainMenu);
             GUILayout.EndArea();
         }
     }
