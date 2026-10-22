@@ -9,7 +9,7 @@ namespace CrushHour
     /// <summary>
     /// Crush Hour prototype: top-down crowd safety at a summer music festival.
     /// Plan with barriers, stewards and police, start the show, then get everyone out when the fire breaks out,
-    /// using emergency gates, your team and PA announcements. Scored on people saved, injuries, panic attacks and time.
+    /// using emergency gates and your team. Scored on people saved, injuries, panic attacks and time.
     /// </summary>
     public class CrushHourGame : MonoBehaviour
     {
@@ -56,9 +56,7 @@ namespace CrushHour
         [Tooltip("Police officers with megaphones who announce the situation to everyone in earshot.")]
         public int megaphoneOfficers = 2;
         public float evacuationTimeLimit = 240f;
-        public float announcementCooldown = 12f;
-        [Range(0f, 1f)] public float announcementReach = 0.7f;
-        public int maxFireCells = 320;
+        public int maxFireCells = 400;
         public float stewardSpeed = 3.5f;
         public float policeSpeed = 4f;
         public float policeAnnounceInterval = 5f;
@@ -69,7 +67,7 @@ namespace CrushHour
         /// Bump when the tuned defaults change: scenes saved with older values get the new rules, team size and
         /// crowd settings instead of silently keeping stale serialized ones.
         /// </summary>
-        const int CurrentSettingsVersion = 3;
+        const int CurrentSettingsVersion = 4;
         [SerializeField, HideInInspector] int settingsVersion;
 
         void OnValidate() => UpgradeSettings();
@@ -80,7 +78,7 @@ namespace CrushHour
             if (settingsVersion >= CurrentSettingsVersion) return;
             stewardCount = 4;
             megaphoneOfficers = 2;
-            maxFireCells = 320;
+            maxFireCells = 400;
             crowd = new CrowdSettings();
             settingsVersion = CurrentSettingsVersion;
         }
@@ -88,7 +86,7 @@ namespace CrushHour
         const int W = FestivalVenue.Width, H = FestivalVenue.Height;
         const float SimStep = 0.04f;
         const int MaxStepsPerFrame = 6;
-        static readonly float[] Speeds = { 1f, 2f, 4f };
+        static readonly float[] Speeds = { 1f, 2f };
         static readonly Vector2[] StewardPosts = { new(52, 7), new(7, 24), new(30, 58), new(74, 58), new(21, 14), new(78, 38) };
         static readonly Vector2[] MegaphonePosts = { new(40, 52), new(64, 52) };
 
@@ -100,6 +98,7 @@ namespace CrushHour
             new(0.95f, 0.1f, 0.1f),   // panicking
             new(0.3f, 0.05f, 0.3f),   // injured
             new(1f, 0.45f, 0.85f),    // panic attack
+            new(0.62f, 0.68f, 0.2f),  // intoxicated by smoke
         };
         static readonly Color StewardColor = new(1f, 0.92f, 0.2f);
         static readonly Color PoliceColor = new(0.08f, 0.14f, 0.42f);
@@ -114,6 +113,7 @@ namespace CrushHour
         static readonly Color Asphalt = new(0.28f, 0.28f, 0.3f);
         static readonly Color Scorched = new(0.12f, 0.08f, 0.05f);
         static readonly Color Blocked = new(0.18f, 0.18f, 0.18f);
+        static readonly Color SmokeShade = new(0.14f, 0.14f, 0.16f);
         static readonly Color[] SmokeColors = { new(0.2f, 0.2f, 0.22f), new(0.3f, 0.3f, 0.32f), new(0.42f, 0.41f, 0.4f) };
         static readonly Vector3 Wind = new(0.7f, 0f, 0.35f);
 
@@ -135,9 +135,9 @@ namespace CrushHour
         Phase phase;
         Tool tool;
         bool paused, heatmap = true, incidentStarted;
-        int speedIndex, barriersUsed, lastInjured, lastAttacks, gatesOpened, selectedUnit = -1;
+        int speedIndex, barriersUsed, lastInjured, lastSmokeInjured, lastAttacks, gatesOpened, selectedUnit = -1;
         float simAccumulator, groundTimer, warningTimer, attackWarningTime = -99f;
-        float incidentCountdown, evacuationTime, announcementTimer, calmStrength, lastProgressTime;
+        float incidentCountdown, evacuationTime, lastProgressTime;
         int lastSafe;
         string incidentSite;
 
@@ -263,11 +263,10 @@ namespace CrushHour
             tool = Tool.Command;
             paused = incidentStarted = dragging = false;
             selectedUnit = -1;
-            barriersUsed = lastInjured = lastAttacks = gatesOpened = lastSafe = 0;
-            simAccumulator = evacuationTime = announcementTimer = warningTimer = lastProgressTime = 0f;
+            barriersUsed = lastInjured = lastSmokeInjured = lastAttacks = gatesOpened = lastSafe = 0;
+            simAccumulator = evacuationTime = warningTimer = lastProgressTime = 0f;
             attackWarningTime = -99f;
             bannerTime = 0f;
-            calmStrength = 0.35f;
             incidentSite = null;
             dragLine.enabled = false;
 
@@ -401,7 +400,7 @@ namespace CrushHour
 
         static string RoleDescription(Role role) => role == Role.Megaphone
             ? "Megaphone police: once the fire starts, announces it every few seconds to everyone in the big ring and tells them which gates are open."
-            : "Steward: lines people in the ring up in orderly, spaced-out queues so nobody gets squeezed, calms them, helps through panic attacks and tells them which gates are open.";
+            : "Steward: panicked people in the ring stop and get calmed down first, then are told which gates are open and leave in orderly, spaced-out queues. Also helps people through panic attacks.";
 
         Material Lit(Color color)
         {
@@ -499,9 +498,11 @@ namespace CrushHour
             if (!incidentStarted) return;
 
             UpdateMegaphones(dt);
+            bool wasPlaying = !sim.ShowStopped;
             evacuationTime += dt;
-            announcementTimer = Mathf.Max(0f, announcementTimer - dt);
             CheckWarnings(dt);
+            if (wasPlaying && sim.ShowStopped)
+                Log("The band has stopped playing. Everyone is starting to realise something is wrong.", Severity.Warning);
             if (sim.SafeCount != lastSafe)
             {
                 lastSafe = sim.SafeCount;
@@ -530,7 +531,7 @@ namespace CrushHour
             venue.StartFire(site.cell);
             SyncFireViews();
             Log($"FIRE at {site.name}! People nearby are running from it.", Severity.Danger);
-            ShowBanner($"FIRE AT {site.name.ToUpperInvariant()}!", "Open the gates, send your team, use the PA.", Severity.Danger);
+            ShowBanner($"FIRE AT {site.name.ToUpperInvariant()}!", "Open the gates and send your team to the crowds.", Severity.Danger);
             cameraRig.Focus(new Vector3(site.cell.x, 0f, site.cell.y));
         }
 
@@ -677,9 +678,14 @@ namespace CrushHour
                     Log($"Dangerous crush building near {where}!", Severity.Danger);
                 }
             }
+            if (sim.InjuredBySmoke > lastSmokeInjured)
+            {
+                Log($"{sim.InjuredBySmoke - lastSmokeInjured} people collapsed in the smoke. Keep people out of the plume downwind of the fire.", Severity.Danger);
+                lastSmokeInjured = sim.InjuredBySmoke;
+            }
             if (sim.InjuredCount > lastInjured)
             {
-                Log($"{sim.InjuredCount - lastInjured} more people injured (total {sim.InjuredCount}).", Severity.Danger);
+                Log($"{sim.InjuredCount - lastInjured} more people injured (total {sim.InjuredCount}: {sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke).", Severity.Danger);
                 lastInjured = sim.InjuredCount;
             }
             if (sim.PanicAttacksTotal > lastAttacks)
@@ -720,12 +726,14 @@ namespace CrushHour
             resultTitle = finalTrapped == 0 ? "Festival evacuated" : evacuationTime >= evacuationTimeLimit ? "Time's up" : "Evacuation stalled";
             if (gatesOpened == 0)
                 resultTip = "No emergency gate was opened. People tried the gates, found them shut and all squeezed through the two narrow entrances.";
+            else if (sim.InjuredBySmoke > sim.InjuredByCrush && sim.InjuredBySmoke > 0)
+                resultTip = "The smoke got people. It drifts downwind of the fire: open gates away from the plume and get people moving early.";
             else if (finalInjured > 0)
-                resultTip = "Crushes happen where frightened crowds hit bottlenecks. Open gates early, calm crowds with stewards and the PA.";
+                resultTip = "Crushes happen where frightened crowds hit bottlenecks. Open gates early and put stewards where the queues build up.";
             else if (finalAttacks > 10)
                 resultTip = "Lots of panic attacks: people stuck in long queues or near the flames lose it. Spread them over more gates and keep stewards near jams.";
             else if (finalTrapped > 0)
-                resultTip = "Some people never heard about the fire. Use the PA and the megaphone police to reach everyone.";
+                resultTip = "Some people never heard about the fire. Move the megaphone police to where people are still standing around.";
             else
                 resultTip = "Clean evacuation! The crowd and the fire change every run. Try again.";
             Log($"{resultTitle}: {finalSafe} safe, {finalInjured} injured, {finalTrapped} still inside.", stars >= 2 ? Severity.Good : Severity.Warning);
@@ -738,25 +746,6 @@ namespace CrushHour
             tool = newTool;
             CancelDrag();
             if (tool == Tool.Barrier) selectedUnit = -1;
-        }
-
-        bool CanAnnounce() => phase == Phase.Live && incidentStarted && announcementTimer <= 0f;
-
-        void AnnounceEvacuation()
-        {
-            if (!CanAnnounce()) return;
-            int reached = sim.AnnounceEvacuation(announcementReach);
-            announcementTimer = announcementCooldown;
-            Log($"PA: \"Please leave calmly through the open gates.\" ({reached} more people now know which gates are open)", Severity.Good);
-        }
-
-        void AnnounceCalm()
-        {
-            if (!CanAnnounce()) return;
-            sim.AnnounceCalm(calmStrength);
-            Log($"PA: \"Stay calm. Walk, don't run.\" (effect {calmStrength / 0.35f * 100f:0}%: people tune out repeats)", Severity.Good);
-            calmStrength *= 0.75f;
-            announcementTimer = announcementCooldown;
         }
 
         void ToggleGate(Gate gate)
@@ -895,8 +884,6 @@ namespace CrushHour
             if (keyboard.digit1Key.wasPressedThisFrame) SetTool(Tool.Command);
             if (keyboard.digit2Key.wasPressedThisFrame) SetTool(Tool.Barrier);
             if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame) StartShow();
-            if (keyboard.fKey.wasPressedThisFrame) AnnounceEvacuation();
-            if (keyboard.cKey.wasPressedThisFrame) AnnounceCalm();
             if (keyboard.escapeKey.wasPressedThisFrame) selectedUnit = -1;
         }
 
@@ -1028,7 +1015,7 @@ namespace CrushHour
                 groundPixels[i] = venue.cells[i] switch
                 {
                     CellType.Outside => Asphalt,
-                    CellType.Open => heatmap ? PressureColor(sim.pressure[i]) : Grass,
+                    CellType.Open => Color.Lerp(heatmap ? PressureColor(sim.pressure[i]) : Grass, SmokeShade, venue.smoke[i] * 0.6f),
                     CellType.Fire => Scorched,
                     _ => Blocked,
                 };
@@ -1076,7 +1063,7 @@ namespace CrushHour
         static readonly Color WarningColor = new(0.95f, 0.62f, 0.15f);
         static readonly Color DangerColor = new(0.9f, 0.27f, 0.2f);
 
-        GUIStyle panelStyle, cardStyle, tooltipStyle, buttonStyle, selectedButtonStyle, goodButtonStyle, dangerButtonStyle, rowStyle, rowSelectedStyle;
+        GUIStyle panelStyle, cardStyle, tooltipStyle, buttonStyle, selectedButtonStyle, goodButtonStyle, rowStyle, rowSelectedStyle;
         GUIStyle labelStyle, mutedStyle, smallStyle, headerStyle, titleStyle, bigTitleStyle, numberStyle, statCaptionStyle, worldLabelStyle, chipStyle;
         readonly Dictionary<string, Texture2D> roundedCache = new();
 
@@ -1184,7 +1171,6 @@ namespace CrushHour
             buttonStyle = ButtonStyle(ButtonColor);
             selectedButtonStyle = ButtonStyle(SelectedColor);
             goodButtonStyle = ButtonStyle(GoodColor, 15);
-            dangerButtonStyle = ButtonStyle(new Color(0.75f, 0.3f, 0.15f));
             rowStyle = ButtonStyle(CardColor, 13, TextAnchor.MiddleLeft);
             rowStyle.padding = new RectOffset(30, 10, 6, 6);
             rowStyle.fontStyle = FontStyle.Normal;
@@ -1371,7 +1357,7 @@ namespace CrushHour
 
         void DrawControlPanel()
         {
-            var rect = Panel(new Rect(vw - 312, 76, 300, 120 + venue.gates.Count * 34 + 190));
+            var rect = Panel(new Rect(vw - 312, 76, 300, 120 + venue.gates.Count * 34 + 80));
             GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
 
             GUILayout.Label("EMERGENCY GATES", headerStyle);
@@ -1388,17 +1374,6 @@ namespace CrushHour
                 Swatch(new Rect(GUILayoutUtility.GetLastRect().x + 10, GUILayoutUtility.GetLastRect().y + 10, 10, 10), GateColor(g));
             }
             if (GUILayout.Button("Open all gates", buttonStyle, GUILayout.Height(30))) OpenAllGates();
-
-            GUILayout.Space(8);
-            GUILayout.Label("PA ANNOUNCEMENTS", headerStyle);
-            GUI.enabled = CanAnnounce();
-            if (GUILayout.Button("Evacuate: use the open gates  [F]", dangerButtonStyle, GUILayout.Height(34))) AnnounceEvacuation();
-            if (GUILayout.Button("Stay calm, walk, don't run  [C]", buttonStyle, GUILayout.Height(34))) AnnounceCalm();
-            GUI.enabled = true;
-            var barRect = GUILayoutUtility.GetRect(10, 8, GUILayout.ExpandWidth(true));
-            if (incidentStarted) ProgressBar(barRect, 1f - announcementTimer / announcementCooldown, announcementTimer > 0f ? WarningColor : GoodColor);
-            GUILayout.Label(!incidentStarted ? "Available once something happens."
-                : announcementTimer > 0f ? $"PA busy, ready in {Mathf.CeilToInt(announcementTimer)} s" : "PA ready.", smallStyle);
 
             GUILayout.Space(6);
             GUILayout.Label("VIEW", headerStyle);
@@ -1435,7 +1410,7 @@ namespace CrushHour
                 if (GUI.Button(button, "Legend  [L]", buttonStyle)) deferred.Add(() => showLegend = true);
                 return;
             }
-            var rect = Panel(new Rect(vw - 312, vh - 300, 300, 288));
+            var rect = Panel(new Rect(vw - 312, vh - 322, 300, 310));
             GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
             GUILayout.BeginHorizontal();
             GUILayout.Label("LEGEND", headerStyle);
@@ -1447,11 +1422,12 @@ namespace CrushHour
             LegendRow(AgentColors[2], "Alarmed");
             LegendRow(AgentColors[3], "Panicking: runs, pushes");
             LegendRow(AgentColors[5], "Panic attack: frozen for a while");
+            LegendRow(AgentColors[6], "Choking on smoke: slowed, may collapse");
             LegendRow(AgentColors[4], "Injured");
-            LegendRow(StewardColor, "Steward: orderly queues in the ring");
+            LegendRow(StewardColor, "Steward: calms people, then sends them out");
             LegendRow(MegaphoneColor, "Police with megaphone");
             GUILayout.Space(4);
-            GUILayout.Label("Ground colour: green = room to move, orange = packed, red/purple = crush danger.", mutedStyle);
+            GUILayout.Label("Ground colour: green = room to move, orange = packed, red/purple = crush danger, dark = thick smoke.", mutedStyle);
             GUILayout.EndArea();
         }
 
@@ -1520,7 +1496,8 @@ namespace CrushHour
                 text = venue.cells[cell] switch
                 {
                     CellType.Open => $"{sim.density[cell]:0.0} people per m²   pressure {sim.pressure[cell]:0.0}" +
-                                     (sim.pressure[cell] > crowd.crushThreshold * 0.8f ? "  <b>CRUSH RISK</b>" : ""),
+                                     (sim.pressure[cell] > crowd.crushThreshold * 0.8f ? "  <b>CRUSH RISK</b>" : "") +
+                                     (venue.smoke[cell] > 0.1f ? $"\nSmoke {venue.smoke[cell] * 100f:0}%" + (venue.smoke[cell] > crowd.smokeHarmLevel ? " <b>TOXIC</b>" : "") : ""),
                     CellType.Fire => "Fire",
                     CellType.Barrier => "Barrier (right-click with the Barrier tool to remove)",
                     CellType.Outside => "Outside: safe",
@@ -1548,7 +1525,7 @@ namespace CrushHour
                             "People will run from it, then head for the nearest gate. If it's shut, they try another, and the queues grow.", labelStyle);
             GUILayout.Space(10);
             WelcomeStep("1", "Plan", "Move your 4 stewards and 2 megaphone police (click them, then click the map). Draw barriers to steer the crowd.");
-            WelcomeStep("2", "React", "When the fire starts, open the emergency gates and make the evacuation announcement.");
+            WelcomeStep("2", "React", "When the fire starts, open the emergency gates and send your team to the crowds. The megaphone police tell everyone in earshot where to go.");
             WelcomeStep("3", "Keep them calm", "Panicked crowds push and crush, and too much panic causes panic attacks. Put stewards where queues form: they line people up with room to breathe.");
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();
@@ -1592,7 +1569,7 @@ namespace CrushHour
             GUILayout.Space(8);
 
             ResultRow("Safe", $"{finalSafe} / {sim.count}  ({finalSafe * 100f / sim.count:0}%)", GoodColor);
-            ResultRow("Injured", finalInjured.ToString(), finalInjured > 0 ? DangerColor : TextColor);
+            ResultRow("Injured", finalInjured == 0 ? "0" : $"{finalInjured}  ({sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke)", finalInjured > 0 ? DangerColor : TextColor);
             ResultRow("Panic attacks", finalAttacks.ToString(), finalAttacks > 0 ? AgentColors[5] : TextColor);
             ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : TextColor);
             ResultRow("Evacuation time", FormatTime(evacuationTime), TextColor);

@@ -21,6 +21,10 @@ namespace CrushHour
         public float awarenessSpread = 1f;
         [Tooltip("People closer than this (m) to the fire first run straight away from it, then head for a door.")]
         public float fleeDistance = 10f;
+        [Tooltip("Seconds after the fire starts that the band stops playing. From then on everyone gradually realises something is wrong.")]
+        public float showStopsAfter = 15f;
+        [Tooltip("Chance per second, once the music has stopped, that someone still unaware starts to leave.")]
+        public float showStoppedAwareness = 0.15f;
         [Tooltip("Distance (m) at which people can see that the door they're heading for is shut.")]
         public float closedDoorSight = 6f;
         [Tooltip("Metres of extra walking an informed person accepts per person-per-metre-of-door queueing at a door.")]
@@ -39,6 +43,18 @@ namespace CrushHour
         [Tooltip("How long a panic attack lasts (s), min and max.")]
         public Vector2 panicAttackDuration = new(6f, 12f);
 
+        [Header("Smoke")]
+        [Tooltip("Smoke concentration (0-1) at which people notice it and realise something is wrong.")]
+        public float smokeNoticeLevel = 0.2f;
+        [Tooltip("Smoke concentration (0-1) above which breathing it in poisons people.")]
+        public float smokeHarmLevel = 0.3f;
+        [Tooltip("Dose per second in the thickest smoke. A dose of 1 means collapsing (injured).")]
+        public float smokeDoseRate = 0.15f;
+        [Tooltip("How fast the dose wears off in clean air, per second.")]
+        public float smokeRecovery = 0.02f;
+        [Tooltip("Dose from which people are visibly intoxicated (coughing, slowed down).")]
+        public float intoxicatedDose = 0.15f;
+
         [Header("Crush")]
         [Tooltip("Crowd pressure (density x panic factor) above which people get hurt.")]
         public float crushThreshold = 8.5f;
@@ -46,7 +62,12 @@ namespace CrushHour
 
         [Header("Staff")]
         public float stewardRadius = 6f;
+        [Tooltip("How fast a steward talks panic down (per second) for the people in their ring.")]
         public float stewardCalming = 0.5f;
+        [Tooltip("Panicked people in a steward's ring stop and listen until their panic is down to this; then they're told the way out and let go.")]
+        public float calmedPanic = 0.35f;
+        [Tooltip("Seconds people stay reassured after a steward calmed them: their panic can't climb high again.")]
+        public float calmedMemory = 12f;
         [Tooltip("Body-to-body spacing (m) stewards make people keep in their queues (normal bodies are 2 x radius).")]
         public float stewardQueueSpacing = 0.52f;
         [Tooltip("Seconds people keep queueing in order after leaving a steward's ring.")]
@@ -76,10 +97,11 @@ namespace CrushHour
         public readonly AgentState[] state;
         /// <summary>Knows the fire is happening and is trying to get out.</summary>
         public readonly bool[] evacuating;
-        /// <summary>Has been told (by staff/PA) which doors are open, and avoids crowded ones.</summary>
+        /// <summary>Has been told (by a steward or the police) which doors are open, and avoids crowded ones.</summary>
         public readonly bool[] informed;
-        /// <summary>Got far enough from the fire; now heading for a door.</summary>
+        /// <summary>Got far enough from the fire (or running away stopped helping); now heading for a door.</summary>
         public readonly bool[] hasFled;
+        readonly float[] fleeTime;
         /// <summary>Door being headed for (-1 none), doors found shut (bit mask), time until reconsidering.</summary>
         public readonly int[] targetDoor, doorsFoundShut;
         readonly float[] retargetTime;
@@ -87,10 +109,16 @@ namespace CrushHour
         public readonly float[] attackTime, attackBuildUp;
         /// <summary>Seconds left of queueing in order because a steward is organising them (spaced out, no pushing).</summary>
         public readonly float[] orderlyTime;
+        /// <summary>Smoke breathed in (0-1); collapse at 1.</summary>
+        public readonly float[] smokeDose;
+        /// <summary>Seconds left standing still listening to a steward (refreshed while still panicked), and of staying reassured afterwards.</summary>
+        public readonly float[] listeningTime, reassuredTime;
         readonly List<int> nearby = new();
         readonly System.Random rng;
         float[] doorCrowd = Array.Empty<float>();
         int openDoorMask, crowdCountdown;
+        float incidentTime;
+        public bool ShowStopped => incidentTime >= settings.showStopsAfter;
 
         // Spatial hash over the venue grid, rebuilt every step.
         readonly int[] agentCell, sorted;
@@ -116,6 +144,8 @@ namespace CrushHour
         public int PanicAttacksTotal { get; private set; }
         public int InjuredByCrush { get; private set; }
         public int InjuredByFire { get; private set; }
+        public int InjuredBySmoke { get; private set; }
+        public int IntoxicatedCount { get; private set; }
 
         public CrowdSimulation(CrowdSettings settings, FestivalVenue venue, System.Random rng)
         {
@@ -133,12 +163,16 @@ namespace CrushHour
             evacuating = new bool[count];
             informed = new bool[count];
             hasFled = new bool[count];
+            fleeTime = new float[count];
             targetDoor = new int[count];
             doorsFoundShut = new int[count];
             retargetTime = new float[count];
             attackTime = new float[count];
             attackBuildUp = new float[count];
             orderlyTime = new float[count];
+            smokeDose = new float[count];
+            listeningTime = new float[count];
+            reassuredTime = new float[count];
             agentCell = new int[count];
             sorted = new int[count];
             Array.Fill(targetDoor, -1);
@@ -229,9 +263,12 @@ namespace CrushHour
                     }
                     int c = y * W + x;
                     density[c] = 0.5f * cellCount[c] + 0.5f * people / 9f;
-                    // People lying on the ground take up room but don't push.
+                    // People lying on the ground take up room (density) but don't push (pressure),
+                    // otherwise every injury raises the pressure around it and crushes cascade unrealistically.
+                    float standing = 0.5f * cellActive[c] + 0.5f * active / 9f;
+                    float pushing = standing + 0.3f * (density[c] - standing);
                     float avgPanic = active > 0 ? panicSum / active : 0f;
-                    pressure[c] = density[c] * (1f + 2f * Mathf.Max(0f, avgPanic - 0.3f));
+                    pressure[c] = pushing * (1f + 2f * Mathf.Max(0f, avgPanic - 0.3f));
                     if (pressure[c] > MaxPressure)
                     {
                         MaxPressure = pressure[c];
@@ -280,7 +317,11 @@ namespace CrushHour
         {
             BuildSpatialHash();
             openDoorMask = venue.OpenDoorMask;
-            if (incident) UpdateAlarm(venue, dt);
+            if (incident)
+            {
+                UpdateAlarm(venue, dt);
+                incidentTime += dt;
+            }
             if (--crowdCountdown <= 0)
             {
                 UpdateDoorCrowding(venue);
@@ -296,6 +337,11 @@ namespace CrushHour
                 int c = agentCell[i], cx = c % W, cy = c / W;
                 bool orderly = orderlyTime[i] > 0f;
                 if (orderly) orderlyTime[i] -= dt;
+                if (orderly && InDanger(venue, c)) orderly = false; // in the smoke, hurry instead
+                bool listening = listeningTime[i] > 0f;
+                if (listening) listeningTime[i] -= dt;
+                bool reassured = reassuredTime[i] > 0f;
+                if (reassured) reassuredTime[i] -= dt;
                 // A steward's queue: keep a gap to the people around you instead of pressing into them.
                 float space = orderly ? Mathf.Max(diameter, settings.stewardQueueSpacing) : diameter;
                 float spaceSq = space * space;
@@ -343,19 +389,41 @@ namespace CrushHour
                 float pv = panic[i];
                 bool inAttack = attackTime[i] > 0f;
 
+                float smokeHere = venue.smoke[c];
+                if (incident)
+                {
+                    // Breathing smoke: a dose builds up the thicker it is and the longer you stay; it wears off in clean air.
+                    if (smokeHere > settings.smokeHarmLevel)
+                        smokeDose[i] += (smokeHere - settings.smokeHarmLevel) / (1f - settings.smokeHarmLevel) * settings.smokeDoseRate * dt;
+                    else
+                        smokeDose[i] = Mathf.Max(0f, smokeDose[i] - settings.smokeRecovery * dt);
+                    if (smokeDose[i] >= 1f)
+                    {
+                        Injure(i);
+                        InjuredBySmoke++;
+                        continue;
+                    }
+                }
+
                 if (incident && !inAttack)
                 {
-                    // Becoming aware: seeing the fire, or hearing people shout and seeing them run.
-                    if (fd < sight) evacuating[i] = true;
+                    // Becoming aware: seeing the fire or its smoke, hearing people shout, or seeing a gate open nearby with people streaming out.
+                    if (fd < sight || smokeHere > settings.smokeNoticeLevel || venue.seesOpenGate[c]) evacuating[i] = true;
                     else if (!evacuating[i] && alarm[c] > 0.3f && rng.NextDouble() < settings.awarenessSpread * dt) evacuating[i] = true;
+                    else if (!evacuating[i] && ShowStopped && rng.NextDouble() < settings.showStoppedAwareness * dt) evacuating[i] = true; // the music has stopped...
 
                     // Panic rises towards what the situation warrants, and fades slowly once it's better.
-                    // Touching distance of the flames is terrifying; further away it is frightening but bearable.
+                    // Touching distance of the flames is terrifying; further away it is frightening but bearable. So is choking smoke.
                     float fear = fd <= 1 ? 1f : fd < sight ? 0.85f * Mathf.Clamp01(1f - (fd - 2f) / sight) : 0f;
+                    fear = Mathf.Max(fear, smokeHere * 0.6f);
                     // Being squeezed, and being stuck in a jam for a long time, wears people down.
                     float crush = Mathf.Clamp01((localDensity - 3f) / 4f) + Mathf.Clamp01((stuckTime[i] - 1f) / 6f) * 0.8f;
                     float social = neighbours > 0 ? panicSum / neighbours * settings.contagionFalloff : 0f;
                     float target = Mathf.Min(1f, Mathf.Max(fear, Mathf.Max(crush, social)));
+                    // Calmed by a steward: reassured people don't get swept up again (unless the flames are right there).
+                    if (reassured && fd > 1) target = Mathf.Min(target, settings.calmedPanic + 0.1f);
+                    // While a steward is talking to them, the panic around them doesn't get through.
+                    if (listening && !InDanger(venue, c)) target = 0f;
                     pv = target > pv ? pv + (target - pv) * settings.panicContagion * dt : Mathf.Max(target, pv - settings.panicDecay * dt);
                     if (pv > 0.3f) evacuating[i] = true;
                     if (venue.seesOpenGate[c]) doorsFoundShut[i] &= ~openDoorMask; // "that gate's open now!"
@@ -390,6 +458,11 @@ namespace CrushHour
                     }
                     desired = Vector2.zero;
                 }
+                else if (listening && !InDanger(venue, c))
+                {
+                    // Standing still while a steward calms them down; they'll be sent on their way once calm.
+                    desired = Vector2.zero;
+                }
                 else if (!evacuating[i])
                 {
                     // Still enjoying the show: drift back to my spot.
@@ -399,14 +472,25 @@ namespace CrushHour
                 }
                 else
                 {
-                    // First get away from the flames, then make for a door.
+                    // First get away from the flames, then make for a door. Running away stops when it no longer helps
+                    // (cornered against the fence, or still close after a few seconds): then a door route around the fire is better.
                     if (fd >= settings.fleeDistance) hasFled[i] = true;
-                    else if (fd <= 2) hasFled[i] = false;
+                    else if (fd <= 2 && hasFled[i])
+                    {
+                        hasFled[i] = false;
+                        fleeTime[i] = 0f;
+                    }
+                    if (!hasFled[i] && (venue.fleeDirection[c] == Vector2.zero || fleeTime[i] > 4f)) hasFled[i] = true;
                     Vector2 dir;
-                    if (!hasFled[i] && venue.fleeDirection[c] != Vector2.zero)
+                    if (!hasFled[i])
+                    {
+                        fleeTime[i] += dt;
                         dir = (FestivalVenue.CellCenter(c) + venue.fleeDirection[c] - p).normalized;
+                    }
                     else
+                    {
                         dir = DoorDirection(i, c, p, venue, dt);
+                    }
 
                     float slow, urgency;
                     if (orderly)
@@ -421,7 +505,8 @@ namespace CrushHour
                         slow = Mathf.Lerp(slow, 1f, 0.5f * pv); // panic makes people push on regardless
                         urgency = 1f + settings.panicSpeedBoost * pv;
                     }
-                    desired = dir * (settings.walkSpeed * personalSpeed[i] * urgency * slow);
+                    float coughing = 1f - 0.5f * Mathf.Clamp01(smokeDose[i]); // short of breath
+                    desired = dir * (settings.walkSpeed * personalSpeed[i] * urgency * slow * coughing);
                 }
 
                 velocity[i] = Vector2.MoveTowards(velocity[i], desired, settings.acceleration * dt);
@@ -547,6 +632,9 @@ namespace CrushHour
             return to;
         }
 
+        /// <summary>Close to the flames or in smoke: no time to stand and listen or queue patiently, get out first.</summary>
+        bool InDanger(FestivalVenue venue, int cell) => venue.fireDistance[cell] < 3 || venue.smoke[cell] > settings.smokeNoticeLevel;
+
         void Injure(int i)
         {
             state[i] = AgentState.Injured;
@@ -556,7 +644,7 @@ namespace CrushHour
 
         void UpdateCounts()
         {
-            int active = 0, safe = 0, injured = 0, panicked = 0, leaving = 0, attacks = 0;
+            int active = 0, safe = 0, injured = 0, panicked = 0, leaving = 0, attacks = 0, intoxicated = 0;
             for (int i = 0; i < count; i++)
             {
                 switch (state[i])
@@ -566,6 +654,7 @@ namespace CrushHour
                         if (panic[i] > 0.7f) panicked++;
                         if (evacuating[i]) leaving++;
                         if (attackTime[i] > 0f) attacks++;
+                        if (smokeDose[i] >= settings.intoxicatedDose) intoxicated++;
                         break;
                     case AgentState.Safe: safe++; break;
                     default: injured++; break;
@@ -577,11 +666,13 @@ namespace CrushHour
             PanickedCount = panicked;
             EvacuatingCount = leaving;
             PanicAttackCount = attacks;
+            IntoxicatedCount = intoxicated;
         }
 
         /// <summary>
-        /// Stewards calm people near them, help them through panic attacks, line them up in orderly spaced queues
-        /// (so nobody gets squeezed) and, once there is an incident, tell them which doors are open.
+        /// Once there's an incident, stewards calm the people in their ring: panicked people stop and listen until they're
+        /// calm, then get told which gates are open and leave in orderly, spaced-out queues, staying reassured for a while.
+        /// Stewards also help people through panic attacks.
         /// </summary>
         public void ApplyStewards(List<Vector2> stewards, float dt, bool incident)
         {
@@ -589,15 +680,23 @@ namespace CrushHour
             {
                 foreach (int i in ActiveWithin(s, settings.stewardRadius))
                 {
-                    if (incident) orderlyTime[i] = settings.orderlyMemory;
+                    if (!incident) continue;
+                    orderlyTime[i] = settings.orderlyMemory;
                     if (attackTime[i] > 0f)
                     {
                         attackTime[i] = Mathf.Max(0.01f, attackTime[i] - 1.5f * dt); // recover faster with help
                         continue;
                     }
-                    float calming = settings.stewardCalming * (panic[i] > 0.9f ? 0.4f : 1f);
-                    panic[i] = Mathf.Max(0f, panic[i] - calming * dt);
-                    if (incident) Inform(i);
+                    // Calm them first: panicked people stop and listen while the steward talks them down...
+                    panic[i] = Mathf.Max(0f, panic[i] - settings.stewardCalming * dt);
+                    if (panic[i] > settings.calmedPanic)
+                    {
+                        listeningTime[i] = 0.25f;
+                        continue;
+                    }
+                    // ...then, once calm, they're told which gates are open and walk out in an orderly way.
+                    reassuredTime[i] = settings.calmedMemory;
+                    Inform(i);
                 }
             }
         }
@@ -622,37 +721,12 @@ namespace CrushHour
             return newlyInformed;
         }
 
-        /// <summary>Everyone starts leaving; a share of those still listening learn which doors are open.</summary>
-        public int AnnounceEvacuation(float reach)
-        {
-            int newlyInformed = 0;
-            for (int i = 0; i < count; i++)
-            {
-                if (state[i] != AgentState.Active) continue;
-                evacuating[i] = true;
-                if (!informed[i] && panic[i] < 0.8f && attackTime[i] <= 0f && rng.NextDouble() < reach)
-                {
-                    Inform(i);
-                    newlyInformed++;
-                }
-                if (panic[i] < 0.5f) panic[i] += 0.1f; // an emergency announcement is alarming in itself
-            }
-            return newlyInformed;
-        }
-
         void Inform(int i)
         {
             informed[i] = true;
             evacuating[i] = true;
             doorsFoundShut[i] &= ~openDoorMask; // they're told which doors are open now
             retargetTime[i] = 0f;
-        }
-
-        public void AnnounceCalm(float strength)
-        {
-            for (int i = 0; i < count; i++)
-                if (state[i] == AgentState.Active && attackTime[i] <= 0f)
-                    panic[i] = Mathf.Max(0f, panic[i] - strength * (panic[i] > 0.85f ? 0.35f : 1f));
         }
 
         /// <summary>Active people within <paramref name="radius"/>, from the spatial hash built by the last step.</summary>
@@ -694,12 +768,13 @@ namespace CrushHour
             }
         }
 
-        /// <summary>Display bucket: 0 calm, 1 informed, 2 alarmed, 3 panicking, 4 injured, 5 panic attack, -1 safe (not shown).</summary>
+        /// <summary>Display bucket: 0 calm, 1 informed, 2 alarmed, 3 panicking, 4 injured, 5 panic attack, 6 intoxicated by smoke, -1 safe (not shown).</summary>
         public int DisplayState(int i)
         {
             if (state[i] == AgentState.Safe) return -1;
             if (state[i] == AgentState.Injured) return 4;
             if (attackTime[i] > 0f) return 5;
+            if (smokeDose[i] >= settings.intoxicatedDose) return 6;
             float pv = panic[i];
             return pv > 0.7f ? 3 : pv > 0.3f ? 2 : informed[i] && evacuating[i] ? 1 : 0;
         }

@@ -79,6 +79,13 @@ namespace CrushHour
         public readonly List<(string name, Vector2Int cell)> fireSites = new();
         public readonly List<(RectInt rect, float weight, bool stageFacing)> crowdZones = new();
         public readonly List<int> fireCells = new();
+        /// <summary>
+        /// Smoke concentration per cell (0-1): 1 in the flames, carried downwind (towards +x, a little +y, matching
+        /// the drift of the smoke visuals), thinning out sideways and upwind, lingering where it has been.
+        /// </summary>
+        public readonly float[] smoke = new float[CellCount];
+        readonly float[] smokeNext = new float[CellCount];
+        float smokeTimer;
         /// <summary>Spot fires started by embers so far, and the cell of the latest one.</summary>
         public int SpotFires { get; private set; }
         public int LastSpotFireCell { get; private set; } = -1;
@@ -305,6 +312,7 @@ namespace CrushHour
         public bool UpdateFire(float dt, System.Random rng, int maxCells)
         {
             if (fireCells.Count == 0) return false;
+            UpdateSmoke(dt);
             fireTimer += dt;
             if (fireTimer < FireSpreadInterval) return false;
             fireTimer -= FireSpreadInterval;
@@ -323,7 +331,7 @@ namespace CrushHour
                     {
                         CellType.Obstacle => flammable[n] ? 0.5f : 0.03f,
                         CellType.Barrier => 0.2f,
-                        CellType.Open => 0.07f, // dry grass, litter, dropped drinks cups...
+                        CellType.Open => 0.09f, // dry grass, litter, dropped drinks cups...
                         _ => 0f,
                     };
                     if (chance > 0f && rng.NextDouble() < chance && Ignite(n)) changed = true;
@@ -331,7 +339,7 @@ namespace CrushHour
             }
 
             // Embers: burning debris carried a few metres starts new spot fires. Bigger fire, more embers.
-            float emberChance = Mathf.Min(0.45f, fireCells.Count / 60f);
+            float emberChance = Mathf.Min(0.55f, fireCells.Count / 50f);
             if (fireCells.Count < maxCells && rng.NextDouble() < emberChance)
             {
                 int source = fireCells[rng.Next(fireCells.Count)];
@@ -348,6 +356,28 @@ namespace CrushHour
             }
             if (changed) RecomputeFireDistance();
             return changed;
+        }
+
+        void UpdateSmoke(float dt)
+        {
+            smokeTimer -= dt;
+            if (smokeTimer > 0f) return;
+            smokeTimer = 0.2f;
+            foreach (int c in fireCells) smoke[c] = 1f;
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                {
+                    int c = Index(x, y);
+                    float s = smoke[c] * 0.96f; // clears slowly
+                    if (x > 0) s = Mathf.Max(s, smoke[c - 1] * 0.93f);              // upwind: carried along
+                    if (y > 0) s = Mathf.Max(s, smoke[c - Width] * 0.88f);
+                    if (x < Width - 1) s = Mathf.Max(s, smoke[c + 1] * 0.75f);      // against the wind: barely
+                    if (y < Height - 1) s = Mathf.Max(s, smoke[c + Width] * 0.75f);
+                    smokeNext[c] = s;
+                }
+            }
+            Array.Copy(smokeNext, smoke, CellCount);
         }
 
         void RecomputeFireDistance()
@@ -455,7 +485,7 @@ namespace CrushHour
                 {
                     if (!CanStep(cx, cy, k, out int n)) continue;
                     int fd = fireDistance[n];
-                    float extra = fd < 5 ? (5 - fd) * 2f : 0f;
+                    float extra = (fd < 5 ? (5 - fd) * 2f : 0f) + smoke[n] * 3f; // keep away from flames and thick smoke
                     float nd = d + StepLength[k] * (1f + extra);
                     if (nd < dist[n])
                     {

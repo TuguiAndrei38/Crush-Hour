@@ -6,7 +6,7 @@ Notes for coding agents working in this Unity project.
 
 - Unity **6000.6.6f1**, **URP 17** (PC renderer: Forward+, depth priming off), **Input System only** (`activeInputHandler: 1`, so the legacy `Input` class throws). Read devices directly (`Keyboard.current`, `Mouse.current`, `Gamepad.current`).
 - No git repo, no asmdefs: runtime scripts compile into `Assembly-CSharp`, `Editor/` folders into `Assembly-CSharp-Editor`.
-- **Crush Hour** concept: you are the safety commander at a big event. When disaster hits, you guide the crowd out with barriers, emergency gates, stewards, police and PA announcements. Panic spreads, doorways jam and dense pockets crush. You're scored on people out safely, injuries, panic attacks and time.
+- **Crush Hour** concept: you are the safety commander at a big event. When disaster hits, you guide the crowd out with barriers, emergency gates, stewards and megaphone police. There is no PA: the user had the announcement buttons removed. Panic spreads, doorways jam and dense pockets crush. You're scored on people out safely, injuries, panic attacks and time.
 - Third-party asset: **Low Poly People** by David Jalbert, in `Assets/DavidJalbert/LowPolyPeople/`.
   - 18 prefabs with Generic rigs. Animations live in `Prefabs/Animations/`: "normal/stout/strong" × "idle/walk/run/wave".
   - Materials are Built-in Standard palette textures.
@@ -37,16 +37,25 @@ Both scenes are set up by editor scripts (see below), not by hand.
   - **Fire:**
     - It spreads every 0.8 s. Chance per neighbour each tick: 0.5 for burnable structures, 0.07 for grass, 0.2 for barriers, 0.03 for anything else.
     - Embers start spot fires 3–7 cells away (chance per tick: fire cells ÷ 60, at most 0.45), recorded in `SpotFires` and `LastSpotFireCell`.
-    - The fire is capped at `maxFireCells` (320).
+    - The fire is capped at `maxFireCells` (400). Grass catches at 0.09 per neighbour per tick, and embers fly with a chance per tick of fire cells ÷ 50, at most 0.55.
+  - **Smoke** (`smoke[]`, 0–1, updated every 0.2 s inside `UpdateFire`): it is 1 in the flames and spreads like the alarm field, but shaped by the wind: ×0.93 per cell downwind (+x), ×0.88 towards +y, ×0.75 against the wind, and ×0.96 lingering. The plume runs about 15 m downwind, matching the drift of the smoke visuals. Door fields add `smoke × 3` to the step cost, so routes avoid it.
   - Also handles gate animation, `seesOpenGate`, and unit pathfinding (`FindPath`).
 - `CrowdSimulation.cs`: about 2,000 agents stored as parallel arrays. Pure simulation, no drawing, so it runs headless. `Step(dt, venue, incident)`.
-  - **Awareness:** people notice the fire by seeing it (within `fireSightRange`, 25 m) or by hearing the `alarm` grid. The alarm is a shout field that spreads 1 m per 0.2 s from the fire and from everyone already evacuating, fading ×0.9 per metre. Isolated people may never hear it, so the PA and megaphones still matter.
+  - **Awareness:** people notice the fire by seeing it (within `fireSightRange`, 25 m) or by hearing the `alarm` grid. The alarm is a shout field that spreads 1 m per 0.2 s from the fire and from everyone already evacuating, fading ×0.9 per metre.
+    - Smoke and the sight of an open gate also make people aware.
+    - **The music stops** `showStopsAfter` (15 s) after the fire starts (`ShowStopped`). From then on, unaware people start leaving at `showStoppedAwareness` (0.15/s). This replaced the PA as the way the last scattered people find out: without it, 50–370 people stayed inside until the time limit even with good play.
+  - **Smoke:**
+    - Smoke above `smokeNoticeLevel` (0.2) makes people aware, and adds fear (smoke × 0.6).
+    - Above `smokeHarmLevel` (0.3) a dose builds up at up to `smokeDoseRate` (0.15/s) in the thickest smoke: about 7 s at the flames, about 25 s in a medium plume.
+    - The dose wears off at `smokeRecovery` (0.02/s) in clean air.
+    - People with a dose of at least `intoxicatedDose` (0.15) show as "choking" (display state 6, olive, stooped) and walk up to 50% slower. At dose 1 they collapse (`InjuredBySmoke`).
+  - People near an open emergency gate (`seesOpenGate`) become aware. Before this fix, unaware people idled next to open gates and looked "stuck".
   - **Escape:**
     - Within `fleeDistance` (10 m) of the fire, people first follow `fleeDirection` until they're clear (`hasFled`).
     - Then they head for the cheapest door (`ChooseDoor`).
     - Within `closedDoorSight` (6 m) of a shut door, they set its bit in `doorsFoundShut` and pick another door.
     - Neighbours share `doorsFoundShut`, so "it's shut" passes back through a queue. Seeing an open gate clears that gate's bit.
-  - **Informed people** (told by stewards, megaphone police or the PA) skip doors they know are closed and add queueing cost (`doorCrowd` × `doorCrowdWeight`).
+  - **Informed people** (told by stewards or megaphone police) skip doors they know are closed and add queueing cost (`doorCrowd` × `doorCrowdWeight`).
   - Panicked people (above 0.8) don't reconsider their door (tunnel vision).
   - **Panic** rises towards a target, the highest of:
     - fear of the fire;
@@ -55,14 +64,16 @@ Both scenes are set up by editor scripts (see below), not by hand.
     It decays slowly once the situation improves.
   - Fear of the fire is 1 only at touching distance (`fireDistance` ≤ 1). Further away it's capped at 0.85, so a big fire alone doesn't send everyone into panic attacks.
   - **Panic attack:** panic ≥ `panicAttackThreshold` (0.88) for `panicAttackDelay` (2.5 s) freezes the person for 6–12 s at panic 1, which spreads fear. Stewards shorten attacks.
-  - **Steward queues:** after the incident, everyone in a steward's ring gets `orderlyTime` (`orderlyMemory`, 4 s). While it lasts they:
+  - **Escape fix:** fleeing stops once running away no longer helps: when the cell has no `fleeDirection` (cornered), or after 4 s of fleeing (`fleeTime`). Before this, people cornered against the fence 4–5 m from the fire shuffled there until the time limit.
+  - **Steward calming:** after the incident, panicked people in a steward's ring stop and listen (`listeningTime`). The panic around them doesn't affect them while the steward brings their panic down at `stewardCalming`. At `calmedPanic` (0.35) they're informed and released, and stay reassured for `calmedMemory` (12 s): their panic target is capped at 0.45 unless the flames are next to them. Anyone near the flames or in smoke (`InDanger`: fire distance under 3, or smoke above the notice level) skips the stop-and-listen and keeps fleeing.
+  - **Steward queues:** after the incident, everyone in a steward's ring also gets `orderlyTime` (`orderlyMemory`, 4 s), which is ignored in smoke or near the flames. While it lasts they:
     - keep `stewardQueueSpacing` (0.52 m) between bodies instead of 0.44 m;
     - give way fully (no panic shoving);
     - add only 30% of the usual panic speed boost;
     - don't build up stuck stress.
     A wider spacing (0.62 m) throttled the narrow entrances and pushed the jam, and the crushes, outside the ring.
-  - Pressure is density × panic factor, and crush damage builds above `crushThreshold`. Fallen people push only weakly (0.15), so others can step over them.
-  - Unit effects: `ApplyStewards`, `PoliceAnnouncement` (one megaphone pulse) and `AnnounceEvacuation` / `AnnounceCalm` (PA). All use the spatial hash from the last `Step`.
+  - Pressure is (standing density + 0.3 × fallen density) × panic factor, and crush damage builds above `crushThreshold`. Counting fallen people fully made crushes cascade, from 121 to 1,008 injured in one scenario. Fallen people push only weakly (0.15), so others can step over them.
+  - Unit effects: `ApplyStewards` and `PoliceAnnouncement` (one megaphone pulse). Both use the spatial hash from the last `Step`.
 - `CrowdRenderer.cs`:
   - `PersonModel.Build` instantiates a character prefab and merges all its parts into one mesh, with feet at the origin and height `personHeight`.
   - With clips and the shader, it bakes **vertex animation textures (VAT)**:
@@ -76,14 +87,14 @@ Both scenes are set up by editor scripts (see below), not by hand.
 - `CrowdVAT.shader` (`CrushHour/CrowdVAT`): a URP HLSL shader with UniversalForward and DepthOnly passes. It reads `_Instances[SV_InstanceID]` and loads the two neighbouring frames from `_PositionTex`/`_NormalTex` by `SV_VertexID`. Lighting is main light plus a flat `_Ambient`, with no shadows. It is referenced from `CrushHourGame.crowdAnimationShader` so it's included in builds.
 - `CrushHourGame.cs`: a single MonoBehaviour that builds the whole scene at runtime.
   - Round phases: Planning → Live (fire after a random delay) → Results.
-  - Units (`Unit`, `Role`): 4 stewards (yellow, radius 6 m, orderly queues) and 2 megaphone police (navy with a cyan cap; announce every 5 s within 14 m, with a ripple). They're selected from the roster or the map, then sent by clicking the map.
-  - Tools: command (units and gates) and barriers (budget 60). Also the PA, scoring (−10 per panic attack) and stars.
+  - Units (`Unit`, `Role`): 4 stewards (yellow, radius 6 m: calm people, then send them out in orderly queues) and 2 megaphone police (navy with a cyan cap; announce every 5 s within 14 m, with a ripple). They're selected from the roster or the map, then sent by clicking the map.
+  - Tools: command (units and gates) and barriers (budget 60). Also scoring (−10 per panic attack) and stars. Game speed is 1× or 2× (`Speeds`).
   - The simulation runs on a fixed 0.04 s step, at most 6 steps per frame.
   - Voxel smoke: a pool of up to 160 unlit grey cubes rising from random fire cells and drifting with `Wind`. Ember spot fires are logged.
-  - **Settings version:** every Inspector value is saved in the scene and overrides code defaults. When you retune defaults, bump `CurrentSettingsVersion`; `UpgradeSettings` (run from `OnValidate` and `Awake`) then resets the team size, `maxFireCells` and `crowd` in older scenes. Version 3 fixed a scene stuck on 6 stewards, a 160-cell fire and old crowd settings.
+  - **Settings version:** every Inspector value is saved in the scene and overrides code defaults. When you retune defaults, bump `CurrentSettingsVersion`; `UpgradeSettings` (run from `OnValidate` and `Awake`) then resets the team size, `maxFireCells` and `crowd` in older scenes. Version 3 fixed a scene stuck on 6 stewards, a 160-cell fire and old crowd settings. Version 4 applies the 400-cell fire and the new crowd settings.
   - **UI** (IMGUI) is scaled by `Screen.height / 900` through `GUI.matrix`. All layout uses the virtual `vw`×`vh` size, and `guiRects` are in virtual units (`IsOverGui` converts).
     - Rounded panels and buttons use procedurally generated textures (`Rounded`, cached).
-    - Elements: top bar (phase chip, timer bar, speed buttons, stat cards), team roster (left), gates and PA panel (right), colour-coded event feed (bottom left), collapsible legend (bottom right, L), event banner, map tooltips, a welcome card while planning, and a results card.
+    - Elements: top bar (phase chip, timer bar, speed buttons, stat cards), team roster (left), gates panel and view toggles (right), colour-coded event feed (bottom left), collapsible legend (bottom right, L), event banner, map tooltips, a welcome card while planning, and a results card.
 - `TopDownCamera.cs`: city-builder camera (WASD to pan, scroll to zoom, Q/E to rotate, middle-drag to pan).
 
 ### Cube world (`Assets/Scripts/`)
@@ -127,19 +138,24 @@ Unity holds the project lock while it's open, so batch mode isn't available. Ins
    - The harness is a scratch file, not kept in the repo.
 3. The VAT shader and `PersonModel.Build` need the editor. Check `Logs/Editor.log` for shader errors and for the "Crush Hour: N person models loaded, M animated" line printed on Play.
 
-## Balance baseline (headless, 2,000 people, settings version 3)
+## Balance baseline (headless, 2,000 people, seeds 11, 21 and 33, settings version 4)
 
-"Staff" = 4 stewards and 2 megaphone police at their default posts. With the bigger fire it reaches the 320-cell cap in every run, with 5–16 ember spot fires.
+"Staff" = 4 stewards and 2 megaphone police at their default posts. The fire reaches its 400-cell cap with ember spot fires, and the smoke drifts east.
 
 | Fire at | Response | Injured | Panic attacks | Still inside | Time |
 |---|---|---|---|---|---|
-| Food Court | No action | 30–130 (crushes) | 10–24 | 25–45 | ran out (240s) |
-| Food Court | PA + gates + staff | 0 | 0 | 0 | ~60s |
-| Stage Left | PA + gates + staff | 1 (burnt) | 0 | 0 | ~63s |
+| Food Court | No action | 1–270 (one seed crushes at the entrances, two don't) | 2–156 | 0–13 | 124s – ran out |
+| Food Court | Gates + staff | 0–1 | 0 | 0 | 68–88s |
+| Stage Left | No action | 200–375 (crushes) | 206–277 | ~15 | ran out (240s) |
+| Stage Left | Gates + staff | 0–4 | 0 | 0 | ~72s |
+| Bar Tent | No action | 390–560 | 220–400 | ~20 | ran out (240s) |
+| Bar Tent | Gates + staff | 0–2 | 0 | 0 | 63–85s |
 
-Steward queues (food court fire, PA + staff, gates closed, seeds 11/21/33/47): inside the stewards' rings, cell-steps above the crush threshold fell from 31–200 to 2–16. Total injuries swing either way between seeds, because crushes move to jams outside the rings, so stewards have to be placed at the bottlenecks.
+Up to about 40 people are standing still listening to a steward at any one time.
 
-Rerun these after changing crowd settings, entrance widths, fire, staff effects, or the panic, pressure and injury logic. Each step takes about 1.2–2.5 ms on .NET 8. It is likely slower in Unity's Mono runtime, so 4× speed may struggle.
+Steward queues (measured before the PA was removed: food court fire, PA + staff, gates closed, seeds 11/21/33/47): inside the stewards' rings, cell-steps above the crush threshold fell from 31–200 to 2–16. Total injuries swing either way between seeds, because crushes move to jams outside the rings, so stewards have to be placed at the bottlenecks.
+
+Rerun these after changing crowd settings, entrance widths, fire, staff effects, or the panic, pressure and injury logic. Each step takes about 1.2–2.5 ms on .NET 8. It is likely slower in Unity's Mono runtime; the game's top speed is 2×.
 
 ## Status / next ideas
 

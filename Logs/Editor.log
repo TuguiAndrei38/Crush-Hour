@@ -2239,3 +2239,1631 @@ CrushHour.CrushHourGame:Start () (at Assets/Scripts/CrushHour/CrushHourGame.cs:2
 
 (Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 231)
 
+Asset Pipeline Refresh (id=5140e8655b735ba438bdca7adb5f13a8): Total: 0.020 seconds - Initiated by RefreshV2(NoUpdateAssetOptions)
+Asset Pipeline Refresh (id=2f806496b9ad057458cef0a40fd3b6a6): Total: 0.005 seconds - Initiated by RefreshV2(NoUpdateAssetOptions)
+[ScriptCompilation] Requested script compilation because: AssetDatabase observed changes in script compilation related files
+Refreshing native plugins compatible for Editor in 2.99 ms, found 3 plugins.
+Asset Pipeline Refresh (id=38e39a834970382428e4385d07d216a2): Total: 0.057 seconds - Initiated by RefreshV2(NoUpdateAssetOptions)
+[Licensing::Client] Successfully resolved entitlement details
+Starting: C:\Program Files\Unity\Hub\Editor\6000.6.6f1\Editor\Data\Tools\BuildPipeline\bee_backend.exe --ipc --defer-dag-verification --dagfile="Library/Bee/1900b0aE.dag" --continue-on-failure --profile="Library/Bee/backend1.traceevents" ScriptAssemblies
+WorkingDir: C:/Users/Tutu/Crush Hour 2
+ExitCode: 0 Duration: 5s995ms
+[631/802    0s] ILPP-Configuration Library/ilpp-configuration.nevergeneratedoutput
+[794/802    4s] Csc Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp.dll (+2 others)
+[795/802    0s] ILPostProcess Library/Bee/artifacts/1900b0aE.dag/post-processed/Assembly-CSharp.dll (+pdb)
+Processing assembly Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp.dll, with 148 defines and 336 references
+
+processors: Unity.Jobs.CodeGen.JobsILPostProcessor, zzzUnity.Burst.CodeGen.BurstILPostProcessor
+
+1 processor(s) skipped this assembly
+
+running Unity.Jobs.CodeGen.JobsILPostProcessor
+[796/802    0s] CopyFiles Library/ScriptAssemblies/Assembly-CSharp.pdb
+[797/802    0s] Csc Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp-Editor.dll (+2 others)
+[798/802    0s] CopyFiles Library/ScriptAssemblies/Assembly-CSharp.dll
+[799/802    0s] ILPostProcess Library/Bee/artifacts/1900b0aE.dag/post-processed/Assembly-CSharp-Editor.dll (+pdb)
+Processing assembly Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp-Editor.dll, with 146 defines and 356 references
+
+processors: Unity.Jobs.CodeGen.JobsILPostProcessor, zzzUnity.Burst.CodeGen.BurstILPostProcessor
+
+1 processor(s) skipped this assembly
+
+running Unity.Jobs.CodeGen.JobsILPostProcessor
+[800/802    0s] CopyFiles Library/ScriptAssemblies/Assembly-CSharp-Editor.pdb
+[801/802    0s] CopyFiles Library/ScriptAssemblies/Assembly-CSharp-Editor.dll
+*** Tundra build success (5.93 seconds), 9 items updated, 802 evaluated
+Total cache size 78629572
+Total cache size after purge 78629572, took 00:00:00.2732515
+Reloading assemblies after finishing script compilation.
+Reloading assemblies after forced synchronous recompile.
+Begin MonoManager ReloadAssembly
+Leak Detected : Persistent allocates 18 individual allocations. To find out more please enable 'Preferences > Jobs > Leak Detection Level > Enabled With Stack Trace' and reproduce the leak again.
+Refreshing native plugins compatible for Editor in 2.56 ms, found 3 plugins.
+Native extension for WindowsStandalone target not found
+Native extension for WebGL target not found
+[MODES] ModeService[none].Initialize
+[MODES] ModeService[none].LoadModes
+ScheduleIndexationOnStartup MainProcess:True IndexOnStartup:True
+Scripting: successfully reloaded assembly
+- Finished resetting the current domain, in  2.728 seconds
+Domain Reload Profiling: 4252ms
+	BeginReloadAssembly (760ms)
+		DisableScriptedObjects (141ms)
+		CreateAndSetChildDomain (258ms)
+	RebuildCommonClasses (21ms)
+	RebuildNativeTypeToScriptingClass (28ms)
+	initialDomainReloadingComplete (104ms)
+	LoadAllAssembliesAndSetupDomain (610ms)
+		LoadAssemblies (249ms)
+		TypeCache.Refresh (15ms)
+		AnalyzeDomain (240ms)
+			BuildScriptInfoCaches (231ms)
+			ResolveRequiredComponents (7ms)
+	FinalizeReload (2730ms)
+		SetupLoadedEditorAssemblies (0ms)
+			LogAssemblyErrors (3ms)
+			InitializePlatformSupportModulesInManaged (4ms)
+			BeforeProcessingInitializeOnLoad (268ms)
+			ProcessInitializeOnLoadAttributes (518ms)
+			ProcessInitializeOnLoadMethodAttributes (145ms)
+			AfterProcessingInitializeOnLoad (10ms)
+		AwakeInstancesAfterBackupRestoration (700ms)
+
+Asset Pipeline Refresh (id=3972f475a839ad64b843369d37daa207): Total: 4.587 seconds - Initiated by StopAssetImportingV2(ForceSynchronousImport | ForceDomainReload)
+	(Values over 0.05ms)
+	Summary:
+		Imports: total=0 (actual=0, local cache=0, cache server=0)
+		Asset DB Process Time: managed=0 ms, native=2888 ms
+		Asset DB Callback time: managed=58 ms, native=1 ms
+		Scripting: domain reloads=1, domain reload time=1633 ms, compile time=4 ms, other=0 ms
+		Project Asset Count: scripts=1093, non-scripts=2164
+		Asset File Changes: new=0, changed=0, moved=0, deleted=0
+		Scan Filter Count: 0
+	InvokePackagesCallback: 4.256ms
+	ApplyChangesToAssetFolders: 0.443ms
+	Collect global state as custom dependencies: 4.962ms
+	ProcessAssetsWithTransientArtifactChanges: 4.228ms
+	CategorizeAssets: 66.014ms
+	CompileScripts: 4.442ms
+	ImportOutOfDateAssets: 2739.365ms (2736.284ms without children)
+		CollectScriptTypesHashes: 1.168ms
+		ReloadNativeAssets: 1.192ms
+		UnloadImportedAssets: 0.250ms
+		EnsureUptoDateAssetsAreRegisteredWithGuidPM: 0.905ms
+		ImportSchedulerStart: 0.710ms
+	PostProcessAllAssets: 58.434ms
+		MonoPostProcessAllAssets: 58.430ms
+			UniversalRenderPipelineGlobalSettingsPostprocessor.OnPostprocessAllAssets 27.667ms
+			SyncVS.PostprocessSyncProject 4.620ms
+			WindowAssetPostprocessingWatcher.OnPostprocessAllAssets 3.067ms
+			SpeedTree9Postprocessor.OnPostprocessAllAssets 2.536ms
+			AssetChangedListener.OnPostprocessAllAssets 1.768ms
+			RenderPipelineGlobalSettingsPostprocessor.OnPostprocessAllAssets 1.156ms
+			ShaderReflectionAssetPostProcessor.OnPostprocessAllAssets 0.755ms
+			ConfigAssetsTracker.OnPostprocessAllAssets 0.687ms
+			EditModeScopePostprocessor.OnPostprocessAllAssets 0.531ms
+			ReferencedClipsPostProcessor.OnPostprocessAllAssets 0.408ms
+			InputActionAssetPostprocessor.OnPostprocessAllAssets 0.364ms
+			AssetDatabaseCallbacks.OnPostprocessAllAssets 0.359ms
+			ShaderGraphAssetPostProcessor.OnPostprocessAllAssets 0.302ms
+			TerrainToolbarOverlayPostProcessor.OnPostprocessAllAssets 0.267ms
+			ProjectSettingsPostprocessor.OnPostprocessAllAssets 0.259ms
+			AssetPostprocessor.OnPostprocessAllAssets 0.103ms
+			PostProcessor.OnPostprocessAllAssets 0.085ms
+	GatherAllCurrentPrimaryImportResultRevisions: 0.329ms
+	PersistCurrentRevisions: 0.110ms
+	GenerateScriptTypeHashes: 2.830ms
+	GenerateScriptTypeSerializationHashes: 4.802ms
+	Untracked: 1682.602ms
+
+[Licensing::Client] Successfully resolved entitlement details
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+[Licensing::Client] Successfully resolved entitlement details
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+NullReferenceException: Object reference not set to an instance of an object
+  at CrushHour.CrushHourGame.Simulate (System.Single dt) [0x00000] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:468 
+  at CrushHour.CrushHourGame.Update () [0x00081] in C:\Users\Tutu\Crush Hour 2\Assets\Scripts\CrushHour\CrushHourGame.cs:452 
+UnityEngine.StackTraceUtility:ExtractStringFromExceptionInternal(Object, String&, String&)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 468)
+
+Unloading 0 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Temp/__Backupscenes/0.backup'
+	Deserialize:            4.125 ms
+	Integration:            25.632 ms
+	Integration of assets:  0.007 ms
+	Thread Wait Time:       0.019 ms
+	Total Operation Time:   29.784 ms
+Unloading 223 unused Assets / (16.9 MB). Loaded Objects now: 9051.
+Memory consumption went from 0.60 GB to 0.59 GB.
+Total: 25.134600 ms (FindLiveObjects: 1.052100 ms CreateObjectMapping: 0.660900 ms MarkObjects: 17.882900 ms  DeleteObjects: 5.134500 ms)
+
+[Licensing::Client] Successfully resolved entitlement details
+Entering Playmode with Reload Domain disabled.
+If you experience any issues, please disable "Enter Play Mode Options" in Editor Settings
+Loaded scene 'Temp/__Backupscenes/0.backup'
+	Deserialize:            3.157 ms
+	Integration:            76.000 ms
+	Integration of assets:  0.005 ms
+	Thread Wait Time:       0.026 ms
+	Total Operation Time:   79.188 ms
+Crush Hour: 18 person models loaded, 18 animated.
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+CrushHour.CrushHourGame:LoadPersonModels () (at Assets/Scripts/CrushHour/CrushHourGame.cs:233)
+CrushHour.CrushHourGame:Start () (at Assets/Scripts/CrushHour/CrushHourGame.cs:208)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 233)
+
+[ScriptCompilation] Requested script compilation because: AssetDatabase observed changes in script compilation related files
+Refreshing native plugins compatible for Editor in 2.56 ms, found 3 plugins.
+Asset Pipeline Refresh (id=5afac0c9e1bb8e547aacaa323c49e001): Total: 0.124 seconds - Initiated by RefreshV2(NoUpdateAssetOptions)
+[Licensing::Client] Successfully resolved entitlement details
+Starting: C:\Program Files\Unity\Hub\Editor\6000.6.6f1\Editor\Data\Tools\BuildPipeline\bee_backend.exe --ipc --defer-dag-verification --dagfile="Library/Bee/1900b0aE.dag" --continue-on-failure --profile="Library/Bee/backend1.traceevents" ScriptAssemblies
+WorkingDir: C:/Users/Tutu/Crush Hour 2
+[Licensing::Client] Successfully resolved entitlement details
+Unloading 0 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Temp/__Backupscenes/0.backup'
+	Deserialize:            0.920 ms
+	Integration:            43.067 ms
+	Integration of assets:  0.009 ms
+	Thread Wait Time:       0.060 ms
+	Total Operation Time:   44.055 ms
+Unloading 14 unused Assets / (0.5 MB). Loaded Objects now: 9084.
+Memory consumption went from 0.60 GB to 0.60 GB.
+Total: 27.779800 ms (FindLiveObjects: 1.083300 ms CreateObjectMapping: 0.753800 ms MarkObjects: 25.009300 ms  DeleteObjects: 0.331800 ms)
+
+[Licensing::Client] Successfully resolved entitlement details
+ExitCode: 0 Duration: 4s835ms
+[631/802    0s] ILPP-Configuration Library/ilpp-configuration.nevergeneratedoutput
+[794/802    3s] Csc Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp.dll (+2 others)
+[795/802    0s] ILPostProcess Library/Bee/artifacts/1900b0aE.dag/post-processed/Assembly-CSharp.dll (+pdb)
+Processing assembly Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp.dll, with 148 defines and 336 references
+
+processors: Unity.Jobs.CodeGen.JobsILPostProcessor, zzzUnity.Burst.CodeGen.BurstILPostProcessor
+
+1 processor(s) skipped this assembly
+
+running Unity.Jobs.CodeGen.JobsILPostProcessor
+[796/802    0s] CopyFiles Library/ScriptAssemblies/Assembly-CSharp.pdb
+[797/802    0s] Csc Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp-Editor.dll (+2 others)
+[798/802    0s] CopyFiles Library/ScriptAssemblies/Assembly-CSharp.dll
+[799/802    0s] ILPostProcess Library/Bee/artifacts/1900b0aE.dag/post-processed/Assembly-CSharp-Editor.dll (+pdb)
+Processing assembly Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp-Editor.dll, with 146 defines and 356 references
+
+processors: Unity.Jobs.CodeGen.JobsILPostProcessor, zzzUnity.Burst.CodeGen.BurstILPostProcessor
+
+1 processor(s) skipped this assembly
+
+running Unity.Jobs.CodeGen.JobsILPostProcessor
+[800/802    0s] CopyFiles Library/ScriptAssemblies/Assembly-CSharp-Editor.pdb
+[801/802    0s] CopyFiles Library/ScriptAssemblies/Assembly-CSharp-Editor.dll
+*** Tundra build success (4.79 seconds), 9 items updated, 802 evaluated
+Total cache size 78629572
+Total cache size after purge 78629572, took 00:00:00.2085447
+Reloading assemblies after finishing script compilation.
+Reloading assemblies after forced synchronous recompile.
+Begin MonoManager ReloadAssembly
+Refreshing native plugins compatible for Editor in 2.39 ms, found 3 plugins.
+Native extension for WindowsStandalone target not found
+Native extension for WebGL target not found
+[MODES] ModeService[none].Initialize
+[MODES] ModeService[none].LoadModes
+ScheduleIndexationOnStartup MainProcess:True IndexOnStartup:True
+Scripting: successfully reloaded assembly
+- Finished resetting the current domain, in  3.205 seconds
+Domain Reload Profiling: 4742ms
+	BeginReloadAssembly (795ms)
+		DisableScriptedObjects (176ms)
+		CreateAndSetChildDomain (262ms)
+	RebuildCommonClasses (21ms)
+	RebuildNativeTypeToScriptingClass (24ms)
+	initialDomainReloadingComplete (99ms)
+	LoadAllAssembliesAndSetupDomain (597ms)
+		LoadAssemblies (213ms)
+		TypeCache.Refresh (13ms)
+		AnalyzeDomain (230ms)
+			BuildScriptInfoCaches (220ms)
+			ResolveRequiredComponents (7ms)
+	FinalizeReload (3207ms)
+		SetupLoadedEditorAssemblies (0ms)
+			LogAssemblyErrors (3ms)
+			InitializePlatformSupportModulesInManaged (4ms)
+			BeforeProcessingInitializeOnLoad (293ms)
+			ProcessInitializeOnLoadAttributes (510ms)
+			ProcessInitializeOnLoadMethodAttributes (138ms)
+			AfterProcessingInitializeOnLoad (11ms)
+		AwakeInstancesAfterBackupRestoration (1153ms)
+
+Asset Pipeline Refresh (id=0dc36d5bce1bf0e4288d2b6dfd7d4e83): Total: 5.070 seconds - Initiated by StopAssetImportingV2(ForceSynchronousImport | ForceDomainReload)
+	(Values over 0.05ms)
+	Summary:
+		Imports: total=0 (actual=0, local cache=0, cache server=0)
+		Asset DB Process Time: managed=0 ms, native=3372 ms
+		Asset DB Callback time: managed=59 ms, native=1 ms
+		Scripting: domain reloads=1, domain reload time=1634 ms, compile time=3 ms, other=0 ms
+		Project Asset Count: scripts=1093, non-scripts=2164
+		Asset File Changes: new=0, changed=0, moved=0, deleted=0
+		Scan Filter Count: 0
+	InvokePackagesCallback: 3.802ms
+	ApplyChangesToAssetFolders: 0.461ms
+	Collect global state as custom dependencies: 5.548ms
+	ProcessAssetsWithTransientArtifactChanges: 4.179ms
+	CategorizeAssets: 59.333ms
+	CompileScripts: 2.660ms
+	ImportOutOfDateAssets: 3219.323ms (3216.339ms without children)
+		CollectScriptTypesHashes: 1.413ms
+		ReloadNativeAssets: 1.140ms
+		UnloadImportedAssets: 0.294ms
+		EnsureUptoDateAssetsAreRegisteredWithGuidPM: 0.978ms
+		ImportSchedulerStart: 0.548ms
+	PostProcessAllAssets: 59.739ms
+		MonoPostProcessAllAssets: 59.733ms
+			UniversalRenderPipelineGlobalSettingsPostprocessor.OnPostprocessAllAssets 26.727ms
+			AssetChangedListener.OnPostprocessAllAssets 10.578ms
+			BuilderAssetPostprocessor.OnPostprocessAllAssets 7.510ms
+			SyncVS.PostprocessSyncProject 6.271ms
+			AssetPostprocessor.OnPostprocessAllAssets 5.451ms
+			WindowAssetPostprocessingWatcher.OnPostprocessAllAssets 3.580ms
+			SpeedTree9Postprocessor.OnPostprocessAllAssets 3.186ms
+			ShaderGraphAssetPostProcessor.OnPostprocessAllAssets 2.340ms
+			RetainedModeAssetPostprocessor.OnPostprocessAllAssets 1.460ms
+			ProjectSettingsPostprocessor.OnPostprocessAllAssets 1.324ms
+			RenderPipelineGlobalSettingsPostprocessor.OnPostprocessAllAssets 1.302ms
+			EditModeScopePostprocessor.OnPostprocessAllAssets 1.194ms
+			ArtifactBrowserPostProcessor.OnPostprocessAllAssets 0.843ms
+			ConfigAssetsTracker.OnPostprocessAllAssets 0.814ms
+			MaterialPostprocessor.OnPostprocessAllAssets 0.761ms
+			TMPro_TexturePostProcessor.OnPostprocessAllAssets 0.751ms
+			PostProcessor.OnPostprocessAllAssets 0.690ms
+			ShaderReflectionAssetPostProcessor.OnPostprocessAllAssets 0.663ms
+			TextAssetPostProcessor.OnPostprocessAllAssets 0.576ms
+			AudioMixerPostprocessor.OnPostprocessAllAssets 0.501ms
+			UVCSAssetPostprocessor.OnPostprocessAllAssets 0.480ms
+			InputActionAssetPostprocessor.OnPostprocessAllAssets 0.453ms
+			InputActionJsonNameModifierAssetProcessor.OnPostprocessAllAssets 0.401ms
+			ReferencedClipsPostProcessor.OnPostprocessAllAssets 0.374ms
+			AssetEvents.OnPostprocessAllAssets 0.303ms
+			StyleCatalogPostProcessor.OnPostprocessAllAssets 0.298ms
+			SpeedTreePostProcessor.OnPostprocessAllAssets 0.266ms
+			TerrainToolbarOverlayPostProcessor.OnPostprocessAllAssets 0.264ms
+			AssetDatabaseCallbacks.OnPostprocessAllAssets 0.218ms
+			ThemePostprocessor.OnPostprocessAllAssets 0.205ms
+			AssetReloadNotifier.OnPostprocessAllAssets 0.197ms
+			ScenarioDriftAssetsTracker.OnPostprocessAllAssets 0.186ms
+			AudioContainerPostProcessor.OnPostprocessAllAssets 0.102ms
+	GatherAllCurrentPrimaryImportResultRevisions: 0.516ms
+	PersistCurrentRevisions: 0.112ms
+	GenerateScriptTypeHashes: 2.639ms
+	GenerateScriptTypeSerializationHashes: 4.564ms
+	Untracked: 1677.106ms
+
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Client] Successfully resolved entitlement details
+Entering Playmode with Reload Domain disabled.
+If you experience any issues, please disable "Enter Play Mode Options" in Editor Settings
+Loaded scene 'Temp/__Backupscenes/0.backup'
+	Deserialize:            10.387 ms
+	Integration:            110.344 ms
+	Integration of assets:  0.026 ms
+	Thread Wait Time:       0.013 ms
+	Total Operation Time:   120.770 ms
+Crush Hour: 18 person models loaded, 18 animated.
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+CrushHour.CrushHourGame:LoadPersonModels () (at Assets/Scripts/CrushHour/CrushHourGame.cs:231)
+CrushHour.CrushHourGame:Start () (at Assets/Scripts/CrushHour/CrushHourGame.cs:206)
+
+(Filename: Assets/Scripts/CrushHour/CrushHourGame.cs Line: 231)
+
+Unloading 0 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Temp/__Backupscenes/0.backup'
+	Deserialize:            1.763 ms
+	Integration:            23.846 ms
+	Integration of assets:  0.004 ms
+	Thread Wait Time:       0.028 ms
+	Total Operation Time:   25.641 ms
+Unloading 12 unused Assets / (287.2 KB). Loaded Objects now: 9114.
+Memory consumption went from 0.60 GB to 0.60 GB.
+Total: 20.314200 ms (FindLiveObjects: 1.336400 ms CreateObjectMapping: 0.432600 ms MarkObjects: 17.783100 ms  DeleteObjects: 0.240700 ms)
+
+[Licensing::Client] Successfully resolved entitlement details
+Importing 'GUID: 00000000000000009000000000000000 - Path: ProjectSettings/QualitySettings.asset' with importer (LibraryAssetImporter)
+Imported 'GUID: 00000000000000009000000000000000' -> (Import Result ID: '4c4863529adc9ac14970731e8a5da60e') in 0.007 seconds [static dependencies only]. Details - ImportResultOutputID=2a108b3da874f726c62fbe5f12be4a8a DependenciesID=e27b047e3559935d81d11e8d5dd7411e StaticDependenciesID=a4661aca7a2be7b6d5e28438e344ffeb 
+Refreshing native plugins compatible for Editor in 2.21 ms, found 3 plugins.
+Asset Pipeline Refresh (id=4e08702f19a42e646a40c8a8028a2b52): Total: 0.072 seconds - Initiated by StopAssetImportingV2(NoUpdateAssetOptions)
+[Licensing::Client] Successfully resolved entitlement details

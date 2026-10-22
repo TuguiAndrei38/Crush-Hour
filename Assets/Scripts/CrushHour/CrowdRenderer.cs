@@ -312,7 +312,7 @@ namespace CrushHour
     public class CrowdRenderer : System.IDisposable
     {
         const int Batch = 1023;
-        const int StateCount = 6;
+        const int StateCount = 7;
         const float WalkStride = 1.4f, RunStride = 2.6f; // metres per animation cycle
 
         [StructLayout(LayoutKind.Sequential)]
@@ -347,7 +347,7 @@ namespace CrushHour
         public bool Animated { get; }
         public bool ShowMarkers { get; set; } = true;
 
-        /// <param name="stateParams">Calm, following directions, alarmed, panicking, injured, panic attack.</param>
+        /// <param name="stateParams">Calm, following directions, alarmed, panicking, injured, panic attack, intoxicated by smoke.</param>
         public CrowdRenderer(CrowdSimulation sim, Mesh cube, RenderParams[] stateParams, IReadOnlyList<PersonModel> models, Bounds bounds, System.Random rng)
         {
             this.sim = sim;
@@ -419,11 +419,11 @@ namespace CrushHour
                 Vector2 p = sim.position[i], v = sim.velocity[i];
                 float speed = v.magnitude;
                 if (speed > 0.15f) facing[i] = Mathf.LerpAngle(facing[i], Mathf.Atan2(v.x, v.y) * Mathf.Rad2Deg, turn);
-                bool down = s == 4, attack = s == 5;
+                bool down = s == 4, attack = s == 5, choking = s == 6;
 
                 if (!UsesModels)
                 {
-                    var scale = down ? cubeLying : attack ? new Vector3(0.5f, 0.55f, 0.5f) : cubeUpright;
+                    var scale = down ? cubeLying : attack ? new Vector3(0.5f, 0.55f, 0.5f) : choking ? new Vector3(0.42f, 0.8f, 0.42f) : cubeUpright;
                     cubes[s][cubeCounts[s]++] = Matrix4x4.TRS(new Vector3(p.x, scale.y * 0.5f, p.y), Quaternion.Euler(0f, facing[i], 0f), scale);
                     continue;
                 }
@@ -439,6 +439,10 @@ namespace CrushHour
                 else if (attack)
                 {
                     bodyScale = new Vector3(1.1f, 0.6f, 1.1f); // doubled over
+                }
+                else if (choking)
+                {
+                    bodyScale = new Vector3(1f, 0.85f, 1f); // stooping, coughing
                 }
 
                 var group = groups[modelOf[i]];
