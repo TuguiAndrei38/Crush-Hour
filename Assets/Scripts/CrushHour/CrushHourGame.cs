@@ -18,6 +18,8 @@ namespace CrushHour
         enum Tool { Command, Barrier }
         enum Role { Patrolman, Megaphone }
         enum Severity { Info, Good, Warning, Danger }
+        /// <summary>Escorting a drunk person: walking to them, walking them to a door, walking back to the post.</summary>
+        enum EscortPhase { None, Fetching, Escorting, Returning }
         /// <summary>Zone order directions, relative to the way the patrolman is facing.</summary>
         enum OrderSide { Front, Back, Left, Right }
 
@@ -39,6 +41,13 @@ namespace CrushHour
             /// <summary>Patrolmen: the door their last zone order sent people to (-1 none), drawn as a big ground arrow.</summary>
             public int orderDoor = -1;
             public LineRenderer orderArrow;
+            /// <summary>Where the unit started (its post); it walks back here after an escort.</summary>
+            public Vector2 home;
+            public EscortPhase escortPhase;
+            /// <summary>Drunk person being fetched or escorted (-1 none), and the door they're being taken to.</summary>
+            public int escortee = -1, escortDoor = -1;
+            public float repathTimer;
+            public Vector2 heading = Vector2.up;
             public Transform wave;          // megaphone announcement ripple
             public float announceTimer, waveTime = 1f;
             public bool hasAnnounced;
@@ -79,7 +88,8 @@ namespace CrushHour
         /// crowd settings instead of silently keeping stale serialized ones.
         /// </summary>
         // Version 5: one patrolman per zone replaces the 4 stewards (crowd.patrolRadius is new).
-        const int CurrentSettingsVersion = 5;
+        // Version 6: drunk people (crowd.drunkFraction 0.02 and friends).
+        const int CurrentSettingsVersion = 6;
         [SerializeField, HideInInspector] int settingsVersion;
 
         void OnValidate() => UpgradeSettings();
@@ -376,7 +386,7 @@ namespace CrushHour
 
         Unit SpawnUnit(Role role, int index, Vector2 post)
         {
-            var unit = new Unit { role = role, number = index + 1, position = post };
+            var unit = new Unit { role = role, number = index + 1, position = post, home = post };
             var root = unit.root = new GameObject(unit.Name).transform;
             root.SetParent(world, false);
             root.position = new Vector3(post.x, 0f, post.y);
@@ -554,6 +564,7 @@ namespace CrushHour
 
             venue.UpdateDoorFields(3);
             MoveUnits(dt);
+            UpdateEscorts(dt);
             sim.Step(dt, venue, incidentStarted);
             sim.ApplyStewards(patrolPositions, dt, incidentStarted, crowd.patrolRadius);
             if (!incidentStarted) return;
@@ -688,7 +699,7 @@ namespace CrushHour
         {
             foreach (var u in units)
             {
-                if (u.role != Role.Megaphone) continue;
+                if (u.role != Role.Megaphone || u.escortPhase == EscortPhase.Escorting) continue; // hands full
                 u.announceTimer -= dt;
                 if (u.announceTimer > 0f) continue;
                 u.announceTimer = policeAnnounceInterval;
@@ -705,7 +716,8 @@ namespace CrushHour
             patrolPositions.Clear();
             foreach (var u in units)
             {
-                float budget = (u.role == Role.Patrolman ? patrolSpeed : policeSpeed) * dt;
+                float budget = UnitSpeed(u) * dt;
+                if (u.path.Count > 0 && (u.path[0] - u.position).sqrMagnitude > 1e-4f) u.heading = (u.path[0] - u.position).normalized;
                 while (budget > 0f && u.path.Count > 0)
                 {
                     Vector2 delta = u.path[0] - u.position;
@@ -722,7 +734,157 @@ namespace CrushHour
                         budget = 0f;
                     }
                 }
-                if (u.role == Role.Patrolman) patrolPositions.Add(u.position);
+                // While walking someone out, the unit isn't calming anyone.
+                if (u.role == Role.Patrolman && u.escortPhase != EscortPhase.Escorting) patrolPositions.Add(u.position);
+            }
+        }
+
+        float UnitSpeed(Unit u) =>
+            (u.role == Role.Patrolman ? patrolSpeed : policeSpeed) * (u.escortPhase == EscortPhase.Escorting ? EscortSpeedFactor : 1f);
+
+        const float EscortPickupRange = 3f, EscortSpeedFactor = 0.7f, EscortFollowGap = 1f;
+
+        /// <summary>Starts an escort: the unit takes the drunk person now if within 3 m, otherwise walks to them first.</summary>
+        void StartEscort(int unitIndex, int person)
+        {
+            var u = units[unitIndex];
+            CancelEscort(u);
+            for (int k = 0; k < units.Count; k++)
+                if (units[k].escortee == person) CancelEscort(units[k]); // someone else was on it
+            u.escortee = person;
+            if ((sim.position[person] - u.position).sqrMagnitude <= EscortPickupRange * EscortPickupRange) BeginWalkOut(unitIndex);
+            else
+            {
+                u.escortPhase = EscortPhase.Fetching;
+                u.repathTimer = 0f;
+                Log($"{u.Name} is going to get a drunk fan out.");
+            }
+        }
+
+        /// <summary>Takes the person by the arm and heads for the nearest open door (by walking distance).</summary>
+        void BeginWalkOut(int unitIndex)
+        {
+            var u = units[unitIndex];
+            int person = u.escortee;
+            sim.SetEscort(person, unitIndex);
+            u.escortPhase = EscortPhase.Escorting;
+            if (!RouteToNearestDoor(u))
+            {
+                Log($"{u.Name} can't find an open exit to take them to. Open a gate.", Severity.Warning);
+                CancelEscort(u);
+                return;
+            }
+            Log($"{u.Name} is walking a drunk fan out via {venue.doors[u.escortDoor].name}.", Severity.Good);
+        }
+
+        /// <summary>Paths the unit to the open door it can reach by the shortest walk (to a cell just inside it).</summary>
+        bool RouteToNearestDoor(Unit u)
+        {
+            int cell = FestivalVenue.CellAt(u.position), bestDoor = -1;
+            float best = float.PositiveInfinity;
+            for (int d = 0; d < venue.doors.Count; d++)
+            {
+                var door = venue.doors[d];
+                if (!door.IsOpen || !door.field.Reachable(cell) || door.field.distance[cell] >= best) continue;
+                best = door.field.distance[cell];
+                bestDoor = d;
+            }
+            if (bestDoor < 0) return false;
+            var target = venue.doors[bestDoor];
+            int approach = -1;
+            float nearest = float.MaxValue;
+            foreach (int a in target.approach)
+            {
+                if (!venue.IsWalkable(a)) continue;
+                float sq = (FestivalVenue.CellCenter(a) - target.Center).sqrMagnitude;
+                if (sq < nearest) { nearest = sq; approach = a; }
+            }
+            if (approach < 0) return false;
+            var path = venue.FindPath(u.position, FestivalVenue.CellCenter(approach));
+            if (path == null) return false;
+            u.path.Clear();
+            u.path.AddRange(path);
+            u.escortDoor = bestDoor;
+            return true;
+        }
+
+        /// <summary>Drops an escort (the person goes back to wandering) without sending the unit anywhere.</summary>
+        void CancelEscort(Unit u)
+        {
+            if (u.escortee >= 0 && sim.escortedBy[u.escortee] >= 0) sim.SetEscort(u.escortee, -1);
+            u.escortee = -1;
+            u.escortDoor = -1;
+            if (u.escortPhase != EscortPhase.Returning) u.escortPhase = EscortPhase.None;
+        }
+
+        void ReturnToPost(Unit u)
+        {
+            u.escortee = -1;
+            u.escortDoor = -1;
+            u.escortPhase = EscortPhase.Returning;
+            var path = venue.FindPath(u.position, u.home);
+            u.path.Clear();
+            if (path != null) u.path.AddRange(path);
+        }
+
+        /// <summary>Runs every simulation step after MoveUnits: fetching, walking people out (1 m behind), returning.</summary>
+        void UpdateEscorts(float dt)
+        {
+            for (int k = 0; k < units.Count; k++)
+            {
+                var u = units[k];
+                switch (u.escortPhase)
+                {
+                    case EscortPhase.Fetching:
+                    {
+                        int person = u.escortee;
+                        if (person < 0 || sim.state[person] != AgentState.Active) { CancelEscort(u); break; }
+                        if ((sim.position[person] - u.position).sqrMagnitude <= EscortPickupRange * EscortPickupRange)
+                        {
+                            BeginWalkOut(k);
+                            break;
+                        }
+                        u.repathTimer -= dt;
+                        if (u.repathTimer <= 0f || u.path.Count == 0)
+                        {
+                            u.repathTimer = 1f; // they stagger about, so keep re-aiming
+                            var path = venue.FindPath(u.position, sim.position[person]);
+                            u.path.Clear();
+                            if (path != null) u.path.AddRange(path);
+                        }
+                        break;
+                    }
+                    case EscortPhase.Escorting:
+                    {
+                        int person = u.escortee;
+                        if (person < 0 || sim.state[person] != AgentState.Active)
+                        {
+                            // Hurt on the way (or already out): go back.
+                            CancelEscort(u);
+                            ReturnToPost(u);
+                            break;
+                        }
+                        if (u.escortDoor < 0 || !venue.doors[u.escortDoor].IsOpen)
+                        {
+                            if (!RouteToNearestDoor(u)) { CancelEscort(u); ReturnToPost(u); break; }
+                        }
+                        float speed = UnitSpeed(u);
+                        sim.SetEscortTarget(person, u.position - u.heading * EscortFollowGap, speed);
+                        bool arrived = u.path.Count == 0;
+                        bool together = (sim.position[person] - u.position).sqrMagnitude <= EscortPickupRange * EscortPickupRange;
+                        if (arrived && together)
+                        {
+                            string door = venue.doors[u.escortDoor].name;
+                            sim.EscortOut(person, u.escortDoor);
+                            Log($"{u.Name} got a drunk fan out via {door}. ({sim.DrunkInsideCount} drunk still inside)", Severity.Good);
+                            ReturnToPost(u);
+                        }
+                        break;
+                    }
+                    case EscortPhase.Returning:
+                        if (u.path.Count == 0) u.escortPhase = EscortPhase.None;
+                        break;
+                }
             }
         }
 
@@ -913,6 +1075,14 @@ namespace CrushHour
         void CommandClick(Vector2 ground, int cell)
         {
             int nearest = NearestUnit(ground, 1.5f);
+            // With someone selected, a click closer to a drunk person than to any unit means "escort them out".
+            int clickedDrunk = selectedUnit >= 0 ? sim.NearestDrunk(ground, 1.2f) : -1;
+            if (clickedDrunk >= 0 && (nearest < 0 ||
+                (sim.position[clickedDrunk] - ground).sqrMagnitude < (units[nearest].position - ground).sqrMagnitude))
+            {
+                StartEscort(selectedUnit, clickedDrunk);
+                return;
+            }
             if (nearest >= 0)
             {
                 selectedUnit = nearest;
@@ -928,6 +1098,11 @@ namespace CrushHour
 
             int index = selectedUnit >= 0 ? selectedUnit : NearestUnit(ground, float.MaxValue);
             if (index < 0) return;
+            if (units[index].escortPhase != EscortPhase.None)
+            {
+                CancelEscort(units[index]); // a new move order replaces the escort
+                units[index].escortPhase = EscortPhase.None;
+            }
             var path = venue.FindPath(units[index].position, ground);
             if (path == null)
             {
@@ -1127,6 +1302,8 @@ namespace CrushHour
                 var u = units[i];
                 u.root.position = new Vector3(u.position.x, 0f, u.position.y);
                 u.ring.widthMultiplier = i == selectedUnit ? 0.35f : 0.12f;
+                bool ringOn = u.escortPhase != EscortPhase.Escorting; // no calming while walking someone out
+                if (u.ring.enabled != ringOn) u.ring.enabled = ringOn;
                 if (u.orderDoor >= 0) UpdateOrderArrow(u);
                 if (u.wave == null) continue;
                 // Announcement ripple: grows from the officer to the edge of earshot.
@@ -1524,7 +1701,13 @@ namespace CrushHour
                 {
                     var u = units[i];
                     if (u.role != role) continue;
-                    string status = u.path.Count > 0 ? "on the move" : u.role == Role.Megaphone && incidentStarted ? "announcing" : "in position";
+                    string status = u.escortPhase switch
+                    {
+                        EscortPhase.Fetching => "fetching drunk",
+                        EscortPhase.Escorting => "escorting",
+                        EscortPhase.Returning => "returning",
+                        _ => u.path.Count > 0 ? "on the move" : u.role == Role.Megaphone && incidentStarted ? "announcing" : "in position",
+                    };
                     if (GUILayout.Button(u.Name, i == selectedUnit ? rowSelectedStyle : rowStyle, GUILayout.Height(30))) SelectUnit(i, true);
                     var row = GUILayoutUtility.GetLastRect();
                     Swatch(new Rect(row.x + 10, row.y + 9, 12, 12), UnitColor(u));
@@ -1731,6 +1914,13 @@ namespace CrushHour
                 text = $"{free} barrier sections ({barrierBudget - barriersUsed} left)";
             }
             else if (hovered >= 0) text = $"<b>{units[hovered].Name}</b>\n{RoleDescription(units[hovered].role)}";
+            else if (sim.NearestDrunk(ground, 1.2f) is int drunkPerson && drunkPerson >= 0)
+            {
+                int by = sim.escortedBy[drunkPerson];
+                text = by >= 0 && by < units.Count ? $"<b>Drunk</b>: being walked out by {units[by].Name}."
+                    : selectedUnit >= 0 ? $"<b>Drunk \u2013 needs escort</b>\nClick to have {units[selectedUnit].Name} walk them out."
+                    : "<b>Drunk \u2013 needs escort</b>\nSelect a patrol or police officer, then click them.";
+            }
             else if (gate != null) text = $"<b>{gate.name}</b>: {GateStatus(gate).ToLowerInvariant()}. Click to {(gate.open ? "close" : "open")} it.";
             else
             {

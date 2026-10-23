@@ -68,12 +68,13 @@ Both scenes are set up by editor scripts (see below), not by hand.
     - `PickOrderDoor(region, direction, venue)` is the same choice without ordering anyone (UI previews). `CountInRegion(region, venue)` counts active people standing in a region.
     - `ChooseDoor` returns the ordered door first, as long as it's open, reachable, not in `doorsFoundShut`, and the person's panic is at most 0.8. Otherwise the normal choice applies. The order isn't cleared: if a closed gate reopens, people follow it again.
     - People next to the fire still run from it first (`hasFled`), and panicked people don't reconsider their door (the 2 s retarget only happens below 0.8 panic), so an order mostly steers calm people.
-  - **Drunk people** (`drunk[]`): each person is drunk with chance `drunkFraction` (0.05), ×`drunkDrinksMultiplier` (3) in the Drinks zone, so a bit over 5% overall (`AssignDrunks`, right after `Spawn`; it uses the rng, so it shifts every seed compared with older runs).
+  - **Drunk people** (`drunk[]`): each person is drunk with chance `drunkFraction` (0.02, about 45 people; it was 0.05 and left ~130 inside, more than the team can walk out), ×`drunkDrinksMultiplier` (3) in the Drinks zone (`AssignDrunks`, right after `Spawn`; it uses the rng, so it shifts every seed compared with older runs).
     - They ignore staff: `ApplyStewards` and `PoliceAnnouncement` skip them, `Inform` returns at once, and zone orders leave them out. They never become `evacuating` (the awareness rules and panic > 0.3 skip them).
     - Panic target × `drunkPanicFactor` (0.5).
     - Movement (`DrunkVelocity`): within `fleeDistance` of the fire they run along `fleeDirection`; otherwise they wander at half pace on a Perlin heading and drift back once more than 6 m from their spot. Always at `drunkSpeed` (60%) with a ±35° zig-zag. The noise is deterministic (no rng).
     - They don't leave on their own. `DrunkInsideCount` counts the ones still inside, and `SoberActiveCount` = `ActiveCount` − `DrunkInsideCount`. The game and the baseline end the round on sober people (all sober out, or all sober evacuating with no progress for 20 s).
     - Display state 7 ("Drunk", light purple `AgentColors[7]`); `CrowdRenderer.StateCount` is 8.
+    - **Escorts:** `escortedBy[i]` is the game's unit index (-1 none). An escorted person walks to the point set by `SetEscortTarget` (1 m behind the unit) at the given speed, ×1.3 when more than 1.5 m behind, and stands still within 0.3 m. `EscortOut(i, door)` makes them Safe and counts the exit. `NearestDrunk(p, max)` finds the active drunk person nearest a point.
   - **Exit tracking:** `exitDoor[i]` is the door each person left through (nearest door centre when they reach the safe zone; -1 while inside or injured), and `exitsByDoor[d]` counts them.
   - Panicked people (above 0.8) don't reconsider their door (tunnel vision).
   - **Panic** rises towards a target, the highest of:
@@ -116,11 +117,18 @@ Both scenes are set up by editor scripts (see below), not by hand.
       - `UpdateOrderArrow` draws a big ground arrow (zone colour, width 0.55) from the patrol to that door. It follows the patrol and is hidden while the door is shut.
       - Right-click on the map with a patrol selected turns it to face that spot (`SetFacing`); otherwise right-click deselects as before.
       - While a patrol is selected, the arrow keys don't pan the camera (`TopDownCamera.arrowKeysPan`, set every frame); WASD still does.
+      - **Escorts** (`EscortPhase`, `UpdateEscorts`, run after `MoveUnits` every step): with a unit selected (patrol or police), clicking a drunk person (within 1.2 m of the click, and closer than any unit) calls `StartEscort`.
+        - Within 3 m the unit takes them at once (`BeginWalkOut`). Otherwise it goes to fetch them first (`Fetching`, re-pathing every 1 s because they wander).
+        - `RouteToNearestDoor` picks the open door with the shortest walk (`door.field.distance`) and paths to its approach cell nearest the door centre (`FindPath` can't end outside).
+        - While `Escorting`, the unit moves at ×0.7 speed, its ring is hidden, and it calms nobody (a patrol isn't in `patrolPositions`; police don't announce). The person follows 1 m behind along `unit.heading`. If the door shuts, it re-routes.
+        - At the door, once the person is within 3 m, `sim.EscortOut` and the unit returns to its `home` post (`Returning`).
+        - A new move order cancels the escort (the person goes back to wandering). If the person gets hurt, the unit goes back. If another unit takes over, the first one drops it.
+        - The roster shows "fetching drunk" / "escorting" / "returning". Hovering a drunk person shows "Drunk – needs escort" (or who is walking them out).
       - The panel is plain `GUI` (no `GUILayout`), and the unit it shows (`orderPanelUnit`) is fixed at the Layout event, so selecting someone mid-frame can't break IMGUI. Buttons queue `OrderZone` through `deferred`.
   - Tools: command (units and gates) and barriers (budget 60). Also scoring (−10 per panic attack, −25 per sober person still inside, −50 per drunk person left inside) and stars (3 stars also need no drunk person left inside). Results show "Still inside" (sober) and "Drunk left inside". Game speed is 1× or 2× (`Speeds`).
   - The simulation runs on a fixed 0.04 s step, at most 6 steps per frame.
   - Voxel smoke: a pool of up to 160 unlit grey cubes rising from random fire cells and drifting with `Wind`. Ember spot fires are logged.
-  - **Settings version:** every Inspector value is saved in the scene and overrides code defaults. When you retune defaults, bump `CurrentSettingsVersion`; `UpgradeSettings` (run from `OnValidate` and `Awake`) then resets the team size, `maxFireCells` and `crowd` in older scenes. Version 3 fixed a scene stuck on 6 stewards, a 160-cell fire and old crowd settings. Version 4 applies the 400-cell fire and the new crowd settings. Version 5: zone patrolmen replace the stewards (`stewardCount` is gone; `stewardSpeed` became `patrolSpeed` via `FormerlySerializedAs`), and `crowd.patrolRadius` is new.
+  - **Settings version:** every Inspector value is saved in the scene and overrides code defaults. When you retune defaults, bump `CurrentSettingsVersion`; `UpgradeSettings` (run from `OnValidate` and `Awake`) then resets the team size, `maxFireCells` and `crowd` in older scenes. Version 3 fixed a scene stuck on 6 stewards, a 160-cell fire and old crowd settings. Version 4 applies the 400-cell fire and the new crowd settings. Version 5: zone patrolmen replace the stewards (`stewardCount` is gone; `stewardSpeed` became `patrolSpeed` via `FormerlySerializedAs`), and `crowd.patrolRadius` is new. Version 6: drunk people (`crowd.drunkFraction` 0.02 and the other drunk settings).
   - **UI** (IMGUI) is scaled by `Screen.height / 900` through `GUI.matrix`. All layout uses the virtual `vw`×`vh` size, and `guiRects` are in virtual units (`IsOverGui` converts).
     - Rounded panels and buttons use procedurally generated textures (`Rounded`, cached).
     - Zones view (`showRegions`, on by default, toggle with G or the "Zones [G]" button): `DrawRegionOutlines` tints 1-cell region borders on the ground texture (only the cell whose right or upper neighbour is in another region, so lines stay 1 m wide), `DrawWorldLabels` adds "<NAME> ZONE" at each region's post, and the map tooltip ends with the zone name.
@@ -250,9 +258,10 @@ What it shows:
   - Step 2: a patrolman per zone replaces the stewards; `Tools~/Verify/verify.ps1` added.
   - Step 3a: `OrderRegionEvacuation` and `orderedDoor` in the simulation, plus per-door exit counts and the zone order test.
   - Step 3b: zone order UI (panel, arrow keys, right-click to turn, ground arrow, feed message, 5 s cooldown per zone). Not play-tested in the editor yet.
-  - Step 4: drunk people (simulation, display, legend, results, round end on sober people). Baseline with drunks: see "Balance baseline". Not play-tested yet. Step 5 (escorting them out) is next, so for now every drunk person left inside costs 50 points.
+  - Step 4: drunk people (simulation, display, legend, results, round end on sober people). Baseline with drunks: see "Balance baseline". Not play-tested yet. A first test run at drunkFraction 0.05 left about 130 drunk people inside.
   - Steps 1 and 2 pass the compile check (`verify.ps1`). The version 5 baseline is in "Balance baseline" (run from the Unity menu, because Windows Application Control blocks the standalone program on the dev machine).
-  - Next: escorting drunk people, difficulty presets, a start menu.
+  - Step 5: patrols and police escort drunk people out (click them with a unit selected); drunkFraction lowered to 0.02 (settings version 6). Not play-tested yet.
+  - Next: difficulty presets, a start menu.
 - The crowd simulation, UI and editor scripts compile and the simulation is tuned headless. The VAT shader and baking still need checking inside the editor (see "Verifying without the editor", step 3).
 - Patrolmen and police are still drawn as cubes. They could use person models with a tinted material.
 - The crowd casts no shadows in VAT mode (the shader has no ShadowCaster pass).

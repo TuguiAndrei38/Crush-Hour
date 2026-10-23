@@ -69,7 +69,7 @@ namespace CrushHour
 
         [Header("Drunk people")]
         [Tooltip("Share of the crowd that is drunk (3x as likely in the Drinks zone). They ignore staff, police and zone orders and won't leave on their own: they have to be escorted out.")]
-        [Range(0f, 0.5f)] public float drunkFraction = 0.05f;
+        [Range(0f, 0.5f)] public float drunkFraction = 0.02f;
         [Tooltip("How much more likely someone in the Drinks zone is to be drunk.")]
         public float drunkDrinksMultiplier = 3f;
         [Tooltip("Drunk walking speed as a share of normal.")]
@@ -130,6 +130,13 @@ namespace CrushHour
         /// and otherwise wanders. They don't leave on their own.
         /// </summary>
         public readonly bool[] drunk;
+        /// <summary>
+        /// Unit escorting this (drunk) person out (-1 none; the index is the game's). While escorted they walk to
+        /// <see cref="SetEscortTarget"/>'s point instead of wandering, and <see cref="EscortOut"/> takes them out at the door.
+        /// </summary>
+        public readonly int[] escortedBy;
+        readonly Vector2[] escortPoint;
+        readonly float[] escortSpeed;
         /// <summary>Door each person left through (-1 while inside, or injured).</summary>
         public readonly int[] exitDoor;
         /// <summary>How many people have left through each door (index into venue.doors).</summary>
@@ -211,6 +218,10 @@ namespace CrushHour
             sorted = new int[count];
             orderedDoor = new int[count];
             drunk = new bool[count];
+            escortedBy = new int[count];
+            escortPoint = new Vector2[count];
+            escortSpeed = new float[count];
+            Array.Fill(escortedBy, -1);
             exitDoor = new int[count];
             exitsByDoor = new int[venue.doors.Count];
             Array.Fill(targetDoor, -1);
@@ -746,6 +757,14 @@ namespace CrushHour
         /// </summary>
         Vector2 DrunkVelocity(int i, int c, Vector2 p, FestivalVenue venue, bool incident, int fd, float localDensity)
         {
+            if (escortedBy[i] >= 0)
+            {
+                // Being walked out: keep up with the escort (a little faster when falling behind, still when close).
+                Vector2 to = escortPoint[i] - p;
+                float gap = to.magnitude;
+                if (gap < 0.3f) return Vector2.zero;
+                return to / gap * (escortSpeed[i] * (gap > 1.5f ? 1.3f : 1f));
+            }
             Vector2 dir;
             float pace;
             if (incident && fd < settings.fleeDistance && venue.fleeDirection[c] != Vector2.zero)
@@ -877,6 +896,52 @@ namespace CrushHour
             for (int i = 0; i < count; i++)
                 if (state[i] == AgentState.Active && venue.regionOf[CellOf(position[i])] == region) n++;
             return n;
+        }
+
+        // ---------------------------------------------------------------- Escorts (driven by the game)
+
+        /// <summary>Starts (unit ≥ 0) or ends (-1) an escort of drunk person <paramref name="i"/>.</summary>
+        public void SetEscort(int i, int unit)
+        {
+            escortedBy[i] = unit;
+            if (unit >= 0) escortPoint[i] = position[i];
+        }
+
+        /// <summary>Where the escorted person should walk to this step (1 m behind the unit), and how fast.</summary>
+        public void SetEscortTarget(int i, Vector2 point, float speed)
+        {
+            escortPoint[i] = point;
+            escortSpeed[i] = speed;
+        }
+
+        /// <summary>The escort reached <paramref name="door"/>: the person is taken out and is safe.</summary>
+        public void EscortOut(int i, int door)
+        {
+            if (state[i] != AgentState.Active) return;
+            state[i] = AgentState.Safe;
+            attackTime[i] = 0f;
+            escortedBy[i] = -1;
+            exitDoor[i] = door;
+            if (door >= 0) exitsByDoor[door]++;
+            UpdateCounts();
+        }
+
+        /// <summary>The active drunk person nearest <paramref name="p"/> within <paramref name="maxDistance"/>, or -1.</summary>
+        public int NearestDrunk(Vector2 p, float maxDistance)
+        {
+            int best = -1;
+            float bestSq = maxDistance * maxDistance;
+            for (int i = 0; i < count; i++)
+            {
+                if (!drunk[i] || state[i] != AgentState.Active) continue;
+                float sq = (position[i] - p).sqrMagnitude;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = i;
+                }
+            }
+            return best;
         }
 
         static int NearestDoor(FestivalVenue venue, Vector2 p)
