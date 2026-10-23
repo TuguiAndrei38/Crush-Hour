@@ -6,7 +6,7 @@ Notes for coding agents working in this Unity project.
 
 - Unity **6000.6.6f1**, **URP 17** (PC renderer: Forward+, depth priming off), **Input System only** (`activeInputHandler: 1`, so the legacy `Input` class throws). Read devices directly (`Keyboard.current`, `Mouse.current`, `Gamepad.current`).
 - Git repo (GitHub, `.gitignore` excludes `Library/`, `Temp/`, `Logs/`, `UserSettings/`, `*.csproj`, `*.sln`); no asmdefs: runtime scripts compile into `Assembly-CSharp`, `Editor/` folders into `Assembly-CSharp-Editor`.
-- **Crush Hour** concept: you are the safety commander at a big event. When disaster hits, you guide the crowd out with barriers, emergency gates, stewards and megaphone police. There is no PA: the user had the announcement buttons removed. Panic spreads, doorways jam and dense pockets crush. You're scored on people out safely, injuries, panic attacks and time.
+- **Crush Hour** concept: you are the safety commander at a big event. When disaster hits, you guide the crowd out with barriers, emergency gates, a patrolman in every zone and megaphone police. There is no PA: the user had the announcement buttons removed. Panic spreads, doorways jam and dense pockets crush. You're scored on people out safely, injuries, panic attacks and time.
 - Third-party asset: **Low Poly People** by David Jalbert, in `Assets/DavidJalbert/LowPolyPeople/`.
   - 18 prefabs with Generic rigs. Animations live in `Prefabs/Animations/`: "normal/stout/strong" × "idle/walk/run/wave".
   - Materials are Built-in Standard palette textures.
@@ -79,7 +79,7 @@ Both scenes are set up by editor scripts (see below), not by hand.
     - don't build up stuck stress.
     A wider spacing (0.62 m) throttled the narrow entrances and pushed the jam, and the crushes, outside the ring.
   - Pressure is (standing density + 0.3 × fallen density) × panic factor, and crush damage builds above `crushThreshold`. Counting fallen people fully made crushes cascade, from 121 to 1,008 injured in one scenario. Fallen people push only weakly (0.15), so others can step over them.
-  - Unit effects: `ApplyStewards` and `PoliceAnnouncement` (one megaphone pulse). Both use the spatial hash from the last `Step`.
+  - Unit effects: `ApplyStewards` and `PoliceAnnouncement` (one megaphone pulse). Both use the spatial hash from the last `Step`. `ApplyStewards(positions, dt, incident, radius)` takes an optional ring radius; the game passes `patrolRadius` (6 m) for zone patrolmen, and without it the ring is `stewardRadius`.
 - `CrowdRenderer.cs`:
   - `PersonModel.Build` instantiates a character prefab and merges all its parts into one mesh, with feet at the origin and height `personHeight`.
   - With clips and the shader, it bakes **vertex animation textures (VAT)**:
@@ -93,11 +93,15 @@ Both scenes are set up by editor scripts (see below), not by hand.
 - `CrowdVAT.shader` (`CrushHour/CrowdVAT`): a URP HLSL shader with UniversalForward and DepthOnly passes. It reads `_Instances[SV_InstanceID]` and loads the two neighbouring frames from `_PositionTex`/`_NormalTex` by `SV_VertexID`. Lighting is main light plus a flat `_Ambient`, with no shadows. It is referenced from `CrushHourGame.crowdAnimationShader` so it's included in builds.
 - `CrushHourGame.cs`: a single MonoBehaviour that builds the whole scene at runtime.
   - Round phases: Planning → Live (fire after a random delay) → Results.
-  - Units (`Unit`, `Role`): 4 stewards (yellow, radius 6 m: calm people, then send them out in orderly queues) and 2 megaphone police (navy with a cyan cap; announce every 5 s within 14 m, with a ripple). They're selected from the roster or the map, then sent by clicking the map.
+  - Units (`Unit`, `Role`): they're selected from the roster or the map, then sent by clicking the map.
+    - **Zone patrolmen** (`Role.Patrolman`), one per region, spawned at `Region.post` with `homeRegion` set, named "<Zone> – Patrol". They replaced the 4 stewards and have the same effect (`ApplyStewards`, ring `crowd.patrolRadius`, 6 m): calm people, then send them out in orderly queues. Look: yellow body, cap in the zone colour.
+    - Each patrolman has a `facing` (grid x, y, unit length), drawn as a small arrow on the ground in the zone colour. It defaults to the zone's area centre, or the centre of the grounds when the post already is the area centre. Change it with `SetFacing(unit, direction)`, which also redraws the arrow. It doesn't affect the crowd yet (it will set the direction of zone evacuation orders).
+    - 2 megaphone police (`Role.Megaphone`; navy with a cyan cap): announce every 5 s within 14 m, with a ripple.
+    - The roster groups them: "ZONE PATROLS" (swatch in the zone colour), then "MEGAPHONE POLICE".
   - Tools: command (units and gates) and barriers (budget 60). Also scoring (−10 per panic attack) and stars. Game speed is 1× or 2× (`Speeds`).
   - The simulation runs on a fixed 0.04 s step, at most 6 steps per frame.
   - Voxel smoke: a pool of up to 160 unlit grey cubes rising from random fire cells and drifting with `Wind`. Ember spot fires are logged.
-  - **Settings version:** every Inspector value is saved in the scene and overrides code defaults. When you retune defaults, bump `CurrentSettingsVersion`; `UpgradeSettings` (run from `OnValidate` and `Awake`) then resets the team size, `maxFireCells` and `crowd` in older scenes. Version 3 fixed a scene stuck on 6 stewards, a 160-cell fire and old crowd settings. Version 4 applies the 400-cell fire and the new crowd settings.
+  - **Settings version:** every Inspector value is saved in the scene and overrides code defaults. When you retune defaults, bump `CurrentSettingsVersion`; `UpgradeSettings` (run from `OnValidate` and `Awake`) then resets the team size, `maxFireCells` and `crowd` in older scenes. Version 3 fixed a scene stuck on 6 stewards, a 160-cell fire and old crowd settings. Version 4 applies the 400-cell fire and the new crowd settings. Version 5: zone patrolmen replace the stewards (`stewardCount` is gone; `stewardSpeed` became `patrolSpeed` via `FormerlySerializedAs`), and `crowd.patrolRadius` is new.
   - **UI** (IMGUI) is scaled by `Screen.height / 900` through `GUI.matrix`. All layout uses the virtual `vw`×`vh` size, and `guiRects` are in virtual units (`IsOverGui` converts).
     - Rounded panels and buttons use procedurally generated textures (`Rounded`, cached).
     - Zones view (`showRegions`, on by default, toggle with G or the "Zones [G]" button): `DrawRegionOutlines` tints 1-cell region borders on the ground texture (only the cell whose right or upper neighbour is in another region, so lines stay 1 m wide), `DrawWorldLabels` adds "<NAME> ZONE" at each region's post, and the map tooltip ends with the zone name.
@@ -133,7 +137,15 @@ Both scenes are set up by editor scripts (see below), not by hand.
 
 ## Verifying without the editor
 
-Unity holds the project lock while it's open, so batch mode isn't available. Instead:
+Unity holds the project lock while it's open, so batch mode isn't available. Instead, run the script, which does steps 1 and 2 below (it works with Unity open):
+
+    powershell -ExecutionPolicy Bypass -File "Tools~\Verify\verify.ps1"                # compile + baseline (a few minutes)
+    powershell -ExecutionPolicy Bypass -File "Tools~\Verify\verify.ps1" -SkipBaseline  # compile only
+
+If Windows blocks the baseline program ("An Application Control policy has blocked this file", e.g. Smart App Control on the dev machine), the compile check still works; run the baseline in Unity with **Tools > Crush Hour > Run Balance Baseline** instead. It runs on a background thread (progress and Cancel in the bottom-right task bar), logs each run to the Console and writes the same `Tools~/Verify/baseline.md`. Don't enter Play mode while it runs (a domain reload kills it).
+
+`Tools~/` is ignored by Unity (trailing `~`). The script reads references and defines from `Assembly-CSharp-Editor.csproj` (or, if missing, `Assembly-CSharp.csproj`, skipping `Editor/` folders), adds package assemblies from `Library/ScriptAssemblies`, builds in `%TEMP%\CrushHourVerify`, and writes the baseline table to `Tools~/Verify/baseline.md`. The runs live in `Assets/Scripts/Editor/BalanceBaselineRunner.cs` (pure simulation, no Unity API; the menu is `BalanceBaselineMenu.cs`, and `Tools~/Verify/Baseline.cs` is only the standalone `Main`). They use the code defaults of `CrowdSettings`, not the scene's Inspector values, and mirror `CrushHourGame.Simulate` for three responses (no staff and gates shut; staff at their posts and gates shut; all gates opened when the fire starts plus staff), three fire sites and the given seeds.
+
 
 1. **Compile check.** Use Unity's bundled Roslyn with every `HintPath` reference from `Assembly-CSharp-Editor.csproj`. Exclude `Assembly-CSharp.dll` and pass `-nostdlib -langversion:9.0 -define:UNITY_EDITOR`.
    - compiler: `"C:\Program Files\Unity\Hub\Editor\6000.6.6f1\Editor\Data\DotNetSdk\dotnet.exe" ...\DotNetSdk\sdk\8.0.318\Roslyn\bincore\csc.dll @refs.rsp <files>`
@@ -142,10 +154,14 @@ Unity holds the project lock while it's open, so batch mode isn't available. Ins
    - Copy `UnityEngine.CoreModule.dll` next to the output and add a `net8.0` `runtimeconfig.json`.
    - Run it with the bundled `dotnet.exe`.
    - Per step, call `venue.UpdateGates`, `venue.UpdateFire`, `venue.UpdateDoorFields(3)` and `sim.Step(dt, venue, true)`, then the unit effects.
-   - The harness is a scratch file, not kept in the repo.
+   - The harness is `BalanceBaselineRunner` (see above).
 3. The VAT shader and `PersonModel.Build` need the editor. Check `Logs/Editor.log` for shader errors and for the "Crush Hour: N person models loaded, M animated" line printed on Play.
 
-## Balance baseline (headless, 2,000 people, seeds 11, 21 and 33, settings version 4)
+## Balance baseline
+
+**Settings version 5 (zone patrols): not measured yet.** Run **Tools > Crush Hour > Run Balance Baseline** (or `verify.ps1`) and paste `Tools~/Verify/baseline.md` here. "Staff" there = 9 zone patrolmen at their posts and 2 megaphone police.
+
+### Settings version 4 (before zone patrols; headless, 2,000 people, seeds 11, 21 and 33)
 
 "Staff" = 4 stewards and 2 megaphone police at their default posts. The fire reaches its 400-cell cap with ember spot fires, and the smoke drifts east.
 
@@ -166,8 +182,12 @@ Rerun these after changing crowd settings, entrance widths, fire, staff effects,
 
 ## Status / next ideas
 
-- Week 4 (branch `Sapt-4`), step 1: regions added. The region layout was checked against a Python replica (every interior cell assigned, 9 contiguous zones), but this change was **not compiled** with the Roslyn check (no shell on the dev machine at the time): open Unity and check the Console before building on it. Next steps: a patrolman per region, region evacuation orders with a direction, drunk people who need an escort, difficulty presets, a start menu.
+- Week 4 (branch `Sapt-4`):
+  - Step 1: regions. The layout was checked against a Python replica (every interior cell assigned, 9 contiguous zones).
+  - Step 2: a patrolman per zone replaces the stewards; `Tools~/Verify/verify.ps1` added.
+  - Steps 1 and 2 pass the compile check (`verify.ps1`). The baseline program is blocked by Windows Application Control on the dev machine, so the version 5 baseline still has to be run from the Unity menu.
+  - Next: zone evacuation orders with a direction relative to the patrolman, drunk people who need an escort, difficulty presets, a start menu.
 - The crowd simulation, UI and editor scripts compile and the simulation is tuned headless. The VAT shader and baking still need checking inside the editor (see "Verifying without the editor", step 3).
-- Stewards and police are still drawn as cubes. They could use person models with a tinted material.
+- Patrolmen and police are still drawn as cubes. They could use person models with a tinted material.
 - The crowd casts no shadows in VAT mode (the shader has no ShadowCaster pass).
 - Ideas from the concept not built yet: more venues (stadium derby, metro rush hour) as new layouts in `FestivalVenue`; other incident types besides fire.

@@ -62,6 +62,8 @@ namespace CrushHour
 
         [Header("Staff")]
         public float stewardRadius = 6f;
+        [Tooltip("Radius (m) of a zone patrolman's ring. Patrolmen calm and queue people exactly like stewards do.")]
+        public float patrolRadius = 6f;
         [Tooltip("How fast a steward talks panic down (per second) for the people in their ring.")]
         public float stewardCalming = 0.5f;
         [Tooltip("Panicked people in a steward's ring stop and listen until their panic is down to this; then they're told the way out and let go.")]
@@ -672,13 +674,15 @@ namespace CrushHour
         /// <summary>
         /// Once there's an incident, stewards calm the people in their ring: panicked people stop and listen until they're
         /// calm, then get told which gates are open and leave in orderly, spaced-out queues, staying reassured for a while.
-        /// Stewards also help people through panic attacks.
+        /// Stewards also help people through panic attacks. Zone patrolmen use the same effect with
+        /// <paramref name="radius"/> = <see cref="CrowdSettings.patrolRadius"/>; without it, <see cref="CrowdSettings.stewardRadius"/> is used.
         /// </summary>
-        public void ApplyStewards(List<Vector2> stewards, float dt, bool incident)
+        public void ApplyStewards(List<Vector2> stewards, float dt, bool incident, float radius = -1f)
         {
+            float ringRadius = radius > 0f ? radius : settings.stewardRadius;
             foreach (var s in stewards)
             {
-                foreach (int i in ActiveWithin(s, settings.stewardRadius))
+                foreach (int i in ActiveWithin(s, ringRadius))
                 {
                     if (!incident) continue;
                     orderlyTime[i] = settings.orderlyMemory;
