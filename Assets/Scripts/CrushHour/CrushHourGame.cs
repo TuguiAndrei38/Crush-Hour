@@ -744,6 +744,25 @@ namespace CrushHour
 
         const float EscortPickupRange = 3f, EscortSpeedFactor = 0.7f, EscortFollowGap = 1f;
 
+        /// <summary>
+        /// "Escort nearest drunk" (button / F): the nearest drunk person nobody is escorting, in the patrol's own zone
+        /// first, otherwise anywhere.
+        /// </summary>
+        void EscortNearestDrunk(int unitIndex)
+        {
+            if (unitIndex < 0 || unitIndex >= units.Count) return;
+            var u = units[unitIndex];
+            if (u.escortPhase == EscortPhase.Escorting) return; // already walking someone out
+            int person = u.homeRegion >= 0 ? sim.NearestUnescortedDrunk(u.position, u.homeRegion, venue) : -1;
+            if (person < 0) person = sim.NearestUnescortedDrunk(u.position, -1, venue);
+            if (person < 0)
+            {
+                Log("No drunk fans left to escort.", Severity.Good);
+                return;
+            }
+            StartEscort(unitIndex, person);
+        }
+
         /// <summary>Starts an escort: the unit takes the drunk person now if within 3 m, otherwise walks to them first.</summary>
         void StartEscort(int unitIndex, int person)
         {
@@ -1212,6 +1231,7 @@ namespace CrushHour
                 if (keyboard.downArrowKey.wasPressedThisFrame) OrderZone(patrol, OrderSide.Back);
                 if (keyboard.leftArrowKey.wasPressedThisFrame) OrderZone(patrol, OrderSide.Left);
                 if (keyboard.rightArrowKey.wasPressedThisFrame) OrderZone(patrol, OrderSide.Right);
+                if (keyboard.fKey.wasPressedThisFrame) EscortNearestDrunk(selectedUnit);
             }
         }
 
@@ -1738,7 +1758,7 @@ namespace CrushHour
             if (u.role != Role.Patrolman || u.homeRegion < 0) return;
             var region = venue.regions[u.homeRegion];
 
-            var rect = Panel(new Rect(vw * 0.5f - 170, vh - 252, 340, 240));
+            var rect = Panel(new Rect(vw * 0.5f - 170, vh - 304, 340, 292));
             GUI.Label(new Rect(rect.x + 14, rect.y + 10, rect.width - 28, 20), "EVACUATE REGION", headerStyle);
             Swatch(new Rect(rect.xMax - 26, rect.y + 14, 12, 12), region.color);
             GUI.Label(new Rect(rect.x + 14, rect.y + 32, rect.width - 28, 18),
@@ -1756,6 +1776,20 @@ namespace CrushHour
             OrderButton(u, OrderSide.Left, new Rect(cx - bw - 4, top + bh + 4, bw, bh), ready);
             OrderButton(u, OrderSide.Right, new Rect(cx + 4, top + bh + 4, bw, bh), ready);
             OrderButton(u, OrderSide.Back, new Rect(cx - bw * 0.5f, top + 2 * (bh + 4), bw, bh), ready);
+
+            // Escorting drunk people out: they ignore orders, so someone has to walk them to a door.
+            int inZone = sim.UnescortedDrunksInRegion(u.homeRegion, venue);
+            bool busy = u.escortPhase == EscortPhase.Escorting;
+            string label = busy ? "Escorting a drunk fan out..."
+                : u.escortPhase == EscortPhase.Fetching ? "Going to get a drunk fan..."
+                : sim.DrunkInsideCount == 0 ? "No drunk fans left inside"
+                : $"Escort nearest drunk [F]  ({inZone} here, {sim.DrunkInsideCount} in all)";
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled = !busy && sim.DrunkInsideCount > 0;
+            int unitIndex = orderPanelUnit;
+            if (GUI.Button(new Rect(rect.x + 14, rect.yMax - 54, rect.width - 28, 40), label, buttonStyle))
+                deferred.Add(() => EscortNearestDrunk(unitIndex));
+            GUI.enabled = wasEnabled;
         }
 
         void OrderButton(Unit u, OrderSide side, Rect rect, bool ready)

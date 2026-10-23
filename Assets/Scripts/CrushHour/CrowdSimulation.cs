@@ -944,6 +944,36 @@ namespace CrushHour
             return best;
         }
 
+        /// <summary>
+        /// The nearest active drunk person nobody is escorting yet, standing in <paramref name="region"/> (-1 = anywhere), or -1.
+        /// </summary>
+        public int NearestUnescortedDrunk(Vector2 p, int region, FestivalVenue venue)
+        {
+            int best = -1;
+            float bestSq = float.MaxValue;
+            for (int i = 0; i < count; i++)
+            {
+                if (!drunk[i] || state[i] != AgentState.Active || escortedBy[i] >= 0) continue;
+                if (region >= 0 && venue.regionOf[CellOf(position[i])] != region) continue;
+                float sq = (position[i] - p).sqrMagnitude;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>Active drunk people standing in <paramref name="region"/> that nobody is escorting yet.</summary>
+        public int UnescortedDrunksInRegion(int region, FestivalVenue venue)
+        {
+            int n = 0;
+            for (int i = 0; i < count; i++)
+                if (drunk[i] && state[i] == AgentState.Active && escortedBy[i] < 0 && venue.regionOf[CellOf(position[i])] == region) n++;
+            return n;
+        }
+
         static int NearestDoor(FestivalVenue venue, Vector2 p)
         {
             int best = -1;
