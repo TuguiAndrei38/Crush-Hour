@@ -14,6 +14,8 @@ namespace CrushHour
         [Tooltip("Pan speed, scaled by zoom distance.")]
         public float panSpeed = 0.6f;
         public float rotateSpeed = 90f;
+        /// <summary>Set by the game: false while a zone patrol is selected, because the arrow keys give zone orders then.</summary>
+        [System.NonSerialized] public bool arrowKeysPan = true;
 
         public void Focus(Vector3 point, float? newDistance = null)
         {
@@ -31,10 +33,10 @@ namespace CrushHour
             Vector2 move = Vector2.zero;
             if (keyboard != null)
             {
-                if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) move.y += 1f;
-                if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) move.y -= 1f;
-                if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) move.x += 1f;
-                if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) move.x -= 1f;
+                if (keyboard.wKey.isPressed || (arrowKeysPan && keyboard.upArrowKey.isPressed)) move.y += 1f;
+                if (keyboard.sKey.isPressed || (arrowKeysPan && keyboard.downArrowKey.isPressed)) move.y -= 1f;
+                if (keyboard.dKey.isPressed || (arrowKeysPan && keyboard.rightArrowKey.isPressed)) move.x += 1f;
+                if (keyboard.aKey.isPressed || (arrowKeysPan && keyboard.leftArrowKey.isPressed)) move.x -= 1f;
                 if (keyboard.qKey.isPressed) yaw += rotateSpeed * dt;
                 if (keyboard.eKey.isPressed) yaw -= rotateSpeed * dt;
             }

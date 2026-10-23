@@ -18,6 +18,8 @@ namespace CrushHour
         enum Tool { Command, Barrier }
         enum Role { Patrolman, Megaphone }
         enum Severity { Info, Good, Warning, Danger }
+        /// <summary>Zone order directions, relative to the way the patrolman is facing.</summary>
+        enum OrderSide { Front, Back, Left, Right }
 
         /// <summary>A zone patrolman or police officer the player can send around.</summary>
         class Unit
@@ -34,6 +36,9 @@ namespace CrushHour
             public readonly List<Vector2> path = new();
             public Transform root;
             public LineRenderer ring, arrow;
+            /// <summary>Patrolmen: the door their last zone order sent people to (-1 none), drawn as a big ground arrow.</summary>
+            public int orderDoor = -1;
+            public LineRenderer orderArrow;
             public Transform wave;          // megaphone announcement ripple
             public float announceTimer, waveTime = 1f;
             public bool hasAnnounced;
@@ -104,6 +109,7 @@ namespace CrushHour
             new(0.3f, 0.05f, 0.3f),   // injured
             new(1f, 0.45f, 0.85f),    // panic attack
             new(0.62f, 0.68f, 0.2f),  // intoxicated by smoke
+            new(0.82f, 0.62f, 1f),    // drunk
         };
         static readonly Color PatrolColor = new(1f, 0.92f, 0.2f); // hi-vis vest; the cap and arrow take the zone colour
         static readonly Color PoliceColor = new(0.08f, 0.14f, 0.42f);
@@ -147,7 +153,7 @@ namespace CrushHour
         string incidentSite;
 
         // Results
-        int finalSafe, finalInjured, finalTrapped, finalAttacks, finalScore, stars;
+        int finalSafe, finalInjured, finalTrapped, finalAttacks, finalDrunkInside, finalScore, stars;
         string resultTitle, resultTip;
 
         Camera cam;
@@ -172,6 +178,11 @@ namespace CrushHour
         float smokeBudget, lastSpotFireLog;
         int lastSpotFires;
         readonly List<Vector2> patrolPositions = new();
+        const float RegionOrderCooldown = 5f;
+        /// <summary>Seconds until each zone can be given another evacuation order (index = region).</summary>
+        float[] regionOrderCooldown = Array.Empty<float>();
+        /// <summary>Patrol whose order panel is drawn this OnGUI pass; fixed at the Layout event so the panel can't change mid-frame.</summary>
+        int orderPanelUnit = -1;
         readonly List<Gate> changedGates = new();
         readonly List<(string text, Vector3 position)> labels = new();
         readonly List<(string text, Severity severity, string time)> log = new();
@@ -277,6 +288,7 @@ namespace CrushHour
 
             BuildVenueViews();
             SpawnUnits();
+            regionOrderCooldown = new float[venue.regions.Count];
             cameraRig.Focus(new Vector3(W * 0.5f, 0f, H * 0.45f), 85f);
 
             Log($"{sim.count} fans are enjoying the Summer Music Festival.");
@@ -449,7 +461,7 @@ namespace CrushHour
 
         static string RoleDescription(Role role) => role == Role.Megaphone
             ? "Megaphone police: once the fire starts, announces it every few seconds to everyone in the big ring and tells them which gates are open."
-            : "Zone patrol: panicked people in the ring stop and get calmed down first, then are told which gates are open and leave in orderly, spaced-out queues. Also helps people through panic attacks.";
+            : "Zone patrol: panicked people in the ring stop and get calmed down first, then are told which gates are open and leave in orderly, spaced-out queues. Also helps people through panic attacks. Once the fire starts, select them and press an arrow key to send their whole zone out that way.";
 
         Material Lit(Color color)
         {
@@ -547,6 +559,7 @@ namespace CrushHour
             if (!incidentStarted) return;
 
             UpdateMegaphones(dt);
+            for (int r = 0; r < regionOrderCooldown.Length; r++) regionOrderCooldown[r] = Mathf.Max(0f, regionOrderCooldown[r] - dt);
             bool wasPlaying = !sim.ShowStopped;
             evacuationTime += dt;
             CheckWarnings(dt);
@@ -558,8 +571,9 @@ namespace CrushHour
                 lastProgressTime = evacuationTime;
             }
             // Everyone left is trying to get out but nobody has made it for a while: they're trapped.
-            bool stalled = sim.EvacuatingCount == sim.ActiveCount && evacuationTime - lastProgressTime > 20f;
-            if (sim.ActiveCount == 0 || stalled || evacuationTime >= evacuationTimeLimit) EndGame();
+            // Drunk people never leave on their own, so the round ends on the sober ones.
+            bool stalled = sim.EvacuatingCount == sim.SoberActiveCount && evacuationTime - lastProgressTime > 20f;
+            if (sim.SoberActiveCount == 0 || stalled || evacuationTime >= evacuationTimeLimit) EndGame();
         }
 
         void StartShow()
@@ -761,16 +775,17 @@ namespace CrushHour
             CancelDrag();
             finalSafe = sim.SafeCount;
             finalInjured = sim.InjuredCount;
-            finalTrapped = sim.ActiveCount;
+            finalTrapped = sim.SoberActiveCount;
+            finalDrunkInside = sim.DrunkInsideCount;
             finalAttacks = sim.PanicAttacksTotal;
-            finalScore = finalSafe * 10 - finalInjured * 100 - finalTrapped * 25 - finalAttacks * 10
+            finalScore = finalSafe * 10 - finalInjured * 100 - finalTrapped * 25 - finalDrunkInside * 50 - finalAttacks * 10
                          + Mathf.Max(0, Mathf.RoundToInt(evacuationTimeLimit - evacuationTime)) * 10;
 
             float safeRatio = finalSafe / (float)sim.count;
             stars = 0;
             if (safeRatio >= 0.9f) stars = 1;
             if (stars == 1 && finalInjured <= sim.count / 100) stars = 2;
-            if (stars == 2 && finalInjured == 0 && finalTrapped == 0 && evacuationTime <= evacuationTimeLimit * 0.5f) stars = 3;
+            if (stars == 2 && finalInjured == 0 && finalTrapped == 0 && finalDrunkInside == 0 && evacuationTime <= evacuationTimeLimit * 0.5f) stars = 3;
 
             resultTitle = finalTrapped == 0 ? "Festival evacuated" : evacuationTime >= evacuationTimeLimit ? "Time's up" : "Evacuation stalled";
             if (gatesOpened == 0)
@@ -781,11 +796,13 @@ namespace CrushHour
                 resultTip = "Crushes happen where frightened crowds hit bottlenecks. Open gates early and move patrols to where the queues build up.";
             else if (finalAttacks > 10)
                 resultTip = "Lots of panic attacks: people stuck in long queues or near the flames lose it. Spread them over more gates and keep patrols near jams.";
+            else if (finalDrunkInside > 0 && finalTrapped == 0)
+                resultTip = "Everyone made it out except the drunk ones. They ignore orders: a patrol has to walk them out.";
             else if (finalTrapped > 0)
                 resultTip = "Some people never heard about the fire. Move the megaphone police to where people are still standing around.";
             else
                 resultTip = "Clean evacuation! The crowd and the fire change every run. Try again.";
-            Log($"{resultTitle}: {finalSafe} safe, {finalInjured} injured, {finalTrapped} still inside.", stars >= 2 ? Severity.Good : Severity.Warning);
+            Log($"{resultTitle}: {finalSafe} safe, {finalInjured} injured, {finalTrapped} still inside, {finalDrunkInside} drunk left inside.", stars >= 2 ? Severity.Good : Severity.Warning);
         }
 
         // ================================================================ Player actions
@@ -808,6 +825,82 @@ namespace CrushHour
         {
             foreach (var g in venue.gates)
                 if (!g.open) ToggleGate(g);
+        }
+
+        Unit SelectedPatrol() =>
+            selectedUnit >= 0 && selectedUnit < units.Count && units[selectedUnit].role == Role.Patrolman ? units[selectedUnit] : null;
+
+        static Vector2 SideDirection(Unit u, OrderSide side) => side switch
+        {
+            OrderSide.Front => u.facing,
+            OrderSide.Back => -u.facing,
+            OrderSide.Left => new Vector2(-u.facing.y, u.facing.x), // grid is x right, y up: left = 90° anticlockwise
+            _ => new Vector2(u.facing.y, -u.facing.x),
+        };
+
+        bool CanOrderZone(Unit u) =>
+            phase == Phase.Live && incidentStarted && u.homeRegion >= 0 && regionOrderCooldown[u.homeRegion] <= 0f;
+
+        /// <summary>The patrol orders everyone in its zone out through the open door that best matches <paramref name="side"/>.</summary>
+        void OrderZone(Unit u, OrderSide side)
+        {
+            if (u.homeRegion < 0) return;
+            if (!incidentStarted)
+            {
+                Log("Zone orders become available once the fire starts.");
+                return;
+            }
+            if (!CanOrderZone(u)) return; // still on cooldown
+            var region = venue.regions[u.homeRegion];
+            int people = sim.CountInRegion(u.homeRegion, venue);
+            int door = sim.OrderRegionEvacuation(u.homeRegion, SideDirection(u, side), venue);
+            regionOrderCooldown[u.homeRegion] = RegionOrderCooldown;
+            u.orderDoor = door;
+            UpdateOrderArrow(u);
+            if (door >= 0)
+                Log($"{region.name} patrol: evacuating via {venue.doors[door].name} ({people} people, {side.ToString().ToLowerInvariant()})", Severity.Good);
+            else
+                Log($"{region.name} patrol: no open exit they can reach. {people} people told to get out anyway.", Severity.Warning);
+        }
+
+        /// <summary>Big ground arrow from the patrolman to the door of their last zone order; hidden while that door is shut.</summary>
+        void UpdateOrderArrow(Unit u)
+        {
+            bool show = u.orderDoor >= 0 && venue.doors[u.orderDoor].IsOpen;
+            if (!show)
+            {
+                if (u.orderArrow != null && u.orderArrow.enabled) u.orderArrow.enabled = false;
+                return;
+            }
+            if (u.orderArrow == null)
+            {
+                var go = new GameObject($"{u.Name} order");
+                go.transform.SetParent(world, false);
+                var line = u.orderArrow = go.AddComponent<LineRenderer>();
+                line.useWorldSpace = true;
+                line.positionCount = 5;
+                line.widthMultiplier = 0.55f;
+                line.sharedMaterial = Unlit(venue.regions[u.homeRegion].color);
+                line.shadowCastingMode = ShadowCastingMode.Off;
+            }
+            var c = venue.doors[u.orderDoor].Center;
+            var from = new Vector3(u.position.x, 0.15f, u.position.y);
+            var to = new Vector3(c.x, 0.15f, c.y);
+            Vector3 along = to - from;
+            float length = along.magnitude;
+            if (length < 2f)
+            {
+                u.orderArrow.enabled = false;
+                return;
+            }
+            Vector3 f = along / length, sideways = new Vector3(-f.z, 0f, f.x);
+            float head = Mathf.Min(3f, length * 0.4f);
+            u.orderArrow.SetPosition(0, from + f * 1f);
+            u.orderArrow.SetPosition(1, to);
+            u.orderArrow.SetPosition(2, to - f * head + sideways * head * 0.6f);
+            u.orderArrow.SetPosition(3, to);
+            u.orderArrow.SetPosition(4, to - f * head - sideways * head * 0.6f);
+            if (!u.orderArrow.enabled) u.orderArrow.enabled = true;
         }
 
         void SelectUnit(int index, bool focus)
@@ -918,6 +1011,8 @@ namespace CrushHour
         void HandleKeyboard()
         {
             var keyboard = Keyboard.current;
+            // While a zone patrol is selected the arrow keys give orders, so they stop panning the camera.
+            cameraRig.arrowKeysPan = SelectedPatrol() == null;
             if (keyboard == null) return;
             if (keyboard.rKey.wasPressedThisFrame)
             {
@@ -935,6 +1030,14 @@ namespace CrushHour
             if (keyboard.digit2Key.wasPressedThisFrame) SetTool(Tool.Barrier);
             if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame) StartShow();
             if (keyboard.escapeKey.wasPressedThisFrame) selectedUnit = -1;
+            var patrol = SelectedPatrol();
+            if (patrol != null)
+            {
+                if (keyboard.upArrowKey.wasPressedThisFrame) OrderZone(patrol, OrderSide.Front);
+                if (keyboard.downArrowKey.wasPressedThisFrame) OrderZone(patrol, OrderSide.Back);
+                if (keyboard.leftArrowKey.wasPressedThisFrame) OrderZone(patrol, OrderSide.Left);
+                if (keyboard.rightArrowKey.wasPressedThisFrame) OrderZone(patrol, OrderSide.Right);
+            }
         }
 
         void HandleMouse()
@@ -977,7 +1080,13 @@ namespace CrushHour
             else
             {
                 if (mouse.leftButton.wasPressedThisFrame && !overGui && onGround) CommandClick(ground, cell);
-                if (mouse.rightButton.wasPressedThisFrame && !overGui) selectedUnit = -1;
+                if (mouse.rightButton.wasPressedThisFrame && !overGui)
+                {
+                    // Right-click turns a selected patrol to look at that spot (it sets Front/Back/Left/Right); otherwise it deselects.
+                    var patrol = SelectedPatrol();
+                    if (patrol != null && onGround) SetFacing(patrol, ground - patrol.position);
+                    else selectedUnit = -1;
+                }
             }
         }
 
@@ -1018,6 +1127,7 @@ namespace CrushHour
                 var u = units[i];
                 u.root.position = new Vector3(u.position.x, 0f, u.position.y);
                 u.ring.widthMultiplier = i == selectedUnit ? 0.35f : 0.12f;
+                if (u.orderDoor >= 0) UpdateOrderArrow(u);
                 if (u.wave == null) continue;
                 // Announcement ripple: grows from the officer to the edge of earshot.
                 u.waveTime += paused ? 0f : Time.deltaTime;
@@ -1147,11 +1257,13 @@ namespace CrushHour
             GUI.matrix = Matrix4x4.Scale(new Vector3(uiScale, uiScale, 1f));
             EnsureStyles();
             guiRects.Clear();
+            if (Event.current.type == EventType.Layout) orderPanelUnit = SelectedPatrol() != null ? selectedUnit : -1;
 
             DrawWorldLabels();
             DrawTopBar();
             DrawTeamPanel();
             DrawControlPanel();
+            DrawZoneOrderPanel();
             DrawEventFeed();
             DrawLegend();
             DrawBanner();
@@ -1427,9 +1539,51 @@ namespace CrushHour
             if (GUILayout.Button($"Barriers {barrierBudget - barriersUsed}  [2]", tool == Tool.Barrier ? selectedButtonStyle : buttonStyle, GUILayout.Height(32))) SetTool(Tool.Barrier);
             GUILayout.EndHorizontal();
             GUILayout.Label(tool == Tool.Command
-                ? "Click a gate on the map to open or close it. Right-click or Esc to deselect."
+                ? "Click a gate on the map to open or close it. Right-click turns a selected patrol (or deselects police). Esc deselects."
                 : "Drag on the map to draw a barrier line. Right-click a barrier to pick it up.", mutedStyle);
             GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// "EVACUATE REGION" panel for the selected patrol: Front/Back/Left/Right relative to where they face (arrow keys),
+        /// each showing the door it would pick. Plain GUI (no GUILayout), and the unit is fixed at the Layout event.
+        /// </summary>
+        void DrawZoneOrderPanel()
+        {
+            if (phase == Phase.Results || orderPanelUnit < 0 || orderPanelUnit >= units.Count) return;
+            var u = units[orderPanelUnit];
+            if (u.role != Role.Patrolman || u.homeRegion < 0) return;
+            var region = venue.regions[u.homeRegion];
+
+            var rect = Panel(new Rect(vw * 0.5f - 170, vh - 252, 340, 240));
+            GUI.Label(new Rect(rect.x + 14, rect.y + 10, rect.width - 28, 20), "EVACUATE REGION", headerStyle);
+            Swatch(new Rect(rect.xMax - 26, rect.y + 14, 12, 12), region.color);
+            GUI.Label(new Rect(rect.x + 14, rect.y + 32, rect.width - 28, 18),
+                $"{region.name}: {sim.CountInRegion(u.homeRegion, venue)} people in the zone", labelStyle);
+            float cooldown = regionOrderCooldown.Length > u.homeRegion ? regionOrderCooldown[u.homeRegion] : 0f;
+            string status = !incidentStarted ? "Available once the fire starts. Right-click the map to turn the patrol."
+                : cooldown > 0f ? $"Order given. Next one in {Mathf.CeilToInt(cooldown)}s."
+                : "Arrow keys or buttons, relative to where the patrol faces. Right-click to turn.";
+            GUI.Label(new Rect(rect.x + 14, rect.y + 50, rect.width - 28, 30), status, smallStyle);
+
+            bool ready = CanOrderZone(u);
+            float cx = rect.center.x, top = rect.y + 84;
+            const float bw = 150, bh = 46;
+            OrderButton(u, OrderSide.Front, new Rect(cx - bw * 0.5f, top, bw, bh), ready);
+            OrderButton(u, OrderSide.Left, new Rect(cx - bw - 4, top + bh + 4, bw, bh), ready);
+            OrderButton(u, OrderSide.Right, new Rect(cx + 4, top + bh + 4, bw, bh), ready);
+            OrderButton(u, OrderSide.Back, new Rect(cx - bw * 0.5f, top + 2 * (bh + 4), bw, bh), ready);
+        }
+
+        void OrderButton(Unit u, OrderSide side, Rect rect, bool ready)
+        {
+            int door = sim.PickOrderDoor(u.homeRegion, SideDirection(u, side), venue);
+            string key = side switch { OrderSide.Front => "Up", OrderSide.Back => "Down", OrderSide.Left => "Left", _ => "Right" };
+            string target = door >= 0 ? venue.doors[door].name : "no open exit";
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled = ready;
+            if (GUI.Button(rect, $"{side} [{key}]\nto {target}", buttonStyle)) deferred.Add(() => OrderZone(u, side));
+            GUI.enabled = wasEnabled;
         }
 
         void DrawControlPanel()
@@ -1488,7 +1642,7 @@ namespace CrushHour
                 if (GUI.Button(button, "Legend  [L]", buttonStyle)) deferred.Add(() => showLegend = true);
                 return;
             }
-            var rect = Panel(new Rect(vw - 312, vh - 322, 300, 310));
+            var rect = Panel(new Rect(vw - 312, vh - 344, 300, 332));
             GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
             GUILayout.BeginHorizontal();
             GUILayout.Label("LEGEND", headerStyle);
@@ -1501,6 +1655,7 @@ namespace CrushHour
             LegendRow(AgentColors[3], "Panicking: runs, pushes");
             LegendRow(AgentColors[5], "Panic attack: frozen for a while");
             LegendRow(AgentColors[6], "Choking on smoke: slowed, may collapse");
+            LegendRow(AgentColors[7], "Drunk: ignores orders, needs an escort out");
             LegendRow(AgentColors[4], "Injured");
             LegendRow(PatrolColor, "Zone patrol: calms people, then sends them out");
             LegendRow(MegaphoneColor, "Police with megaphone");
@@ -1613,7 +1768,7 @@ namespace CrushHour
                             "People will run from it, then head for the nearest gate. If it's shut, they try another, and the queues grow.", labelStyle);
             GUILayout.Space(10);
             WelcomeStep("1", "Plan", $"Every zone has a patrol ({venue.regions.Count} in all), plus {megaphoneOfficers} megaphone police. Move them by clicking them, then the map. Draw barriers to steer the crowd.");
-            WelcomeStep("2", "React", "When the fire starts, open the emergency gates and send your team to the crowds. The megaphone police tell everyone in earshot where to go.");
+            WelcomeStep("2", "React", "When the fire starts, open the emergency gates and send your team to the crowds. Select a patrol and press an arrow key to send its whole zone out that way. The megaphone police tell everyone in earshot where to go.");
             WelcomeStep("3", "Keep them calm", "Panicked crowds push and crush, and too much panic causes panic attacks. Put patrols where queues form: they line people up with room to breathe.");
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();
@@ -1641,7 +1796,7 @@ namespace CrushHour
 
         void DrawResults()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 250, vh * 0.5f - 220, 500, 440), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
+            var rect = Panel(new Rect(vw * 0.5f - 250, vh * 0.5f - 236, 500, 472), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
             GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 22, rect.width - 56, rect.height - 44));
             GUILayout.Label(resultTitle, bigTitleStyle);
             GUILayout.Space(6);
@@ -1660,6 +1815,7 @@ namespace CrushHour
             ResultRow("Injured", finalInjured == 0 ? "0" : $"{finalInjured}  ({sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke)", finalInjured > 0 ? DangerColor : TextColor);
             ResultRow("Panic attacks", finalAttacks.ToString(), finalAttacks > 0 ? AgentColors[5] : TextColor);
             ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : TextColor);
+            ResultRow("Drunk left inside", finalDrunkInside == 0 ? "0" : $"{finalDrunkInside}  (-{finalDrunkInside * 50} points)", finalDrunkInside > 0 ? AgentColors[7] : TextColor);
             ResultRow("Evacuation time", FormatTime(evacuationTime), TextColor);
             ResultRow("Score", finalScore.ToString(), TextColor);
             GUILayout.Space(8);

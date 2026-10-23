@@ -65,8 +65,15 @@ Both scenes are set up by editor scripts (see below), not by hand.
   - **Zone evacuation orders** (`OrderRegionEvacuation(region, direction, venue)`, no UI yet):
     - It picks one open door that the region's `post` can reach. Score = cos(angle between `direction` and the line from the post to the door centre) − walking distance from the post × `orderDistanceWeight` (0.01 per metre). `direction` is in grid x, y (= world x, z).
     - Everyone active in the region is informed (`Inform`: evacuating, told which doors are open) and gets `orderedDoor[i]`. It returns the door, or -1 if no open door is reachable (people are still sent off, just without a door).
+    - `PickOrderDoor(region, direction, venue)` is the same choice without ordering anyone (UI previews). `CountInRegion(region, venue)` counts active people standing in a region.
     - `ChooseDoor` returns the ordered door first, as long as it's open, reachable, not in `doorsFoundShut`, and the person's panic is at most 0.8. Otherwise the normal choice applies. The order isn't cleared: if a closed gate reopens, people follow it again.
     - People next to the fire still run from it first (`hasFled`), and panicked people don't reconsider their door (the 2 s retarget only happens below 0.8 panic), so an order mostly steers calm people.
+  - **Drunk people** (`drunk[]`): each person is drunk with chance `drunkFraction` (0.05), ×`drunkDrinksMultiplier` (3) in the Drinks zone, so a bit over 5% overall (`AssignDrunks`, right after `Spawn`; it uses the rng, so it shifts every seed compared with older runs).
+    - They ignore staff: `ApplyStewards` and `PoliceAnnouncement` skip them, `Inform` returns at once, and zone orders leave them out. They never become `evacuating` (the awareness rules and panic > 0.3 skip them).
+    - Panic target × `drunkPanicFactor` (0.5).
+    - Movement (`DrunkVelocity`): within `fleeDistance` of the fire they run along `fleeDirection`; otherwise they wander at half pace on a Perlin heading and drift back once more than 6 m from their spot. Always at `drunkSpeed` (60%) with a ±35° zig-zag. The noise is deterministic (no rng).
+    - They don't leave on their own. `DrunkInsideCount` counts the ones still inside, and `SoberActiveCount` = `ActiveCount` − `DrunkInsideCount`. The game and the baseline end the round on sober people (all sober out, or all sober evacuating with no progress for 20 s).
+    - Display state 7 ("Drunk", light purple `AgentColors[7]`); `CrowdRenderer.StateCount` is 8.
   - **Exit tracking:** `exitDoor[i]` is the door each person left through (nearest door centre when they reach the safe zone; -1 while inside or injured), and `exitsByDoor[d]` counts them.
   - Panicked people (above 0.8) don't reconsider their door (tunnel vision).
   - **Panic** rises towards a target, the highest of:
@@ -104,7 +111,13 @@ Both scenes are set up by editor scripts (see below), not by hand.
     - Each patrolman has a `facing` (grid x, y, unit length), drawn as a small arrow on the ground in the zone colour. It defaults to the zone's area centre, or the centre of the grounds when the post already is the area centre. Change it with `SetFacing(unit, direction)`, which also redraws the arrow. It doesn't affect the crowd yet (it will set the direction of zone evacuation orders).
     - 2 megaphone police (`Role.Megaphone`; navy with a cyan cap): announce every 5 s within 14 m, with a ripple.
     - The roster groups them: "ZONE PATROLS" (swatch in the zone colour), then "MEGAPHONE POLICE".
-  - Tools: command (units and gates) and barriers (budget 60). Also scoring (−10 per panic attack) and stars. Game speed is 1× or 2× (`Speeds`).
+    - **Zone orders (UI):** with a patrol selected, the "EVACUATE REGION" panel (bottom centre, `DrawZoneOrderPanel`) shows the zone's head count and 4 buttons, Front / Left / Right / Back. Each is relative to the patrol's `facing` (`SideDirection`; left = 90° anticlockwise in grid x, y) and shows the door it would pick (`sim.PickOrderDoor`). The arrow keys do the same (`HandleKeyboard`).
+      - `OrderZone` works only in the Live phase after the fire starts. Each zone has a 5 s cooldown (`regionOrderCooldown`, ticked in `Simulate`). It calls `sim.OrderRegionEvacuation`, logs "<Zone> patrol: evacuating via <door> (N people, side)", and stores `unit.orderDoor`.
+      - `UpdateOrderArrow` draws a big ground arrow (zone colour, width 0.55) from the patrol to that door. It follows the patrol and is hidden while the door is shut.
+      - Right-click on the map with a patrol selected turns it to face that spot (`SetFacing`); otherwise right-click deselects as before.
+      - While a patrol is selected, the arrow keys don't pan the camera (`TopDownCamera.arrowKeysPan`, set every frame); WASD still does.
+      - The panel is plain `GUI` (no `GUILayout`), and the unit it shows (`orderPanelUnit`) is fixed at the Layout event, so selecting someone mid-frame can't break IMGUI. Buttons queue `OrderZone` through `deferred`.
+  - Tools: command (units and gates) and barriers (budget 60). Also scoring (−10 per panic attack, −25 per sober person still inside, −50 per drunk person left inside) and stars (3 stars also need no drunk person left inside). Results show "Still inside" (sober) and "Drunk left inside". Game speed is 1× or 2× (`Speeds`).
   - The simulation runs on a fixed 0.04 s step, at most 6 steps per frame.
   - Voxel smoke: a pool of up to 160 unlit grey cubes rising from random fire cells and drifting with `Wind`. Ember spot fires are logged.
   - **Settings version:** every Inspector value is saved in the scene and overrides code defaults. When you retune defaults, bump `CurrentSettingsVersion`; `UpgradeSettings` (run from `OnValidate` and `Awake`) then resets the team size, `maxFireCells` and `crowd` in older scenes. Version 3 fixed a scene stuck on 6 stewards, a 160-cell fire and old crowd settings. Version 4 applies the 400-cell fire and the new crowd settings. Version 5: zone patrolmen replace the stewards (`stewardCount` is gone; `stewardSpeed` became `patrolSpeed` via `FormerlySerializedAs`), and `crowd.patrolRadius` is new.
@@ -112,7 +125,7 @@ Both scenes are set up by editor scripts (see below), not by hand.
     - Rounded panels and buttons use procedurally generated textures (`Rounded`, cached).
     - Zones view (`showRegions`, on by default, toggle with G or the "Zones [G]" button): `DrawRegionOutlines` tints 1-cell region borders on the ground texture (only the cell whose right or upper neighbour is in another region, so lines stay 1 m wide), `DrawWorldLabels` adds "<NAME> ZONE" at each region's post, and the map tooltip ends with the zone name.
     - Elements: top bar (phase chip, timer bar, speed buttons, stat cards), team roster (left), gates panel and view toggles (right), colour-coded event feed (bottom left), collapsible legend (bottom right, L), event banner, map tooltips, a welcome card while planning, and a results card.
-- `TopDownCamera.cs`: city-builder camera (WASD to pan, scroll to zoom, Q/E to rotate, middle-drag to pan).
+- `TopDownCamera.cs`: city-builder camera (WASD or arrow keys to pan, scroll to zoom, Q/E to rotate, middle-drag to pan). `arrowKeysPan` (not serialized) turns the arrow keys off; the game does that while a zone patrol is selected.
 
 ### Cube world (`Assets/Scripts/`)
 
@@ -167,6 +180,10 @@ If Windows blocks the baseline program ("An Application Control policy has block
 
 ## Balance baseline
 
+### With drunk people (step 4)
+
+**Not measured yet**: run Tools > Crush Hour > Run Balance Baseline and paste `Tools~/Verify/baseline.md` here. The table now has a "Drunk left inside" column, and "Still inside" counts sober people only.
+
 ### Settings version 5 (zone patrols; seeds 11, 21 and 33, 2,000 people)
 
 Measured with **Tools > Crush Hour > Run Balance Baseline** (the same table is in `Tools~/Verify/baseline.md`). "Staff" = 9 zone patrolmen at their posts (one per region) and 2 megaphone police. "Gates + staff" = all 6 emergency gates opened the moment the fire starts. The first row of each fire site has no staff and no gates, so it isn't the same as the old "No action" rows below (those may have included other differences in the old harness).
@@ -210,16 +227,32 @@ Rerun these after changing crowd settings, entrance widths, fire, staff effects,
 
 ## Zone order test
 
-Fire at the Food Court, staff at their posts, only East Gate A open (from the moment the fire starts). 5 s in, the Main Stage patrol orders its zone "towards East Gate A"; the control run gives no order. Seeds 11, 21, 33. **Not measured yet**: run Tools > Crush Hour > Run Zone Order Test and paste `Tools~/Verify/zone-order-test.md` here.
+Fire at the Food Court, staff at their posts, only East Gate A open (from the moment the fire starts). 5 s in, the Main Stage patrol orders its zone "towards East Gate A"; the control run gives no order. Run with **Tools > Crush Hour > Run Zone Order Test** (also saved to `Tools~/Verify/zone-order-test.md`).
+
+| Seed | Order | Door chosen | People in zone | Zone people out via East Gate A | Everyone out via East Gate A | Safe | Injured | Still inside | Time |
+|---|---|---|---|---|---|---|---|---|---|
+| 11 | no | - | 1250 | 635 | 897 | 1988 | 5 | 7 | 122s |
+| 11 | yes | East Gate A | 1250 | 1245 | 1505 | 1994 | 0 | 6 | 113s |
+| 21 | no | - | 1184 | 628 | 904 | 1998 | 2 | 0 | 80s |
+| 21 | yes | East Gate A | 1184 | 1170 | 1428 | 1984 | 14 | 2 | 118s |
+| 33 | no | - | 1250 | 651 | 904 | 1913 | 81 | 6 | 117s |
+| 33 | yes | East Gate A | 1250 | 1243 | 1492 | 1993 | 0 | 7 | 114s |
+
+What it shows:
+- The order works: the door chosen is East Gate A every time, and the share of the zone leaving through it goes from about 51–55% to 99%. In total, East Gate A takes about 1,430–1,505 people instead of about 900.
+- It's a real decision, not a free win. Seeds 11 and 33 get better (5 → 0 and 81 → 0 injured). Seed 21 gets worse: 2 → 14 injured and 80 s → 118 s, because sending a whole 1,200-person zone through one gate overloads it, where without the order the crowd split between East Gate A and the Main Entrance.
+- So the zone order UI should show where the order sends people, and splitting a big zone between exits (or ordering two zones to different gates) should pay off.
 
 ## Status / next ideas
 
 - Week 4 (branch `Sapt-4`):
   - Step 1: regions. The layout was checked against a Python replica (every interior cell assigned, 9 contiguous zones).
   - Step 2: a patrolman per zone replaces the stewards; `Tools~/Verify/verify.ps1` added.
-  - Step 3a: `OrderRegionEvacuation` and `orderedDoor` in the simulation, plus per-door exit counts and the zone order test. No UI yet (step 3b).
+  - Step 3a: `OrderRegionEvacuation` and `orderedDoor` in the simulation, plus per-door exit counts and the zone order test.
+  - Step 3b: zone order UI (panel, arrow keys, right-click to turn, ground arrow, feed message, 5 s cooldown per zone). Not play-tested in the editor yet.
+  - Step 4: drunk people (simulation, display, legend, results, round end on sober people). Baseline with drunks: see "Balance baseline". Not play-tested yet. Step 5 (escorting them out) is next, so for now every drunk person left inside costs 50 points.
   - Steps 1 and 2 pass the compile check (`verify.ps1`). The version 5 baseline is in "Balance baseline" (run from the Unity menu, because Windows Application Control blocks the standalone program on the dev machine).
-  - Next: UI for the zone orders (direction relative to the patrolman's facing), drunk people who need an escort, difficulty presets, a start menu.
+  - Next: escorting drunk people, difficulty presets, a start menu.
 - The crowd simulation, UI and editor scripts compile and the simulation is tuned headless. The VAT shader and baking still need checking inside the editor (see "Verifying without the editor", step 3).
 - Patrolmen and police are still drawn as cubes. They could use person models with a tinted material.
 - The crowd casts no shadows in VAT mode (the shader has no ShadowCaster pass).

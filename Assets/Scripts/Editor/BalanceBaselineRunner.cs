@@ -33,7 +33,7 @@ namespace CrushHour
 
         struct Result
         {
-            public int injured, attacks, inside;
+            public int injured, attacks, inside, drunkInside;
             public float time;
             public double msPerStep;
         }
@@ -97,8 +97,9 @@ namespace CrushHour
                     lastSafe = sim.SafeCount;
                     lastProgress = s.time;
                 }
-                bool stalled = sim.EvacuatingCount == sim.ActiveCount && s.time - lastProgress > 20f;
-                if (sim.ActiveCount == 0 || stalled || s.time >= TimeLimit) break;
+                // Like the game: drunk people never leave on their own, so the run ends on the sober ones.
+                bool stalled = sim.EvacuatingCount == sim.SoberActiveCount && s.time - lastProgress > 20f;
+                if (sim.SoberActiveCount == 0 || stalled || s.time >= TimeLimit) break;
             }
             s.milliseconds = watch.Elapsed.TotalMilliseconds;
         }
@@ -131,17 +132,18 @@ namespace CrushHour
                         if (cancelled()) return null;
                         var r = Run(site, response, seed, cancelled);
                         runs.Add(r);
-                        log?.Invoke($"{site,-16} {Describe(response),-27} seed {seed,3}: injured {r.injured,4}  attacks {r.attacks,4}  inside {r.inside,4}  time {r.time,5:0}s  ({r.msPerStep:0.0} ms/step)");
+                        log?.Invoke($"{site,-16} {Describe(response),-27} seed {seed,3}: injured {r.injured,4}  attacks {r.attacks,4}  inside {r.inside,4}  drunk inside {r.drunkInside,3}  time {r.time,5:0}s  ({r.msPerStep:0.0} ms/step)");
                     }
                     rows.Add((site, response, runs));
                 }
             }
 
             var md = new StringBuilder();
-            md.AppendLine($"Seeds {string.Join(", ", seeds)}, {new CrowdSettings().agentCount} people.");
+            var defaults = new CrowdSettings();
+            md.AppendLine($"Seeds {string.Join(", ", seeds)}, {defaults.agentCount} people, drunk fraction {defaults.drunkFraction:0.##} (x{defaults.drunkDrinksMultiplier:0} in Drinks). \"Still inside\" counts sober people only.");
             md.AppendLine();
-            md.AppendLine("| Fire at | Response | Injured | Panic attacks | Still inside | Time |");
-            md.AppendLine("|---|---|---|---|---|---|");
+            md.AppendLine("| Fire at | Response | Injured | Panic attacks | Still inside | Drunk left inside | Time |");
+            md.AppendLine("|---|---|---|---|---|---|---|");
             foreach (var (site, response, runs) in rows)
             {
                 string name = site.StartsWith("the ") ? char.ToUpper(site[4]) + site.Substring(5) : site;
@@ -149,7 +151,7 @@ namespace CrushHour
                 string time = !anyRanOut ? Range(runs.Select(r => (int)Math.Round(r.time)), "s")
                     : runs.All(r => r.time >= TimeLimit - 0.01f) ? $"ran out ({TimeLimit:0}s)"
                     : $"{runs.Min(r => r.time):0}s – ran out";
-                md.AppendLine($"| {name} | {Describe(response)} | {Range(runs.Select(r => r.injured))} | {Range(runs.Select(r => r.attacks))} | {Range(runs.Select(r => r.inside))} | {time} |");
+                md.AppendLine($"| {name} | {Describe(response)} | {Range(runs.Select(r => r.injured))} | {Range(runs.Select(r => r.attacks))} | {Range(runs.Select(r => r.inside))} | {Range(runs.Select(r => r.drunkInside))} | {time} |");
             }
             return md.ToString();
         }
@@ -164,7 +166,8 @@ namespace CrushHour
             {
                 injured = s.sim.InjuredCount,
                 attacks = s.sim.PanicAttacksTotal,
-                inside = s.sim.ActiveCount,
+                inside = s.sim.SoberActiveCount,
+                drunkInside = s.sim.DrunkInsideCount,
                 time = s.time,
                 msPerStep = s.milliseconds / Math.Max(1, s.steps),
             };
