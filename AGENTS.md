@@ -62,6 +62,12 @@ Both scenes are set up by editor scripts (see below), not by hand.
     - Within `closedDoorSight` (6 m) of a shut door, they set its bit in `doorsFoundShut` and pick another door.
     - Neighbours share `doorsFoundShut`, so "it's shut" passes back through a queue. Seeing an open gate clears that gate's bit.
   - **Informed people** (told by stewards or megaphone police) skip doors they know are closed and add queueing cost (`doorCrowd` × `doorCrowdWeight`).
+  - **Zone evacuation orders** (`OrderRegionEvacuation(region, direction, venue)`, no UI yet):
+    - It picks one open door that the region's `post` can reach. Score = cos(angle between `direction` and the line from the post to the door centre) − walking distance from the post × `orderDistanceWeight` (0.01 per metre). `direction` is in grid x, y (= world x, z).
+    - Everyone active in the region is informed (`Inform`: evacuating, told which doors are open) and gets `orderedDoor[i]`. It returns the door, or -1 if no open door is reachable (people are still sent off, just without a door).
+    - `ChooseDoor` returns the ordered door first, as long as it's open, reachable, not in `doorsFoundShut`, and the person's panic is at most 0.8. Otherwise the normal choice applies. The order isn't cleared: if a closed gate reopens, people follow it again.
+    - People next to the fire still run from it first (`hasFled`), and panicked people don't reconsider their door (the 2 s retarget only happens below 0.8 panic), so an order mostly steers calm people.
+  - **Exit tracking:** `exitDoor[i]` is the door each person left through (nearest door centre when they reach the safe zone; -1 while inside or injured), and `exitsByDoor[d]` counts them.
   - Panicked people (above 0.8) don't reconsider their door (tunnel vision).
   - **Panic** rises towards a target, the highest of:
     - fear of the fire;
@@ -144,6 +150,8 @@ Unity holds the project lock while it's open, so batch mode isn't available. Ins
 
 If Windows blocks the baseline program ("An Application Control policy has blocked this file", e.g. Smart App Control on the dev machine), the compile check still works; run the baseline in Unity with **Tools > Crush Hour > Run Balance Baseline** instead. It runs on a background thread (progress and Cancel in the bottom-right task bar), logs each run to the Console and writes the same `Tools~/Verify/baseline.md`. Don't enter Play mode while it runs (a domain reload kills it).
 
+**Tools > Crush Hour > Run Zone Order Test** runs `BalanceBaselineRunner.RunZoneOrderTest` the same way and writes `Tools~/Verify/zone-order-test.md` (see "Zone order test" below).
+
 `Tools~/` is ignored by Unity (trailing `~`). The script reads references and defines from `Assembly-CSharp-Editor.csproj` (or, if missing, `Assembly-CSharp.csproj`, skipping `Editor/` folders), adds package assemblies from `Library/ScriptAssemblies`, builds in `%TEMP%\CrushHourVerify`, and writes the baseline table to `Tools~/Verify/baseline.md`. The runs live in `Assets/Scripts/Editor/BalanceBaselineRunner.cs` (pure simulation, no Unity API; the menu is `BalanceBaselineMenu.cs`, and `Tools~/Verify/Baseline.cs` is only the standalone `Main`). They use the code defaults of `CrowdSettings`, not the scene's Inspector values, and mirror `CrushHourGame.Simulate` for three responses (no staff and gates shut; staff at their posts and gates shut; all gates opened when the fire starts plus staff), three fire sites and the given seeds.
 
 
@@ -159,7 +167,27 @@ If Windows blocks the baseline program ("An Application Control policy has block
 
 ## Balance baseline
 
-**Settings version 5 (zone patrols): not measured yet.** Run **Tools > Crush Hour > Run Balance Baseline** (or `verify.ps1`) and paste `Tools~/Verify/baseline.md` here. "Staff" there = 9 zone patrolmen at their posts and 2 megaphone police.
+### Settings version 5 (zone patrols; seeds 11, 21 and 33, 2,000 people)
+
+Measured with **Tools > Crush Hour > Run Balance Baseline** (the same table is in `Tools~/Verify/baseline.md`). "Staff" = 9 zone patrolmen at their posts (one per region) and 2 megaphone police. "Gates + staff" = all 6 emergency gates opened the moment the fire starts. The first row of each fire site has no staff and no gates, so it isn't the same as the old "No action" rows below (those may have included other differences in the old harness).
+
+| Fire at | Response | Injured | Panic attacks | Still inside | Time |
+|---|---|---|---|---|---|
+| Food Court | No staff, gates shut | 8–68 | 3–109 | 0–2 | 121–148s |
+| Food Court | Staff at posts, gates shut | 0–48 | 0 | 1–4 | 123–159s |
+| Food Court | Gates + staff | 0–1 | 0 | 0 | 61–94s |
+| Stage Left | No staff, gates shut | 21–224 | 4–106 | 0–15 | 137–139s |
+| Stage Left | Staff at posts, gates shut | 0–1 | 0 | 0 | 107–124s |
+| Stage Left | Gates + staff | 0–1 | 0 | 0 | 70–78s |
+| Bar Tent | No staff, gates shut | 2–568 | 0–95 | 19–45 | 94–98s |
+| Bar Tent | Staff at posts, gates shut | 0–1 | 0–1 | 0 | 97–117s |
+| Bar Tent | Gates + staff | 0–1 | 0 | 0 | 65–71s |
+
+What changed against version 4:
+- "Gates + staff" is as good as before (0–1 injured, 61–94 s against 68–88 s), so 9 patrolmen in place of 4 stewards don't change what a good response looks like.
+- Staff at their posts with the gates still shut is now enough to keep Stage Left and the Bar Tent nearly injury-free (0–1 injured), where the old "No action" rows had 200–560 injured. The extra patrols help a lot even before the player does anything, so the game is **easier at the start** than before. Food Court is the exception (0–48 injured, 1–4 still inside).
+- Without staff and gates, the Bar Tent still has 19–45 people stuck inside and up to 568 injured on one seed.
+- Open question for tuning: with a patrol in every zone, the player's choices (which gates, where to send people) matter less. Zone evacuation orders (next step) and the drunk crowd should give them something to do.
 
 ### Settings version 4 (before zone patrols; headless, 2,000 people, seeds 11, 21 and 33)
 
@@ -180,13 +208,18 @@ Steward queues (measured before the PA was removed: food court fire, PA + staff,
 
 Rerun these after changing crowd settings, entrance widths, fire, staff effects, or the panic, pressure and injury logic. Each step takes about 1.2–2.5 ms on .NET 8. It is likely slower in Unity's Mono runtime; the game's top speed is 2×.
 
+## Zone order test
+
+Fire at the Food Court, staff at their posts, only East Gate A open (from the moment the fire starts). 5 s in, the Main Stage patrol orders its zone "towards East Gate A"; the control run gives no order. Seeds 11, 21, 33. **Not measured yet**: run Tools > Crush Hour > Run Zone Order Test and paste `Tools~/Verify/zone-order-test.md` here.
+
 ## Status / next ideas
 
 - Week 4 (branch `Sapt-4`):
   - Step 1: regions. The layout was checked against a Python replica (every interior cell assigned, 9 contiguous zones).
   - Step 2: a patrolman per zone replaces the stewards; `Tools~/Verify/verify.ps1` added.
-  - Steps 1 and 2 pass the compile check (`verify.ps1`). The baseline program is blocked by Windows Application Control on the dev machine, so the version 5 baseline still has to be run from the Unity menu.
-  - Next: zone evacuation orders with a direction relative to the patrolman, drunk people who need an escort, difficulty presets, a start menu.
+  - Step 3a: `OrderRegionEvacuation` and `orderedDoor` in the simulation, plus per-door exit counts and the zone order test. No UI yet (step 3b).
+  - Steps 1 and 2 pass the compile check (`verify.ps1`). The version 5 baseline is in "Balance baseline" (run from the Unity menu, because Windows Application Control blocks the standalone program on the dev machine).
+  - Next: UI for the zone orders (direction relative to the patrolman's facing), drunk people who need an escort, difficulty presets, a start menu.
 - The crowd simulation, UI and editor scripts compile and the simulation is tuned headless. The VAT shader and baking still need checking inside the editor (see "Verifying without the editor", step 3).
 - Patrolmen and police are still drawn as cubes. They could use person models with a tinted material.
 - The crowd casts no shadows in VAT mode (the shader has no ShadowCaster pass).

@@ -8,10 +8,11 @@ using UnityEngine;
 namespace CrushHour
 {
     /// <summary>
-    /// Headless balance runs (see AGENTS.md, "Balance baseline"). Pure simulation, no Unity API calls, so it runs on a
-    /// background thread in the editor (Tools > Crush Hour > Run Balance Baseline) or in a plain .NET program
-    /// (Tools~/Verify/Baseline.cs). Mirrors CrushHourGame.Simulate: gates, fire, door fields, crowd step, patrol rings,
-    /// megaphone pulses. Uses the code defaults of <see cref="CrowdSettings"/>, not the scene's Inspector values.
+    /// Headless balance runs and scenario tests (see AGENTS.md, "Balance baseline"). Pure simulation, no Unity API
+    /// calls, so they run on a background thread in the editor (Tools > Crush Hour > Run ...) or in a plain .NET
+    /// program (Tools~/Verify/Baseline.cs). <see cref="Simulate"/> mirrors CrushHourGame.Simulate: gates, fire, door
+    /// fields, crowd step, patrol rings, megaphone pulses. Uses the code defaults of <see cref="CrowdSettings"/>, not
+    /// the scene's Inspector values.
     /// </summary>
     public static class BalanceBaselineRunner
     {
@@ -36,6 +37,79 @@ namespace CrushHour
             public float time;
             public double msPerStep;
         }
+
+        // ================================================================ Shared scenario loop
+
+        /// <summary>One fire scenario: a fresh venue and crowd for <paramref name="seed"/>, the fire at <paramref name="siteName"/>.</summary>
+        sealed class Scenario
+        {
+            public System.Random rng;
+            public FestivalVenue venue;
+            public CrowdSettings settings;
+            public CrowdSimulation sim;
+            public readonly List<Vector2> patrols = new(), police = new();
+            public float time;
+            public int steps;
+            public double milliseconds;
+
+            public Scenario(string siteName, int seed, bool staff)
+            {
+                rng = new System.Random(seed);
+                venue = new FestivalVenue();
+                settings = new CrowdSettings();
+                sim = new CrowdSimulation(settings, venue, rng);
+                if (staff)
+                {
+                    // Staff stand at their default posts: one patrolman per zone, plus the megaphone police.
+                    foreach (var region in venue.regions) patrols.Add(new Vector2(region.post.x + 0.5f, region.post.y + 0.5f));
+                    police.AddRange(PolicePosts);
+                }
+                venue.StartFire(venue.fireSites.First(s => s.name == siteName).cell);
+            }
+        }
+
+        /// <summary>Runs until everyone is out, the evacuation stalls, or time runs out. <paramref name="beforeStep"/> gets the time so far.</summary>
+        static void Simulate(Scenario s, Func<bool> cancelled, Action<float> beforeStep = null)
+        {
+            var changed = new List<Gate>();
+            float announce = 0f, lastProgress = 0f;
+            int lastSafe = 0;
+            var watch = Stopwatch.StartNew();
+            var sim = s.sim;
+            while (!cancelled())
+            {
+                beforeStep?.Invoke(s.time);
+                s.venue.UpdateGates(Dt, changed);
+                s.venue.UpdateFire(Dt, s.rng, MaxFireCells);
+                s.venue.UpdateDoorFields(3);
+                sim.Step(Dt, s.venue, true);
+                if (s.patrols.Count > 0) sim.ApplyStewards(s.patrols, Dt, true, s.settings.patrolRadius);
+                announce -= Dt;
+                if (announce <= 0f)
+                {
+                    announce = AnnounceInterval;
+                    foreach (var p in s.police) sim.PoliceAnnouncement(p);
+                }
+                s.time += Dt;
+                s.steps++;
+                if (sim.SafeCount != lastSafe)
+                {
+                    lastSafe = sim.SafeCount;
+                    lastProgress = s.time;
+                }
+                bool stalled = sim.EvacuatingCount == sim.ActiveCount && s.time - lastProgress > 20f;
+                if (sim.ActiveCount == 0 || stalled || s.time >= TimeLimit) break;
+            }
+            s.milliseconds = watch.Elapsed.TotalMilliseconds;
+        }
+
+        static string Range(IEnumerable<int> values, string unit = "")
+        {
+            int min = values.Min(), max = values.Max();
+            return min == max ? $"{min}{unit}" : $"{min}–{max}{unit}";
+        }
+
+        // ================================================================ Balance baseline
 
         public static int RunCount(int seedCount) => Sites.Length * ResponseCount * seedCount;
 
@@ -80,67 +154,78 @@ namespace CrushHour
             return md.ToString();
         }
 
-        static string Range(IEnumerable<int> values, string unit = "")
-        {
-            int min = values.Min(), max = values.Max();
-            return min == max ? $"{min}{unit}" : $"{min}–{max}{unit}";
-        }
-
         static Result Run(string siteName, Response response, int seed, Func<bool> cancelled)
         {
-            var rng = new System.Random(seed);
-            var venue = new FestivalVenue();
-            var settings = new CrowdSettings();
-            var sim = new CrowdSimulation(settings, venue, rng);
-            var site = venue.fireSites.First(s => s.name == siteName);
-
-            // Staff stand at their default posts: one patrolman per zone, plus the megaphone police.
-            var patrols = new List<Vector2>();
-            var police = new List<Vector2>();
-            if (response != Response.NoStaffNoGates)
-            {
-                foreach (var region in venue.regions) patrols.Add(new Vector2(region.post.x + 0.5f, region.post.y + 0.5f));
-                police.AddRange(PolicePosts);
-            }
+            var s = new Scenario(siteName, seed, response != Response.NoStaffNoGates);
             if (response == Response.GatesAndStaff)
-                foreach (var gate in venue.gates) gate.open = true; // opened the moment the fire starts
-
-            venue.StartFire(site.cell);
-            var changed = new List<Gate>();
-            float t = 0f, announce = 0f, lastProgress = 0f;
-            int lastSafe = 0, steps = 0;
-            var watch = Stopwatch.StartNew();
-            while (!cancelled())
-            {
-                venue.UpdateGates(Dt, changed);
-                venue.UpdateFire(Dt, rng, MaxFireCells);
-                venue.UpdateDoorFields(3);
-                sim.Step(Dt, venue, true);
-                if (patrols.Count > 0) sim.ApplyStewards(patrols, Dt, true, settings.patrolRadius);
-                announce -= Dt;
-                if (announce <= 0f)
-                {
-                    announce = AnnounceInterval;
-                    foreach (var p in police) sim.PoliceAnnouncement(p);
-                }
-                t += Dt;
-                steps++;
-                if (sim.SafeCount != lastSafe)
-                {
-                    lastSafe = sim.SafeCount;
-                    lastProgress = t;
-                }
-                bool stalled = sim.EvacuatingCount == sim.ActiveCount && t - lastProgress > 20f;
-                if (sim.ActiveCount == 0 || stalled || t >= TimeLimit) break;
-            }
+                foreach (var gate in s.venue.gates) gate.open = true; // opened the moment the fire starts
+            Simulate(s, cancelled);
             return new Result
             {
-                injured = sim.InjuredCount,
-                attacks = sim.PanicAttacksTotal,
-                inside = sim.ActiveCount,
-                time = t,
-                msPerStep = watch.Elapsed.TotalMilliseconds / Math.Max(1, steps),
+                injured = s.sim.InjuredCount,
+                attacks = s.sim.PanicAttacksTotal,
+                inside = s.sim.ActiveCount,
+                time = s.time,
+                msPerStep = s.milliseconds / Math.Max(1, s.steps),
             };
+        }
+
+        // ================================================================ Zone order test
+
+        const string OrderSite = "the Food Court", OrderRegion = "Main Stage", OrderGate = "East Gate A";
+        const float OrderDelay = 5f;
+
+        public static int ZoneOrderRunCount(int seedCount) => 2 * seedCount;
+
+        /// <summary>
+        /// Zone evacuation order test: fire at the Food Court, staff at their posts, only East Gate A opened when the fire
+        /// starts. <see cref="OrderDelay"/> seconds in, the Main Stage patrol orders its zone out "towards East Gate A"
+        /// (or, in the control run, does nothing). Compares how many people leave through East Gate A, overall and among
+        /// the people who were in the Main Stage zone at that moment. Returns a Markdown table (null when cancelled).
+        /// </summary>
+        public static string RunZoneOrderTest(int[] seeds, Action<string> log, Func<bool> cancelled)
+        {
+            var md = new StringBuilder();
+            md.AppendLine($"Fire at the Food Court, staff at their posts, only {OrderGate} open. At {OrderDelay:0} s the {OrderRegion} patrol orders its zone towards {OrderGate} (or not). Seeds {string.Join(", ", seeds)}.");
+            md.AppendLine();
+            md.AppendLine($"| Seed | Order | Door chosen | People in zone | Zone people out via {OrderGate} | Everyone out via {OrderGate} | Safe | Injured | Still inside | Time |");
+            md.AppendLine("|---|---|---|---|---|---|---|---|---|---|");
+            foreach (int seed in seeds)
+            {
+                foreach (bool order in new[] { false, true })
+                {
+                    if (cancelled()) return null;
+                    var s = new Scenario(OrderSite, seed, true);
+                    var venue = s.venue;
+                    var sim = s.sim;
+                    int gateDoor = venue.doors.FindIndex(d => d.name == OrderGate);
+                    int region = venue.regions.FindIndex(r => r.name == OrderRegion);
+                    venue.doors[gateDoor].gate.open = true;
+
+                    var zonePeople = new List<int>();
+                    string chosen = "-";
+                    bool done = false;
+                    Simulate(s, cancelled, t =>
+                    {
+                        if (done || t < OrderDelay) return;
+                        done = true;
+                        for (int i = 0; i < sim.count; i++)
+                            if (sim.state[i] == AgentState.Active && venue.regionOf[CrowdSimulation.CellOf(sim.position[i])] == region)
+                                zonePeople.Add(i);
+                        if (!order) return;
+                        var post = venue.regions[region].post;
+                        var direction = venue.doors[gateDoor].Center - new Vector2(post.x + 0.5f, post.y + 0.5f);
+                        int d = sim.OrderRegionEvacuation(region, direction, venue);
+                        chosen = d >= 0 ? venue.doors[d].name : "none";
+                    });
+
+                    int zoneViaGate = zonePeople.Count(i => sim.exitDoor[i] == gateDoor);
+                    string line = $"| {seed} | {(order ? "yes" : "no")} | {chosen} | {zonePeople.Count} | {zoneViaGate} | {sim.exitsByDoor[gateDoor]} | {sim.SafeCount} | {sim.InjuredCount} | {sim.ActiveCount} | {s.time:0}s |";
+                    md.AppendLine(line);
+                    log?.Invoke(line);
+                }
+            }
+            return md.ToString();
         }
     }
 }

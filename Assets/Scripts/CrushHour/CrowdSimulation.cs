@@ -64,6 +64,8 @@ namespace CrushHour
         public float stewardRadius = 6f;
         [Tooltip("Radius (m) of a zone patrolman's ring. Patrolmen calm and queue people exactly like stewards do.")]
         public float patrolRadius = 6f;
+        [Tooltip("Zone evacuation orders: how much each metre of walking to a door lowers its score. The score starts as the cosine between the ordered direction and the way to the door.")]
+        public float orderDistanceWeight = 0.01f;
         [Tooltip("How fast a steward talks panic down (per second) for the people in their ring.")]
         public float stewardCalming = 0.5f;
         [Tooltip("Panicked people in a steward's ring stop and listen until their panic is down to this; then they're told the way out and let go.")]
@@ -107,6 +109,15 @@ namespace CrushHour
         /// <summary>Door being headed for (-1 none), doors found shut (bit mask), time until reconsidering.</summary>
         public readonly int[] targetDoor, doorsFoundShut;
         readonly float[] retargetTime;
+        /// <summary>
+        /// Door a zone evacuation order sent this person to (-1 none). <see cref="ChooseDoor"/> follows it unless the
+        /// door is shut, found shut or cut off, or the person is panicking (above 0.8: tunnel vision).
+        /// </summary>
+        public readonly int[] orderedDoor;
+        /// <summary>Door each person left through (-1 while inside, or injured).</summary>
+        public readonly int[] exitDoor;
+        /// <summary>How many people have left through each door (index into venue.doors).</summary>
+        public readonly int[] exitsByDoor;
         /// <summary>Seconds left of a panic attack (0 = none), and build-up towards one.</summary>
         public readonly float[] attackTime, attackBuildUp;
         /// <summary>Seconds left of queueing in order because a steward is organising them (spaced out, no pushing).</summary>
@@ -177,7 +188,12 @@ namespace CrushHour
             reassuredTime = new float[count];
             agentCell = new int[count];
             sorted = new int[count];
+            orderedDoor = new int[count];
+            exitDoor = new int[count];
+            exitsByDoor = new int[venue.doors.Count];
             Array.Fill(targetDoor, -1);
+            Array.Fill(orderedDoor, -1);
+            Array.Fill(exitDoor, -1);
             Spawn(venue);
             UpdateCounts();
         }
@@ -532,6 +548,9 @@ namespace CrushHour
                 {
                     state[i] = AgentState.Safe;
                     attackTime[i] = 0f;
+                    int exit = NearestDoor(venue, next);
+                    exitDoor[i] = exit;
+                    if (exit >= 0) exitsByDoor[exit]++;
                     continue;
                 }
                 if (type == CellType.Fire)
@@ -590,6 +609,11 @@ namespace CrushHour
         int ChooseDoor(int i, int c, FestivalVenue venue)
         {
             var doors = venue.doors;
+            // A zone order wins while the door is open and reachable, and they're calm enough to listen.
+            int ordered = orderedDoor[i];
+            if (ordered >= 0 && panic[i] <= 0.8f && doors[ordered].IsOpen && doors[ordered].field.Reachable(c) &&
+                (doorsFoundShut[i] & (1 << ordered)) == 0)
+                return ordered;
             bool knowsDoors = informed[i];
             for (int pass = 0; pass < 2; pass++)
             {
@@ -723,6 +747,61 @@ namespace CrushHour
                 panic[i] = panic[i] > 0.5f ? panic[i] - 0.1f : panic[i] + 0.05f;
             }
             return newlyInformed;
+        }
+
+        /// <summary>
+        /// A zone patrolman orders everyone in <paramref name="region"/> out through the open door that best matches
+        /// <paramref name="direction"/> (grid x, y = world x, z): score = cos(angle between the direction and the way from
+        /// the region's post to the door) − walking distance × <see cref="CrowdSettings.orderDistanceWeight"/>.
+        /// Everyone active in the region starts evacuating, is informed, and gets <see cref="orderedDoor"/> set.
+        /// Returns the chosen door (index into venue.doors), or -1 when no open door can be reached (people are still
+        /// informed and sent off, without a door order).
+        /// </summary>
+        public int OrderRegionEvacuation(int region, Vector2 direction, FestivalVenue venue)
+        {
+            var post = venue.regions[region].post;
+            int postCell = FestivalVenue.Index(post.x, post.y);
+            Vector2 from = new Vector2(post.x + 0.5f, post.y + 0.5f);
+            Vector2 dir = direction.sqrMagnitude > 1e-6f ? direction.normalized : Vector2.zero;
+            int best = -1;
+            float bestScore = float.NegativeInfinity;
+            for (int d = 0; d < venue.doors.Count; d++)
+            {
+                var door = venue.doors[d];
+                if (!door.IsOpen || !door.field.Reachable(postCell)) continue;
+                Vector2 way = door.Center - from;
+                float alignment = way.sqrMagnitude > 1e-6f ? Vector2.Dot(way.normalized, dir) : 1f;
+                float score = alignment - door.field.distance[postCell] * settings.orderDistanceWeight;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = d;
+                }
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (state[i] != AgentState.Active || venue.regionOf[CellOf(position[i])] != region) continue;
+                Inform(i);
+                orderedDoor[i] = best;
+            }
+            return best;
+        }
+
+        static int NearestDoor(FestivalVenue venue, Vector2 p)
+        {
+            int best = -1;
+            float bestSq = float.MaxValue;
+            for (int d = 0; d < venue.doors.Count; d++)
+            {
+                float sq = (venue.doors[d].Center - p).sqrMagnitude;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = d;
+                }
+            }
+            return best;
         }
 
         void Inform(int i)
