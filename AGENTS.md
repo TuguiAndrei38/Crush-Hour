@@ -5,7 +5,7 @@ Notes for coding agents working in this Unity project.
 ## Project
 
 - Unity **6000.6.6f1**, **URP 17** (PC renderer: Forward+, depth priming off), **Input System only** (`activeInputHandler: 1`, so the legacy `Input` class throws). Read devices directly (`Keyboard.current`, `Mouse.current`, `Gamepad.current`).
-- No git repo, no asmdefs: runtime scripts compile into `Assembly-CSharp`, `Editor/` folders into `Assembly-CSharp-Editor`.
+- Git repo (GitHub, `.gitignore` excludes `Library/`, `Temp/`, `Logs/`, `UserSettings/`, `*.csproj`, `*.sln`); no asmdefs: runtime scripts compile into `Assembly-CSharp`, `Editor/` folders into `Assembly-CSharp-Editor`.
 - **Crush Hour** concept: you are the safety commander at a big event. When disaster hits, you guide the crowd out with barriers, emergency gates, stewards and megaphone police. There is no PA: the user had the announcement buttons removed. Panic spreads, doorways jam and dense pockets crush. You're scored on people out safely, injuries, panic attacks and time.
 - Third-party asset: **Low Poly People** by David Jalbert, in `Assets/DavidJalbert/LowPolyPeople/`.
   - 18 prefabs with Generic rigs. Animations live in `Prefabs/Animations/`: "normal/stout/strong" × "idle/walk/run/wave".
@@ -40,6 +40,12 @@ Both scenes are set up by editor scripts (see below), not by hand.
     - The fire is capped at `maxFireCells` (400). Grass catches at 0.09 per neighbour per tick, and embers fly with a chance per tick of fire cells ÷ 50, at most 0.55.
   - **Smoke** (`smoke[]`, 0–1, updated every 0.2 s inside `UpdateFire`): it is 1 in the flames and spreads like the alarm field, but shaped by the wind: ×0.93 per cell downwind (+x), ×0.88 towards +y, ×0.75 against the wind, and ×0.96 lingering. The plume runs about 15 m downwind, matching the drift of the smoke visuals. Door fields add `smoke × 3` to the step cost, so routes avoid it.
   - Also handles gate animation, `seesOpenGate`, and unit pathfinding (`FindPath`).
+  - **Regions** (`Region`, `regions`, `regionOf[]`): 9 named zones used for orders and labels. They don't change how people move.
+    - The zones are Food Court, Drinks (Bar Tent), Toilets, Merch, Dance Tent, Main Stage, Backstage (Generator), Main Entrance and West Entrance.
+    - Each `area` is its landmark's bounding rectangle grown by `RegionMargin` (5 m) and clipped to the inside of the fence. The Main Stage area also covers the crowd zone in front of the stage (22,46 60×17).
+    - `AssignRegions` gives every cell strictly inside the fence a region: the only area covering it, otherwise (several areas or none) the region with the nearest area centre. Fence, entrance and gate cells and the outside are `-1`.
+    - `post` is the open cell of the region nearest its area centre (where a patrol will stand). `RegionAt(cell)` returns the region or null.
+    - `fireSites` entries carry their `region`.
 - `CrowdSimulation.cs`: about 2,000 agents stored as parallel arrays. Pure simulation, no drawing, so it runs headless. `Step(dt, venue, incident)`.
   - **Awareness:** people notice the fire by seeing it (within `fireSightRange`, 25 m) or by hearing the `alarm` grid. The alarm is a shout field that spreads 1 m per 0.2 s from the fire and from everyone already evacuating, fading ×0.9 per metre.
     - Smoke and the sight of an open gate also make people aware.
@@ -94,6 +100,7 @@ Both scenes are set up by editor scripts (see below), not by hand.
   - **Settings version:** every Inspector value is saved in the scene and overrides code defaults. When you retune defaults, bump `CurrentSettingsVersion`; `UpgradeSettings` (run from `OnValidate` and `Awake`) then resets the team size, `maxFireCells` and `crowd` in older scenes. Version 3 fixed a scene stuck on 6 stewards, a 160-cell fire and old crowd settings. Version 4 applies the 400-cell fire and the new crowd settings.
   - **UI** (IMGUI) is scaled by `Screen.height / 900` through `GUI.matrix`. All layout uses the virtual `vw`×`vh` size, and `guiRects` are in virtual units (`IsOverGui` converts).
     - Rounded panels and buttons use procedurally generated textures (`Rounded`, cached).
+    - Zones view (`showRegions`, on by default, toggle with G or the "Zones [G]" button): `DrawRegionOutlines` tints 1-cell region borders on the ground texture (only the cell whose right or upper neighbour is in another region, so lines stay 1 m wide), `DrawWorldLabels` adds "<NAME> ZONE" at each region's post, and the map tooltip ends with the zone name.
     - Elements: top bar (phase chip, timer bar, speed buttons, stat cards), team roster (left), gates panel and view toggles (right), colour-coded event feed (bottom left), collapsible legend (bottom right, L), event banner, map tooltips, a welcome card while planning, and a results card.
 - `TopDownCamera.cs`: city-builder camera (WASD to pan, scroll to zoom, Q/E to rotate, middle-drag to pan).
 
@@ -159,6 +166,7 @@ Rerun these after changing crowd settings, entrance widths, fire, staff effects,
 
 ## Status / next ideas
 
+- Week 4 (branch `Sapt-4`), step 1: regions added. The region layout was checked against a Python replica (every interior cell assigned, 9 contiguous zones), but this change was **not compiled** with the Roslyn check (no shell on the dev machine at the time): open Unity and check the Console before building on it. Next steps: a patrolman per region, region evacuation orders with a direction, drunk people who need an escort, difficulty presets, a start menu.
 - The crowd simulation, UI and editor scripts compile and the simulation is tuned headless. The VAT shader and baking still need checking inside the editor (see "Verifying without the editor", step 3).
 - Stewards and police are still drawn as cubes. They could use person models with a tinted material.
 - The crowd casts no shadows in VAT mode (the shader has no ShadowCaster pass).

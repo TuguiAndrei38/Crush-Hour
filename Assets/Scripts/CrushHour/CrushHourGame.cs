@@ -134,7 +134,7 @@ namespace CrushHour
 
         Phase phase;
         Tool tool;
-        bool paused, heatmap = true, incidentStarted;
+        bool paused, heatmap = true, incidentStarted, showRegions = true;
         int speedIndex, barriersUsed, lastInjured, lastSmokeInjured, lastAttacks, gatesOpened, selectedUnit = -1;
         float simAccumulator, groundTimer, warningTimer, attackWarningTime = -99f;
         float incidentCountdown, evacuationTime, lastProgressTime;
@@ -878,6 +878,7 @@ namespace CrushHour
             if (keyboard.hKey.wasPressedThisFrame) heatmap = !heatmap;
             if (keyboard.mKey.wasPressedThisFrame) stateMarkers = !stateMarkers;
             if (keyboard.lKey.wasPressedThisFrame) showLegend = !showLegend;
+            if (keyboard.gKey.wasPressedThisFrame) showRegions = !showRegions;
             if (phase == Phase.Results) return;
             if (keyboard.spaceKey.wasPressedThisFrame) paused = !paused;
             if (keyboard.tabKey.wasPressedThisFrame) speedIndex = (speedIndex + 1) % Speeds.Length;
@@ -1020,8 +1021,29 @@ namespace CrushHour
                     _ => Blocked,
                 };
             }
+            if (showRegions) DrawRegionOutlines();
             groundTexture.SetPixels32(groundPixels);
             groundTexture.Apply(false);
+        }
+
+        /// <summary>
+        /// Thin (1 m) region borders on the ground texture: a cell is tinted with its region's colour when the cell to
+        /// its right or above it is in another region. Only one side of each border is marked, so lines stay 1 cell wide.
+        /// </summary>
+        void DrawRegionOutlines()
+        {
+            var regionOf = venue.regionOf;
+            for (int y = 0; y < H; y++)
+            {
+                for (int x = 0; x < W; x++)
+                {
+                    int i = FestivalVenue.Index(x, y), r = regionOf[i];
+                    if (r < 0 || venue.cells[i] == CellType.Fire) continue;
+                    bool border = (x + 1 < W && regionOf[i + 1] >= 0 && regionOf[i + 1] != r) ||
+                                  (y + 1 < H && regionOf[i + W] >= 0 && regionOf[i + W] != r);
+                    if (border) groundPixels[i] = Color.Lerp(groundPixels[i], venue.regions[r].color, 0.6f);
+                }
+            }
         }
 
         static Color PressureColor(float p)
@@ -1357,7 +1379,7 @@ namespace CrushHour
 
         void DrawControlPanel()
         {
-            var rect = Panel(new Rect(vw - 312, 76, 300, 120 + venue.gates.Count * 34 + 80));
+            var rect = Panel(new Rect(vw - 312, 76, 300, 120 + venue.gates.Count * 34 + 114));
             GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
 
             GUILayout.Label("EMERGENCY GATES", headerStyle);
@@ -1381,6 +1403,7 @@ namespace CrushHour
             if (GUILayout.Button($"Pressure map [H]", heatmap ? selectedButtonStyle : buttonStyle)) heatmap = !heatmap;
             if (crowdRenderer.UsesModels && GUILayout.Button($"State tiles [M]", stateMarkers ? selectedButtonStyle : buttonStyle)) stateMarkers = !stateMarkers;
             GUILayout.EndHorizontal();
+            if (GUILayout.Button("Zones [G]", showRegions ? selectedButtonStyle : buttonStyle)) showRegions = !showRegions;
             GUILayout.EndArea();
         }
 
@@ -1427,7 +1450,7 @@ namespace CrushHour
             LegendRow(StewardColor, "Steward: calms people, then sends them out");
             LegendRow(MegaphoneColor, "Police with megaphone");
             GUILayout.Space(4);
-            GUILayout.Label("Ground colour: green = room to move, orange = packed, red/purple = crush danger, dark = thick smoke.", mutedStyle);
+            GUILayout.Label("Ground colour: green = room to move, orange = packed, red/purple = crush danger, dark = thick smoke. Coloured lines = zones [G].", mutedStyle);
             GUILayout.EndArea();
         }
 
@@ -1456,6 +1479,14 @@ namespace CrushHour
 
         void DrawWorldLabels()
         {
+            if (showRegions)
+            {
+                foreach (var r in venue.regions)
+                {
+                    var style = TextStyle(10, Color.Lerp(r.color, Color.white, 0.25f), FontStyle.Bold, TextAnchor.MiddleCenter);
+                    WorldLabel(new Vector3(r.post.x + 0.5f, 0.1f, r.post.y + 0.5f), $"{r.name.ToUpperInvariant()} ZONE", style);
+                }
+            }
             foreach (var (text, position) in labels) WorldLabel(position, text, worldLabelStyle);
             foreach (var g in venue.gates)
             {
@@ -1503,6 +1534,8 @@ namespace CrushHour
                     CellType.Outside => "Outside: safe",
                     _ => venue.DescribeLocation(cell),
                 };
+                var region = venue.RegionAt(cell);
+                if (region != null) text += $"\n<color=#{ColorUtility.ToHtmlStringRGB(region.color)}>Zone: {region.name}</color>";
                 if (selectedUnit >= 0 && tool == Tool.Command && venue.cells[cell] == CellType.Open)
                     text += $"\nClick to send {units[selectedUnit].Name} here.";
             }

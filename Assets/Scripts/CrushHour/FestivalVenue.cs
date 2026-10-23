@@ -42,6 +42,22 @@ namespace CrushHour
         public bool solid;
     }
 
+    /// <summary>
+    /// A named zone of the festival grounds (food court, stage front, toilets...). Every cell inside the fence belongs
+    /// to exactly one region (<see cref="FestivalVenue.regionOf"/>). Used for orders and labels; it doesn't change
+    /// how people move.
+    /// </summary>
+    public class Region
+    {
+        public string name;
+        /// <summary>Walkable cell near the middle of the region: where its patrol stands.</summary>
+        public Vector2Int post;
+        public Color color;
+        /// <summary>The area the region was grown from (landmark expanded by a few metres, clipped to the fence).</summary>
+        public RectInt area;
+        public Vector2 Center => area.center;
+    }
+
     public class FlowField
     {
         public readonly float[] distance;
@@ -76,7 +92,11 @@ namespace CrushHour
         public readonly List<Gate> gates = new();
         public readonly List<Door> doors = new();
         public readonly List<Landmark> landmarks = new();
-        public readonly List<(string name, Vector2Int cell)> fireSites = new();
+        /// <summary>Where an incident can start, and the region it's in.</summary>
+        public readonly List<(string name, Vector2Int cell, int region)> fireSites = new();
+        public readonly List<Region> regions = new();
+        /// <summary>Region index per cell: -1 outside the fence and on the fence line, otherwise an index into <see cref="regions"/>.</summary>
+        public readonly sbyte[] regionOf = new sbyte[CellCount];
         public readonly List<(RectInt rect, float weight, bool stageFacing)> crowdZones = new();
         public readonly List<int> fireCells = new();
         /// <summary>
@@ -140,13 +160,25 @@ namespace CrushHour
             AddBlock("Dance Tent", new RectInt(7, 34, 9, 10), new Color(0.55f, 0.2f, 0.45f), 3f, true);
             AddBlock("Generator", new RectInt(93, 58, 3, 3), new Color(0.6f, 0.55f, 0.2f), 1.8f, true);
 
+            // Regions: each landmark grown by RegionMargin metres. The stage region also covers the crowd in front of it.
+            AddRegion("Food Court", Grow(Union("Food Court"), RegionMargin), new Color(0.95f, 0.6f, 0.2f));
+            AddRegion("Drinks", Grow(Union("Bar Tent"), RegionMargin), new Color(0.25f, 0.8f, 0.85f));
+            AddRegion("Toilets", Grow(Union("Toilets"), RegionMargin), new Color(0.4f, 0.55f, 1f));
+            AddRegion("Merch", Grow(Union("Merch Tent"), RegionMargin), new Color(0.8f, 0.45f, 0.9f));
+            AddRegion("Dance Tent", Grow(Union("Dance Tent"), RegionMargin), new Color(1f, 0.4f, 0.7f));
+            AddRegion("Main Stage", Enclose(Grow(Union("Main Stage"), RegionMargin), new RectInt(22, 46, 60, 17)), new Color(1f, 0.9f, 0.3f));
+            AddRegion("Backstage", Grow(Union("Generator"), RegionMargin), new Color(0.7f, 0.75f, 0.35f));
+            AddRegion("Main Entrance", Grow(Union("Main Entrance"), RegionMargin), new Color(0.5f, 0.95f, 0.5f));
+            AddRegion("West Entrance", Grow(Union("West Entrance"), RegionMargin), new Color(0.35f, 0.85f, 0.55f));
+            AssignRegions();
+
             // Where an incident can start: an open cell next to something that burns.
-            fireSites.Add(("the Food Court", new Vector2Int(21, 18)));
-            fireSites.Add(("the Bar Tent", new Vector2Int(81, 33)));
-            fireSites.Add(("the Generator", new Vector2Int(92, 59)));
-            fireSites.Add(("Stage Left", new Vector2Int(35, 64)));
-            fireSites.Add(("the Dance Tent", new Vector2Int(16, 39)));
-            fireSites.Add(("the Merch Tent", new Vector2Int(68, 15)));
+            AddFireSite("the Food Court", new Vector2Int(21, 18));
+            AddFireSite("the Bar Tent", new Vector2Int(81, 33));
+            AddFireSite("the Generator", new Vector2Int(92, 59));
+            AddFireSite("Stage Left", new Vector2Int(35, 64));
+            AddFireSite("the Dance Tent", new Vector2Int(16, 39));
+            AddFireSite("the Merch Tent", new Vector2Int(68, 15));
 
             crowdZones.Add((new RectInt(22, 46, 60, 17), 0.62f, true)); // in front of the stage
             crowdZones.Add((new RectInt(8, 6, 24, 18), 0.12f, false));  // food court
@@ -205,6 +237,108 @@ namespace CrushHour
             }
             landmarks.Add(new Landmark { name = name, rect = rect, color = color, height = height, solid = true });
         }
+
+        // ---------------------------------------------------------------- Regions
+
+        const int RegionMargin = 5;
+
+        /// <summary>Bounding rectangle of every landmark called <paramref name="landmark"/>.</summary>
+        RectInt Union(string landmark)
+        {
+            RectInt? result = null;
+            foreach (var l in landmarks)
+                if (l.name == landmark) result = result is RectInt r ? Enclose(r, l.rect) : l.rect;
+            if (result == null) throw new ArgumentException($"No landmark called {landmark}");
+            return result.Value;
+        }
+
+        static RectInt Enclose(RectInt a, RectInt b)
+        {
+            int xMin = Mathf.Min(a.xMin, b.xMin), yMin = Mathf.Min(a.yMin, b.yMin);
+            return new RectInt(xMin, yMin, Mathf.Max(a.xMax, b.xMax) - xMin, Mathf.Max(a.yMax, b.yMax) - yMin);
+        }
+
+        /// <summary>Grows a rectangle by <paramref name="margin"/> on every side, clipped to the inside of the fence.</summary>
+        static RectInt Grow(RectInt r, int margin)
+        {
+            int xMin = Mathf.Max(FenceLeft + 1, r.xMin - margin), yMin = Mathf.Max(FenceBottom + 1, r.yMin - margin);
+            int xMax = Mathf.Min(FenceRight, r.xMax + margin), yMax = Mathf.Min(FenceTop, r.yMax + margin);
+            return new RectInt(xMin, yMin, xMax - xMin, yMax - yMin);
+        }
+
+        void AddRegion(string name, RectInt area, Color color)
+        {
+            regions.Add(new Region { name = name, area = area, color = color });
+        }
+
+        /// <summary>
+        /// Gives every cell inside the fence a region. A cell inside one region's area belongs to it; a cell inside
+        /// several areas, or none, goes to the region whose centre is nearest.
+        /// </summary>
+        void AssignRegions()
+        {
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                {
+                    int i = Index(x, y);
+                    bool inside = x > FenceLeft && x < FenceRight && y > FenceBottom && y < FenceTop;
+                    if (!inside)
+                    {
+                        regionOf[i] = -1;
+                        continue;
+                    }
+                    var p = new Vector2(x + 0.5f, y + 0.5f);
+                    int best = -1, covering = 0;
+                    float bestSq = float.MaxValue;
+                    for (int r = 0; r < regions.Count; r++)
+                    {
+                        if (!regions[r].area.Contains(new Vector2Int(x, y))) continue;
+                        covering++;
+                        float d = (regions[r].Center - p).sqrMagnitude;
+                        if (d < bestSq) { bestSq = d; best = r; }
+                    }
+                    if (covering == 0)
+                    {
+                        for (int r = 0; r < regions.Count; r++)
+                        {
+                            float d = (regions[r].Center - p).sqrMagnitude;
+                            if (d < bestSq) { bestSq = d; best = r; }
+                        }
+                    }
+                    regionOf[i] = (sbyte)best;
+                }
+            }
+            for (int r = 0; r < regions.Count; r++) regions[r].post = NearestOpenCell(Vector2Int.FloorToInt(regions[r].Center), r);
+        }
+
+        /// <summary>The open cell of region <paramref name="region"/> closest to <paramref name="from"/> (ring search).</summary>
+        Vector2Int NearestOpenCell(Vector2Int from, int region)
+        {
+            for (int radius = 0; radius < Width; radius++)
+            {
+                Vector2Int best = default;
+                float bestSq = float.MaxValue;
+                for (int y = from.y - radius; y <= from.y + radius; y++)
+                {
+                    for (int x = from.x - radius; x <= from.x + radius; x++)
+                    {
+                        if (Mathf.Max(Mathf.Abs(x - from.x), Mathf.Abs(y - from.y)) != radius || !InBounds(x, y)) continue;
+                        int i = Index(x, y);
+                        if (cells[i] != CellType.Open || regionOf[i] != region) continue;
+                        float d = (new Vector2(x, y) - from).sqrMagnitude;
+                        if (d < bestSq) { bestSq = d; best = new Vector2Int(x, y); }
+                    }
+                }
+                if (bestSq < float.MaxValue) return best;
+            }
+            return from;
+        }
+
+        void AddFireSite(string name, Vector2Int cell) => fireSites.Add((name, cell, regionOf[Index(cell.x, cell.y)]));
+
+        /// <summary>The region of a cell, or null outside the fence.</summary>
+        public Region RegionAt(int cell) => regionOf[cell] >= 0 ? regions[regionOf[cell]] : null;
 
         public static int Index(int x, int y) => y * Width + x;
         public static bool InBounds(int x, int y) => x >= 0 && y >= 0 && x < Width && y < Height;
