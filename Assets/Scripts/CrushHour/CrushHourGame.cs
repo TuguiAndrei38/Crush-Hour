@@ -12,9 +12,10 @@ namespace CrushHour
     /// Plan with barriers, zone patrols and police, start the show, then get everyone out when the fire breaks out,
     /// using emergency gates and your team. Scored on people saved, injuries, panic attacks and time.
     /// </summary>
-    public class CrushHourGame : MonoBehaviour
+    public partial class CrushHourGame : MonoBehaviour
     {
-        enum Phase { Planning, Live, Results }
+        /// <summary>Menu (start menu, CrushHourGame.Menu.cs) → Planning → Live → Results.</summary>
+        enum Phase { Menu, Planning, Live, Results }
         enum Tool { Command, Barrier }
         enum Role { Patrolman, Megaphone }
         enum Severity { Info, Good, Warning, Danger }
@@ -255,6 +256,9 @@ namespace CrushHour
             difficulty = (Difficulty)Mathf.Clamp(PlayerPrefs.GetInt(DifficultyPref, (int)Difficulty.Medium), 0, 2);
             LoadPersonModels();
             NewGame();
+            // The start menu comes first, unless the menu just loaded this scene to play it.
+            if (skipMenuOnce) skipMenuOnce = false;
+            else OpenMenu();
         }
 
         void OnDestroy() => crowdRenderer?.Dispose();
@@ -1506,7 +1510,7 @@ namespace CrushHour
             var keyboard = Keyboard.current;
             // While a zone patrol is selected the arrow keys give orders, so they stop panning the camera.
             cameraRig.arrowKeysPan = SelectedPatrol() == null;
-            if (keyboard == null) return;
+            if (keyboard == null || phase == Phase.Menu) return;
             if (keyboard.rKey.wasPressedThisFrame)
             {
                 NewGame();
@@ -1525,7 +1529,11 @@ namespace CrushHour
             if (keyboard.f1Key.wasPressedThisFrame) SetDifficulty(Difficulty.Easy);
             if (keyboard.f2Key.wasPressedThisFrame) SetDifficulty(Difficulty.Medium);
             if (keyboard.f3Key.wasPressedThisFrame) SetDifficulty(Difficulty.Hard);
-            if (keyboard.escapeKey.wasPressedThisFrame) selectedUnit = -1;
+            if (keyboard.escapeKey.wasPressedThisFrame)
+            {
+                if (selectedUnit < 0 && phase == Phase.Planning) OpenMenu(); // back to the start menu
+                else selectedUnit = -1;
+            }
             var patrol = SelectedPatrol();
             if (patrol != null)
             {
@@ -1540,7 +1548,7 @@ namespace CrushHour
         void HandleMouse()
         {
             var mouse = Mouse.current;
-            if (mouse == null || phase == Phase.Results)
+            if (mouse == null || phase == Phase.Results || phase == Phase.Menu)
             {
                 CancelDrag();
                 return;
@@ -1765,6 +1773,11 @@ namespace CrushHour
             GUI.matrix = Matrix4x4.Scale(new Vector3(uiScale, uiScale, 1f));
             EnsureStyles();
             guiRects.Clear();
+            if (phase == Phase.Menu)
+            {
+                DrawMenu();
+                return;
+            }
             if (Event.current.type == EventType.Layout) orderPanelUnit = SelectedPatrol() != null ? selectedUnit : -1;
 
             DrawWorldLabels();
@@ -2257,7 +2270,7 @@ namespace CrushHour
         void DrawHoverInfo()
         {
             var mouse = Mouse.current;
-            if (mouse == null || phase == Phase.Results) return;
+            if (mouse == null || phase == Phase.Results || phase == Phase.Menu) return;
             Vector2 screen = mouse.position.ReadValue();
             if (IsOverGui(screen) || !TryGetCellUnderMouse(screen, out int cell, out Vector2 ground)) return;
 
@@ -2316,24 +2329,14 @@ namespace CrushHour
 
         void DrawWelcome()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 280, vh * 0.5f - 250, 560, 500), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
+            var rect = Panel(new Rect(vw * 0.5f - 280, vh * 0.5f - 230, 560, 460), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
             GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 22, rect.width - 56, rect.height - 44));
             GUILayout.Label("Welcome, safety commander", titleStyle);
             GUILayout.Space(4);
             GUILayout.Label($"{sim.count} fans are at the Summer Music Festival. Soon something will go wrong: a fire, a falling light tower, a gas leak, a blocked exit... " +
                             "Every round is different. People head for the nearest gate; if it's shut, they try another, and the queues grow.", labelStyle);
-            GUILayout.Space(8);
-            // Difficulty: more people, more drunks, more blocked exits and disasters; higher score multiplier.
-            GUILayout.BeginHorizontal();
-            foreach (Difficulty d in new[] { Difficulty.Easy, Difficulty.Medium, Difficulty.Hard })
-            {
-                var s = DifficultySettings.For(d);
-                string label = $"{s.Name}  [F{(int)d + 1}]\n<size=10>{s.playerCount} people \u00b7 {s.disasterCount} disaster{(s.disasterCount > 1 ? "s" : "")} \u00b7 \u00d7{s.scoreMultiplier:0.#}</size>";
-                if (GUILayout.Button(label, d == difficulty ? selectedButtonStyle : buttonStyle, GUILayout.Height(46)))
-                    SetDifficulty(d);
-            }
-            GUILayout.EndHorizontal();
-            if (crowdSizeOverride > 0) GUILayout.Label($"Dev override: {crowdSizeOverride} people whatever the difficulty.", smallStyle);
+            GUILayout.Space(4);
+            GUILayout.Label($"Difficulty: <b>{DifficultyLabel}</b>. Esc (with nobody selected) goes back to the menu.", mutedStyle);
             GUILayout.Space(10);
             WelcomeStep("1", "Plan", $"Every zone has a patrol ({venue.regions.Count} in all), plus {megaphoneOfficers} megaphone police. Move them by clicking them, then the map. Draw barriers to steer the crowd.");
             WelcomeStep("2", "React", "When the fire starts, open the emergency gates and send your team to the crowds. Select a patrol and press an arrow key to send its whole zone out that way. The megaphone police tell everyone in earshot where to go.");
@@ -2392,6 +2395,12 @@ namespace CrushHour
             GUILayout.Label(resultTip, mutedStyle);
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("Play again: new crowd, new round  [R]", goodButtonStyle, GUILayout.Height(42))) deferred.Add(NewGame);
+            if (GUILayout.Button("Main menu", buttonStyle, GUILayout.Height(34)))
+                deferred.Add(() =>
+                {
+                    NewGame();
+                    OpenMenu();
+                });
             GUILayout.EndArea();
         }
 
