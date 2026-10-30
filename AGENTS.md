@@ -95,6 +95,12 @@ Both scenes are set up by editor scripts (see below), not by hand.
     A wider spacing (0.62 m) throttled the narrow entrances and pushed the jam, and the crushes, outside the ring.
   - Pressure is (standing density + 0.3 × fallen density) × panic factor, and crush damage builds above `crushThreshold`. Counting fallen people fully made crushes cascade, from 121 to 1,008 injured in one scenario. Fallen people push only weakly (0.15), so others can step over them.
   - Unit effects: `ApplyStewards` and `PoliceAnnouncement` (one megaphone pulse). Both use the spatial hash from the last `Step`. `ApplyStewards(positions, dt, incident, radius)` takes an optional ring radius; the game passes `patrolRadius` (6 m) for zone patrolmen, and without it the ring is `stewardRadius`.
+- `Incidents.cs`: disasters as objects, so a round can have several kinds, chained.
+  - `Incident` (abstract): `name`, `region`, `startTime`, optional `trigger`, `Started`, `Age`, `Active`, plus the texts and camera cell used when it starts (`SiteName`, `Headline`, `LogText`, `Advice`, `FocusCell`). Subclasses override `Start(venue, sim)` (once) and `Update(dt, venue, sim)` (every later step).
+  - `IncidentTrigger`: start counting `startTime` only once incident `after` has run `afterSeconds` and (optionally) the venue has `afterFireCells` burning cells.
+  - `FireIncident`: a fire at a `fireSites` entry; with no site given, it picks one with the game's rng **at the moment it starts** (as the old `StartIncident` did). `FireIncident.At(venue, "the Food Court", rng)` fixes the site. Fire spreading stays in `FestivalVenue.UpdateFire` and is shared by all fires.
+  - `IncidentSchedule.Update(dt, venue, sim, rng, started)`, every step while Live: pending incidents whose trigger is met count `startTime` down (`timer -= dt`, the same arithmetic as the old countdown) and start at 0. Then, **only if something had started before this step**, the venue's fire spreads once (`UpdateFire`) and every incident started before this step gets `Update`. It returns whether the fire changed. `StartNow` starts one at once (headless tests).
+  - This order matches the old single-fire code exactly (the step a fire starts it doesn't spread yet; the site is drawn from the rng at that moment), so every seed gives the same numbers as before the refactor.
 - `CrowdRenderer.cs`:
   - `PersonModel.Build` instantiates a character prefab and merges all its parts into one mesh, with feet at the origin and height `personHeight`.
   - With clips and the shader, it bakes **vertex animation textures (VAT)**:
@@ -108,6 +114,7 @@ Both scenes are set up by editor scripts (see below), not by hand.
 - `CrowdVAT.shader` (`CrushHour/CrowdVAT`): a URP HLSL shader with UniversalForward and DepthOnly passes. It reads `_Instances[SV_InstanceID]` and loads the two neighbouring frames from `_PositionTex`/`_NormalTex` by `SV_VertexID`. Lighting is main light plus a flat `_Ambient`, with no shadows. It is referenced from `CrushHourGame.crowdAnimationShader` so it's included in builds.
 - `CrushHourGame.cs`: a single MonoBehaviour that builds the whole scene at runtime.
   - Round phases: Planning → Live (fire after a random delay) → Results.
+  - Incidents: `NewGame` makes an empty `schedule`; `StartShow` adds the default round (one `FireIncident` at a random site, 4–12 s in, the same rng draws as before) if nothing filled it. `Simulate` calls `schedule.Update` while Live, then `OnIncidentStarted` for each incident that began (the first one sets `incidentSite`, `incidentStarted` and resets the evacuation clock; each gets a feed line, banner and camera jump) and `OnFireChanged` when the fire spread (flame cubes, ember log).
   - Units (`Unit`, `Role`): they're selected from the roster or the map, then sent by clicking the map.
     - **Zone patrolmen** (`Role.Patrolman`), one per region, spawned at `Region.post` with `homeRegion` set, named "<Zone> – Patrol". They replaced the 4 stewards and have the same effect (`ApplyStewards`, ring `crowd.patrolRadius`, 6 m): calm people, then send them out in orderly queues. Look: yellow body, cap in the zone colour.
     - Each patrolman has a `facing` (grid x, y, unit length), drawn as a small arrow on the ground in the zone colour. It defaults to the zone's area centre, or the centre of the grounds when the post already is the area centre. Change it with `SetFacing(unit, direction)`, which also redraws the arrow. It doesn't affect the crowd yet (it will set the direction of zone evacuation orders).
@@ -185,7 +192,7 @@ If Windows blocks the baseline program ("An Application Control policy has block
    - Compile them with a small `Main` harness as `-target:exe`, using the same references.
    - Copy `UnityEngine.CoreModule.dll` next to the output and add a `net8.0` `runtimeconfig.json`.
    - Run it with the bundled `dotnet.exe`.
-   - Per step, call `venue.UpdateGates`, `venue.UpdateFire`, `venue.UpdateDoorFields(3)` and `sim.Step(dt, venue, true)`, then the unit effects.
+   - Per step, call `venue.UpdateGates`, `schedule.Update` (which spreads the fire), `venue.UpdateDoorFields(3)` and `sim.Step(dt, venue, true)`, then the unit effects. `BalanceBaselineRunner.Scenario` starts its fire with `schedule.StartNow(FireIncident.At(...))`.
    - The harness is `BalanceBaselineRunner` (see above).
 3. The VAT shader and `PersonModel.Build` need the editor. Check `Logs/Editor.log` for shader errors and for the "Crush Hour: N person models loaded, M animated" line printed on Play.
 
@@ -264,7 +271,8 @@ What it shows:
   - Step 4: drunk people (simulation, display, legend, results, round end on sober people). Baseline with drunks: see "Balance baseline". Not play-tested yet. A first test run at drunkFraction 0.05 left about 130 drunk people inside.
   - Steps 1 and 2 pass the compile check (`verify.ps1`). The version 5 baseline is in "Balance baseline" (run from the Unity menu, because Windows Application Control blocks the standalone program on the dev machine).
   - Step 5: patrols and police escort drunk people out (click them with a unit selected); drunkFraction lowered to 0.02 (settings version 6). Not play-tested yet.
-  - Next: difficulty presets, a start menu.
+  - Week 5, step 1: incident system (`Incidents.cs`); fire is now a `FireIncident` in an `IncidentSchedule`. Acceptance test: **Tools > Crush Hour > Run Incident Refactor Check** runs every baseline scenario through the old fire path (`Scenario.legacyFire`: `StartFire` + `UpdateFire` directly) and through the schedule, and must report PASS (all identical). It writes `Tools~/Verify/incident-refactor-check.md`. Once it passes, `legacyFire` and the check can be deleted.
+  - Next (week 5 plan): blocked exits, tower collapse, gas leak, levels and difficulty, start menu.
 - The crowd simulation, UI and editor scripts compile and the simulation is tuned headless. The VAT shader and baking still need checking inside the editor (see "Verifying without the editor", step 3).
 - Patrolmen and police are still drawn as cubes. They could use person models with a tinted material.
 - The crowd casts no shadows in VAT mode (the shader has no ShadowCaster pass).

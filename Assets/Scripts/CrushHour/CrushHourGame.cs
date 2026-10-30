@@ -160,7 +160,10 @@ namespace CrushHour
         bool paused, heatmap = true, incidentStarted, showRegions = true;
         int speedIndex, barriersUsed, lastInjured, lastSmokeInjured, lastAttacks, gatesOpened, selectedUnit = -1;
         float simAccumulator, groundTimer, warningTimer, attackWarningTime = -99f;
-        float incidentCountdown, evacuationTime, lastProgressTime;
+        float evacuationTime, lastProgressTime;
+        /// <summary>This round's disasters. Empty until the show starts, then (by default) one fire at a random site.</summary>
+        IncidentSchedule schedule;
+        readonly List<Incident> startedIncidents = new();
         int lastSafe;
         string incidentSite;
 
@@ -297,6 +300,7 @@ namespace CrushHour
             attackWarningTime = -99f;
             bannerTime = 0f;
             incidentSite = null;
+            schedule = new IncidentSchedule(maxFireCells);
             dragLine.enabled = false;
 
             BuildVenueViews();
@@ -546,23 +550,11 @@ namespace CrushHour
                 }
             }
 
-            if (phase == Phase.Live && !incidentStarted)
+            if (phase == Phase.Live)
             {
-                incidentCountdown -= dt;
-                if (incidentCountdown <= 0f) StartIncident();
-            }
-            else if (incidentStarted && venue.UpdateFire(dt, rng, maxFireCells))
-            {
-                SyncFireViews();
-                if (venue.SpotFires > lastSpotFires)
-                {
-                    lastSpotFires = venue.SpotFires;
-                    if (evacuationTime - lastSpotFireLog > 6f)
-                    {
-                        lastSpotFireLog = evacuationTime;
-                        Log($"Embers started a new fire near {venue.DescribeLocation(venue.LastSpotFireCell)}!", Severity.Danger);
-                    }
-                }
+                bool fireChanged = schedule.Update(dt, venue, sim, rng, startedIncidents);
+                foreach (var incident in startedIncidents) OnIncidentStarted(incident);
+                if (fireChanged) OnFireChanged();
             }
 
             venue.UpdateDoorFields(3);
@@ -595,21 +587,40 @@ namespace CrushHour
             if (phase != Phase.Planning) return;
             phase = Phase.Live;
             welcomeDismissed = true;
-            incidentCountdown = 4f + (float)rng.NextDouble() * 8f;
+            // Default round: one fire at a random site, 4-12 s into the show (levels will fill the schedule themselves).
+            if (schedule.incidents.Count == 0) schedule.Add(new FireIncident(rng) { startTime = 4f + (float)rng.NextDouble() * 8f });
             Log("The headliner is on stage. Stay sharp...");
         }
 
-        void StartIncident()
+        /// <summary>An incident just began: the first one starts the evacuation clock; each gets a feed line, banner and camera jump.</summary>
+        void OnIncidentStarted(Incident incident)
         {
-            var site = venue.fireSites[rng.Next(venue.fireSites.Count)];
-            incidentSite = site.name;
-            incidentStarted = true;
-            evacuationTime = 0f;
-            venue.StartFire(site.cell);
+            if (!incidentStarted)
+            {
+                incidentSite = incident.SiteName;
+                incidentStarted = true;
+                evacuationTime = 0f;
+            }
             SyncFireViews();
-            Log($"FIRE at {site.name}! People nearby are running from it.", Severity.Danger);
-            ShowBanner($"FIRE AT {site.name.ToUpperInvariant()}!", "Open the gates and send your team to the crowds.", Severity.Danger);
-            cameraRig.Focus(new Vector3(site.cell.x, 0f, site.cell.y));
+            Log(incident.LogText, Severity.Danger);
+            ShowBanner(incident.Headline, incident.Advice, Severity.Danger);
+            var focus = incident.FocusCell;
+            cameraRig.Focus(new Vector3(focus.x, 0f, focus.y));
+        }
+
+        /// <summary>The fire spread this step: new flame cubes, and a feed line for new ember spot fires (at most every 6 s).</summary>
+        void OnFireChanged()
+        {
+            SyncFireViews();
+            if (venue.SpotFires > lastSpotFires)
+            {
+                lastSpotFires = venue.SpotFires;
+                if (evacuationTime - lastSpotFireLog > 6f)
+                {
+                    lastSpotFireLog = evacuationTime;
+                    Log($"Embers started a new fire near {venue.DescribeLocation(venue.LastSpotFireCell)}!", Severity.Danger);
+                }
+            }
         }
 
         void SyncFireViews()

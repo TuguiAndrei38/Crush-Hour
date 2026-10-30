@@ -85,7 +85,7 @@ if ($SkipBaseline) { exit 0 }
 $bdir = Join-Path $out "baseline"
 New-Item -ItemType Directory -Force $bdir | Out-Null
 $scripts = Join-Path $Root "Assets\Scripts\CrushHour"
-$bsources = @((Join-Path $PSScriptRoot "Baseline.cs"), (Join-Path $scripts "FestivalVenue.cs"), (Join-Path $scripts "CrowdSimulation.cs"),
+$bsources = @((Join-Path $PSScriptRoot "Baseline.cs"), (Join-Path $scripts "FestivalVenue.cs"), (Join-Path $scripts "CrowdSimulation.cs"), (Join-Path $scripts "Incidents.cs"),
     (Join-Path $Root "Assets\Scripts\Editor\BalanceBaselineRunner.cs"))
 $brsp = Join-Path $bdir "baseline.rsp"
 Write-Rsp $brsp "exe" (Join-Path $bdir "Baseline.dll") $bsources

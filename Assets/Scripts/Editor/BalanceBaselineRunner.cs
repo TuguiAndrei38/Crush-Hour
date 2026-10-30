@@ -48,12 +48,17 @@ namespace CrushHour
             public CrowdSettings settings;
             public CrowdSimulation sim;
             public readonly List<Vector2> patrols = new(), police = new();
+            public readonly IncidentSchedule schedule = new(MaxFireCells);
             public float time;
             public int steps;
             public double milliseconds;
 
-            public Scenario(string siteName, int seed, bool staff)
+            /// <summary>Pre-refactor fire path (StartFire + UpdateFire directly), kept only for <see cref="RunIncidentRefactorCheck"/>.</summary>
+            public readonly bool legacyFire;
+
+            public Scenario(string siteName, int seed, bool staff, bool legacyFire = false)
             {
+                this.legacyFire = legacyFire;
                 rng = new System.Random(seed);
                 venue = new FestivalVenue();
                 settings = new CrowdSettings();
@@ -64,7 +69,9 @@ namespace CrushHour
                     foreach (var region in venue.regions) patrols.Add(new Vector2(region.post.x + 0.5f, region.post.y + 0.5f));
                     police.AddRange(PolicePosts);
                 }
-                venue.StartFire(venue.fireSites.First(s => s.name == siteName).cell);
+                // Same path as the game: the fire is an incident in a schedule, started at once here.
+                if (legacyFire) venue.StartFire(venue.fireSites.First(s => s.name == siteName).cell);
+                else schedule.StartNow(FireIncident.At(venue, siteName, rng), venue, sim);
             }
         }
 
@@ -80,7 +87,8 @@ namespace CrushHour
             {
                 beforeStep?.Invoke(s.time);
                 s.venue.UpdateGates(Dt, changed);
-                s.venue.UpdateFire(Dt, s.rng, MaxFireCells);
+                if (s.legacyFire) s.venue.UpdateFire(Dt, s.rng, MaxFireCells);
+                else s.schedule.Update(Dt, s.venue, sim, s.rng);
                 s.venue.UpdateDoorFields(3);
                 sim.Step(Dt, s.venue, true);
                 if (s.patrols.Count > 0) sim.ApplyStewards(s.patrols, Dt, true, s.settings.patrolRadius);
@@ -156,9 +164,9 @@ namespace CrushHour
             return md.ToString();
         }
 
-        static Result Run(string siteName, Response response, int seed, Func<bool> cancelled)
+        static Result Run(string siteName, Response response, int seed, Func<bool> cancelled, bool legacyFire = false)
         {
-            var s = new Scenario(siteName, seed, response != Response.NoStaffNoGates);
+            var s = new Scenario(siteName, seed, response != Response.NoStaffNoGates, legacyFire);
             if (response == Response.GatesAndStaff)
                 foreach (var gate in s.venue.gates) gate.open = true; // opened the moment the fire starts
             Simulate(s, cancelled);
@@ -171,6 +179,52 @@ namespace CrushHour
                 time = s.time,
                 msPerStep = s.milliseconds / Math.Max(1, s.steps),
             };
+        }
+
+        // ================================================================ Incident refactor check
+
+        public static int RefactorCheckRunCount(int seedCount) => 2 * RunCount(seedCount);
+
+        /// <summary>
+        /// Week 5 step 1 acceptance test: every baseline scenario is run twice, once through the old fire code (StartFire +
+        /// UpdateFire) and once through IncidentSchedule/FireIncident, and every result must be identical. Returns a
+        /// Markdown report (null when cancelled).
+        /// </summary>
+        public static string RunIncidentRefactorCheck(int[] seeds, Action<string> log, Func<bool> cancelled)
+        {
+            var md = new StringBuilder();
+            md.AppendLine($"Old fire path vs IncidentSchedule, every baseline scenario, seeds {string.Join(", ", seeds)}.");
+            md.AppendLine();
+            md.AppendLine("| Fire at | Response | Seed | Old: injured / attacks / inside / drunk / time | New | Same |");
+            md.AppendLine("|---|---|---|---|---|---|");
+            int differences = 0, runs = 0;
+            foreach (var site in Sites)
+            {
+                for (int k = 0; k < ResponseCount; k++)
+                {
+                    var response = (Response)k;
+                    foreach (int seed in seeds)
+                    {
+                        if (cancelled()) return null;
+                        var before = Run(site, response, seed, cancelled, legacyFire: true);
+                        log?.Invoke($"{site} / {Describe(response)} / seed {seed}: old path done");
+                        if (cancelled()) return null;
+                        var after = Run(site, response, seed, cancelled);
+                        bool same = before.injured == after.injured && before.attacks == after.attacks && before.inside == after.inside &&
+                                    before.drunkInside == after.drunkInside && Math.Abs(before.time - after.time) < 1e-4f;
+                        if (!same) differences++;
+                        runs++;
+                        string Fmt(Result r) => $"{r.injured} / {r.attacks} / {r.inside} / {r.drunkInside} / {r.time:0.00}s";
+                        string line = $"| {site} | {Describe(response)} | {seed} | {Fmt(before)} | {Fmt(after)} | {(same ? "yes" : "**NO**")} |";
+                        md.AppendLine(line);
+                        log?.Invoke(line);
+                    }
+                }
+            }
+            md.Insert(0, differences == 0
+                ? $"**PASS**: all {runs} scenarios identical.\n\n"
+                : $"**FAIL**: {differences} of {runs} scenarios differ.\n\n");
+            return md.ToString();
         }
 
         // ================================================================ Zone order test

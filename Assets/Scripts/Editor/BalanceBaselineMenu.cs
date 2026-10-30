@@ -30,6 +30,10 @@ static class BalanceBaselineMenu
     static void RunZoneOrderTest() =>
         Start("Zone order test", "zone-order-test.md", BalanceBaselineRunner.ZoneOrderRunCount(Seeds.Length), BalanceBaselineRunner.RunZoneOrderTest);
 
+    [MenuItem("Tools/Crush Hour/Run Incident Refactor Check")]
+    static void RunIncidentRefactorCheck() =>
+        Start("Incident refactor check", "incident-refactor-check.md", BalanceBaselineRunner.RefactorCheckRunCount(Seeds.Length), BalanceBaselineRunner.RunIncidentRefactorCheck);
+
     static void Start(string name, string file, int runs, Func<int[], Action<string>, Func<bool>, string> work)
     {
         if (task != null && !task.IsCompleted)
