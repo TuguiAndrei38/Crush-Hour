@@ -27,8 +27,16 @@ namespace CrushHour
         public readonly List<int> approach = new();
         /// <summary>Safe-zone cells right behind the door.</summary>
         public readonly List<int> beyond = new();
+        /// <summary>Something is in the way (a truck, fallen scaffolding): nobody gets through until staff clear it.</summary>
+        public bool blocked;
+        /// <summary>What's blocking it ("Delivery truck"), for messages.</summary>
+        public string blockReason;
+        /// <summary>0-1 while staff are clearing the block.</summary>
+        public float clearProgress;
+        /// <summary>Has been blocked at some point this round (people near it then watch whether it's open again).</summary>
+        public bool everBlocked;
 
-        public bool IsOpen => gate == null || gate.Passable;
+        public bool IsOpen => !blocked && (gate == null || gate.Passable);
         public Vector2 Center => rect.center;
         public int Width => Mathf.Max(rect.width, rect.height);
     }
@@ -89,6 +97,8 @@ namespace CrushHour
         /// <summary>Per cell: the step that gets you further from the fire (zero when there's no fire nearby).</summary>
         public readonly Vector2[] fleeDirection = new Vector2[CellCount];
         public readonly bool[] seesOpenGate = new bool[CellCount];
+        /// <summary>Door cells of blocked doors: not walkable, whatever their type.</summary>
+        public readonly bool[] blockedDoorCell = new bool[CellCount];
         public readonly List<Gate> gates = new();
         public readonly List<Door> doors = new();
         public readonly List<Landmark> landmarks = new();
@@ -346,7 +356,7 @@ namespace CrushHour
         public static int CellAt(Vector2 p) =>
             Index(Mathf.Clamp(Mathf.FloorToInt(p.x), 0, Width - 1), Mathf.Clamp(Mathf.FloorToInt(p.y), 0, Height - 1));
 
-        public bool IsWalkable(int i) => cells[i] switch
+        public bool IsWalkable(int i) => !blockedDoorCell[i] && cells[i] switch
         {
             CellType.Open or CellType.Outside => true,
             CellType.Gate => gates[gateOf[i]].Passable,
@@ -383,6 +393,71 @@ namespace CrushHour
             return true;
         }
 
+        /// <summary>The door whose rectangle, grown by <paramref name="margin"/> cells, contains <paramref name="cell"/>; null if none.</summary>
+        public Door DoorNear(int cell, int margin = 1)
+        {
+            var p = new Vector2Int(cell % Width, cell / Width);
+            foreach (var d in doors)
+                if (new RectInt(d.rect.xMin - margin, d.rect.yMin - margin, d.rect.width + 2 * margin, d.rect.height + 2 * margin).Contains(p))
+                    return d;
+            return null;
+        }
+
+        // ---------------------------------------------------------------- Blocked doors
+
+        /// <summary>Seconds one person needs to clear a blocked door (two people take half as long).</summary>
+        public const float DoorClearTime = 8f;
+        /// <summary>Staff closer than this (metres) to a blocked door's rectangle work on clearing it.</summary>
+        public const float DoorClearReach = 2f;
+
+        /// <summary>Blocks or unblocks a door: its cells stop being walkable and routes, gate sight and fire escape directions update.</summary>
+        public void SetDoorBlocked(Door door, bool blocked, string reason = null)
+        {
+            if (door.blocked == blocked) return;
+            door.blocked = blocked;
+            door.clearProgress = 0f;
+            if (blocked)
+            {
+                door.blockReason = reason;
+                door.everBlocked = true;
+            }
+            foreach (var p in door.rect.allPositionsWithin) blockedDoorCell[Index(p.x, p.y)] = blocked;
+            RecomputeGateSight();
+            if (fireCells.Count > 0) RecomputeFireDistance(); // flee directions depend on what's walkable; also marks routes dirty
+            else MarkRoutesDirty();
+        }
+
+        /// <summary>Is <paramref name="position"/> close enough to <paramref name="door"/> to work on clearing it?</summary>
+        public static bool CanReachToClear(Door door, Vector2 position) =>
+            SqrDistance(position, door.rect) <= DoorClearReach * DoorClearReach;
+
+        /// <summary>
+        /// <paramref name="workers"/> people spend <paramref name="dt"/> seconds clearing <paramref name="door"/>.
+        /// Returns true the step it's cleared (the door is unblocked then).
+        /// </summary>
+        public bool ClearDoor(Door door, int workers, float dt)
+        {
+            if (!door.blocked || workers <= 0) return false;
+            door.clearProgress += dt * workers / DoorClearTime;
+            if (door.clearProgress < 1f) return false;
+            SetDoorBlocked(door, false);
+            return true;
+        }
+
+        /// <summary>The walkable cell just inside <paramref name="door"/> nearest its middle (where staff stand to clear it), or -1.</summary>
+        public int DoorFrontCell(Door door)
+        {
+            int best = -1;
+            float nearest = float.MaxValue;
+            foreach (int a in door.approach)
+            {
+                if (!IsWalkable(a)) continue;
+                float sq = (CellCenter(a) - door.Center).sqrMagnitude;
+                if (sq < nearest) { nearest = sq; best = a; }
+            }
+            return best;
+        }
+
         public Gate GateNear(int cell)
         {
             var p = new Vector2Int(cell % Width, cell / Width);
@@ -412,11 +487,13 @@ namespace CrushHour
         {
             const int range = 10;
             Array.Clear(seesOpenGate, 0, CellCount);
-            foreach (var g in gates)
+            foreach (var d in doors)
             {
-                if (!g.Passable) continue;
-                for (int y = g.rect.yMin - range; y < g.rect.yMax + range; y++)
-                    for (int x = g.rect.xMin - range; x < g.rect.xMax + range; x++)
+                // Open gates, and entrances that have just been cleared. (Entrances that were never blocked are always
+                // open and everyone knows it, so they don't count, as before.)
+                if (!d.IsOpen || (d.gate == null && !d.everBlocked)) continue;
+                for (int y = d.rect.yMin - range; y < d.rect.yMax + range; y++)
+                    for (int x = d.rect.xMin - range; x < d.rect.xMax + range; x++)
                         if (InBounds(x, y)) seesOpenGate[Index(x, y)] = true;
             }
         }

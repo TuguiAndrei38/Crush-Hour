@@ -31,6 +31,11 @@ namespace CrushHour
         public virtual string Headline => $"{name.ToUpperInvariant()}!";
         public virtual string LogText => Headline;
         public virtual string Advice => "";
+        /// <summary>
+        /// Does this incident set off the evacuation (alarm, evacuation clock, people heading for the exits)? A fire does;
+        /// a blocked exit on its own doesn't, people only find out when they get there.
+        /// </summary>
+        public virtual bool StartsEvacuation => true;
 
         internal float timer;
         internal bool timerArmed;
@@ -106,6 +111,51 @@ namespace CrushHour
             cell = site.cell;
             region = site.region;
             venue.StartFire(cell);
+        }
+    }
+
+    /// <summary>
+    /// Something blocks one door (a delivery truck parked across it, collapsed scaffolding): it can't be used, and people
+    /// heading for it find it shut and pick another, as with a closed gate. Staff clear it (see
+    /// <see cref="FestivalVenue.ClearDoor"/>): one patrolman or police officer within 2 m takes 8 s, two take 4 s.
+    /// </summary>
+    public class BlockDoorIncident : Incident
+    {
+        public static readonly string[] Reasons = { "Delivery truck", "Collapsed scaffolding" };
+
+        public readonly Door door;
+        public readonly string reason;
+
+        public BlockDoorIncident(FestivalVenue venue, Door door, string reason)
+        {
+            this.door = door;
+            this.reason = reason;
+            name = "Blocked exit";
+            int front = venue.DoorFrontCell(door);
+            region = front >= 0 ? venue.regionOf[front] : -1;
+        }
+
+        /// <summary>Blocks the door called <paramref name="doorName"/> (e.g. "Main Entrance").</summary>
+        public static BlockDoorIncident At(FestivalVenue venue, string doorName, string reason) =>
+            new(venue, venue.doors.Find(d => d.name == doorName), reason);
+
+        /// <summary>A random door and reason, picked with <paramref name="rng"/>.</summary>
+        public static BlockDoorIncident RandomDoor(FestivalVenue venue, System.Random rng) =>
+            new(venue, venue.doors[rng.Next(venue.doors.Count)], Reasons[rng.Next(Reasons.Length)]);
+
+        /// <summary>Still blocked (it ends when staff clear it).</summary>
+        public override bool Active => Started && door.blocked;
+        public override bool StartsEvacuation => false;
+        public override string SiteName => door.name;
+        public override Vector2Int FocusCell => Vector2Int.FloorToInt(door.Center);
+        public override string Headline => $"{door.name.ToUpperInvariant()} BLOCKED!";
+        public override string LogText => $"{door.name} is blocked: {reason}. Nobody can get out that way until it's cleared.";
+        public override string Advice => $"{reason}. Send a patrol or police officer to clear it ({FestivalVenue.DoorClearTime:0} s).";
+
+        protected override void Start(FestivalVenue venue, CrowdSimulation sim)
+        {
+            venue.SetDoorBlocked(door, true, reason);
+            foreach (var p in door.rect.allPositionsWithin) sim.Evict(FestivalVenue.Index(p.x, p.y), venue);
         }
     }
 

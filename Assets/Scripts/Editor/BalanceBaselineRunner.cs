@@ -284,5 +284,68 @@ namespace CrushHour
             }
             return md.ToString();
         }
+
+        // ================================================================ Blocked exit test
+
+        const string BlockSite = "the Food Court", BlockDoor = "Main Entrance", BlockReason = "Delivery truck";
+        const float ClearStart = 20f;
+
+        public static int BlockedExitRunCount(int seedCount) => 3 * seedCount;
+
+        /// <summary>
+        /// Blocked exit test: fire at the Food Court, staff at their posts, gates shut (so the two entrances are the only
+        /// way out and the block matters most). Three cases per seed: Main Entrance not blocked; blocked at t = 0 and never
+        /// cleared; blocked at t = 0 and, from t = <see cref="ClearStart"/> s, cleared by the Main Entrance zone patrol
+        /// standing at it (one worker: 8 s; its ring is off meanwhile, then it stays there). Reports injuries, time and
+        /// exits per door. Returns a Markdown table (null when cancelled).
+        /// </summary>
+        public static string RunBlockedExitTest(int[] seeds, Action<string> log, Func<bool> cancelled)
+        {
+            var doorNames = new FestivalVenue().doors.Select(d => d.name).ToList();
+            var md = new StringBuilder();
+            md.AppendLine($"Fire at the Food Court, staff at their posts, gates shut. {BlockDoor} blocked ({BlockReason}) at 0 s; in the \"cleared\" case the {BlockDoor} zone patrol starts clearing it at {ClearStart:0} s (alone: {FestivalVenue.DoorClearTime:0} s). Seeds {string.Join(", ", seeds)}.");
+            md.AppendLine();
+            md.AppendLine($"| Seed | Case | Cleared at | Safe | Injured | Still inside | Drunk left inside | Time | {string.Join(" | ", doorNames)} |");
+            md.AppendLine($"|---|---|---|---|---|---|---|---|{string.Concat(doorNames.Select(_ => "---|"))}");
+            string[] cases = { "Not blocked", "Blocked, never cleared", $"Blocked, cleared from {ClearStart:0} s" };
+            foreach (int seed in seeds)
+            {
+                for (int k = 0; k < cases.Length; k++)
+                {
+                    if (cancelled()) return null;
+                    var s = new Scenario(BlockSite, seed, true);
+                    var venue = s.venue;
+                    var sim = s.sim;
+                    var door = venue.doors.Find(d => d.name == BlockDoor);
+                    if (k > 0) s.schedule.StartNow(BlockDoorIncident.At(venue, BlockDoor, BlockReason), venue, sim);
+
+                    // The worker: the zone patrol of the region in front of the door (patrols are listed in region order).
+                    int front = venue.DoorFrontCell(door);
+                    int worker = front >= 0 ? venue.regionOf[front] : -1;
+                    Vector2 workerSpot = front >= 0 ? FestivalVenue.CellCenter(front) : default;
+                    bool working = false;
+                    float clearedAt = -1f;
+                    Simulate(s, cancelled, t =>
+                    {
+                        if (k != 2 || worker < 0 || clearedAt >= 0f || t < ClearStart) return;
+                        if (!working)
+                        {
+                            working = true;
+                            s.patrols.RemoveAt(worker); // ring off while clearing
+                        }
+                        if (!venue.ClearDoor(door, 1, Dt)) return;
+                        clearedAt = t + Dt;
+                        s.patrols.Insert(worker, workerSpot); // back on duty, standing at the door
+                    });
+
+                    string cleared = k == 0 ? "-" : clearedAt >= 0f ? $"{clearedAt:0.0}s" : "never";
+                    string exits = string.Join(" | ", venue.doors.Select((d, i) => sim.exitsByDoor[i].ToString()));
+                    string line = $"| {seed} | {cases[k]} | {cleared} | {sim.SafeCount} | {sim.InjuredCount} | {sim.SoberActiveCount} | {sim.DrunkInsideCount} | {s.time:0}s | {exits} |";
+                    md.AppendLine(line);
+                    log?.Invoke(line);
+                }
+            }
+            return md.ToString();
+        }
     }
 }

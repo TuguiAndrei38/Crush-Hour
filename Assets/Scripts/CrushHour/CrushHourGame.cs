@@ -51,6 +51,8 @@ namespace CrushHour
             public Transform wave;          // megaphone announcement ripple
             public float announceTimer, waveTime = 1f;
             public bool hasAnnounced;
+            /// <summary>Door (index into venue.doors) this unit is clearing right now, -1 none. Its ring is off meanwhile.</summary>
+            public int clearingDoor = -1;
             public string Name => label ?? $"{RoleName(role)} {number}";
         }
 
@@ -77,6 +79,8 @@ namespace CrushHour
         public int megaphoneOfficers = 2;
         [Tooltip("People in this scene (0 = use crowd.agentCount). Settings upgrades never reset it (unlike crowd.agentCount), so a test scene can keep a small crowd.")]
         [Min(0)] public int crowdSizeOverride;
+        [Tooltip("Dev: block a random exit (truck or scaffolding) as the show starts, until levels set up their own incidents.")]
+        public bool demoBlockedExit;
         public float evacuationTimeLimit = 240f;
         public int maxFireCells = 400;
         [FormerlySerializedAs("stewardSpeed")] public float patrolSpeed = 3.5f;
@@ -188,6 +192,8 @@ namespace CrushHour
         readonly Dictionary<int, GameObject> barrierViews = new();
         readonly Dictionary<int, Transform> fireViews = new();
         readonly List<MeshRenderer> gateViews = new();
+        /// <summary>The truck or scaffolding in front of each blocked door.</summary>
+        readonly Dictionary<Door, GameObject> blockerViews = new();
         readonly List<Unit> units = new();
         readonly List<Puff> smoke = new();
         float smokeBudget, lastSpotFireLog;
@@ -274,6 +280,7 @@ namespace CrushHour
             barrierViews.Clear();
             fireViews.Clear();
             gateViews.Clear();
+            blockerViews.Clear();
             units.Clear();
             smoke.Clear();
             smokeBudget = 0f;
@@ -444,7 +451,7 @@ namespace CrushHour
             unit.arrow.SetPosition(4, tip - forward * 0.6f - side * 0.45f);
         }
 
-        void AddPart(Transform parent, Vector3 position, Vector3 scale, Color color)
+        Transform AddPart(Transform parent, Vector3 position, Vector3 scale, Color color)
         {
             var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
             Destroy(part.GetComponent<Collider>());
@@ -452,6 +459,7 @@ namespace CrushHour
             part.transform.localPosition = position;
             part.transform.localScale = scale;
             part.GetComponent<MeshRenderer>().sharedMaterial = Lit(color);
+            return part.transform;
         }
 
         LineRenderer AddCircle(GameObject owner, float radius, Color color)
@@ -560,6 +568,7 @@ namespace CrushHour
             venue.UpdateDoorFields(3);
             MoveUnits(dt);
             UpdateEscorts(dt);
+            UpdateDoorClearing(dt);
             sim.Step(dt, venue, incidentStarted);
             sim.ApplyStewards(patrolPositions, dt, incidentStarted, crowd.patrolRadius);
             if (!incidentStarted) return;
@@ -588,22 +597,29 @@ namespace CrushHour
             phase = Phase.Live;
             welcomeDismissed = true;
             // Default round: one fire at a random site, 4-12 s into the show (levels will fill the schedule themselves).
-            if (schedule.incidents.Count == 0) schedule.Add(new FireIncident(rng) { startTime = 4f + (float)rng.NextDouble() * 8f });
+            if (schedule.incidents.Count == 0)
+            {
+                schedule.Add(new FireIncident(rng) { startTime = 4f + (float)rng.NextDouble() * 8f });
+                if (demoBlockedExit) schedule.Add(BlockDoorIncident.RandomDoor(venue, rng)); // blocked the moment the show starts
+            }
             Log("The headliner is on stage. Stay sharp...");
         }
 
         /// <summary>An incident just began: the first one starts the evacuation clock; each gets a feed line, banner and camera jump.</summary>
         void OnIncidentStarted(Incident incident)
         {
-            if (!incidentStarted)
+            // A blocked exit alone doesn't raise the alarm; the first fire (or other evacuation incident) does.
+            if (incident.StartsEvacuation && !incidentStarted)
             {
                 incidentSite = incident.SiteName;
                 incidentStarted = true;
                 evacuationTime = 0f;
             }
             SyncFireViews();
-            Log(incident.LogText, Severity.Danger);
-            ShowBanner(incident.Headline, incident.Advice, Severity.Danger);
+            if (incident is BlockDoorIncident block) CreateBlockerView(block);
+            var severity = incident.StartsEvacuation ? Severity.Danger : Severity.Warning;
+            Log(incident.LogText, severity);
+            ShowBanner(incident.Headline, incident.Advice, severity);
             var focus = incident.FocusCell;
             cameraRig.Focus(new Vector3(focus.x, 0f, focus.y));
         }
@@ -713,7 +729,7 @@ namespace CrushHour
         {
             foreach (var u in units)
             {
-                if (u.role != Role.Megaphone || u.escortPhase == EscortPhase.Escorting) continue; // hands full
+                if (u.role != Role.Megaphone || u.escortPhase == EscortPhase.Escorting || u.clearingDoor >= 0) continue; // hands full
                 u.announceTimer -= dt;
                 if (u.announceTimer > 0f) continue;
                 u.announceTimer = policeAnnounceInterval;
@@ -748,13 +764,118 @@ namespace CrushHour
                         budget = 0f;
                     }
                 }
-                // While walking someone out, the unit isn't calming anyone.
-                if (u.role == Role.Patrolman && u.escortPhase != EscortPhase.Escorting) patrolPositions.Add(u.position);
+                u.clearingDoor = ClearingDoorFor(u);
+                // While walking someone out or clearing a door, the unit isn't calming anyone.
+                if (u.role == Role.Patrolman && u.escortPhase != EscortPhase.Escorting && u.clearingDoor < 0) patrolPositions.Add(u.position);
             }
         }
 
         float UnitSpeed(Unit u) =>
             (u.role == Role.Patrolman ? patrolSpeed : policeSpeed) * (u.escortPhase == EscortPhase.Escorting ? EscortSpeedFactor : 1f);
+
+        // ---------------------------------------------------------------- Blocked doors
+
+        /// <summary>The blocked door a standing, free unit is close enough to work on (-1 none).</summary>
+        int ClearingDoorFor(Unit u)
+        {
+            if (u.path.Count > 0 || u.escortPhase != EscortPhase.None) return -1;
+            for (int d = 0; d < venue.doors.Count; d++)
+                if (venue.doors[d].blocked && FestivalVenue.CanReachToClear(venue.doors[d], u.position)) return d;
+            return -1;
+        }
+
+        /// <summary>Every unit standing at a blocked door works on it; each one adds 1/8 of the job per second.</summary>
+        void UpdateDoorClearing(float dt)
+        {
+            for (int d = 0; d < venue.doors.Count; d++)
+            {
+                var door = venue.doors[d];
+                if (!door.blocked) continue;
+                int workers = 0;
+                foreach (var u in units)
+                    if (u.clearingDoor == d) workers++;
+                if (!venue.ClearDoor(door, workers, dt)) continue;
+
+                foreach (var u in units)
+                    if (u.clearingDoor == d) u.clearingDoor = -1;
+                if (blockerViews.Remove(door, out var view)) Destroy(view);
+                Log($"{door.name} is clear again: people can get out that way.", Severity.Good);
+                ShowBanner($"{door.name.ToUpperInvariant()} CLEARED", "The exit can be used again.", Severity.Good);
+            }
+        }
+
+        /// <summary>Walks a unit to the cell just inside a blocked door; once it stands there it starts clearing.</summary>
+        void SendToClear(int index, Door door)
+        {
+            if (index < 0) return;
+            var u = units[index];
+            int front = venue.DoorFrontCell(door);
+            var path = front >= 0 ? venue.FindPath(u.position, FestivalVenue.CellCenter(front)) : null;
+            if (path == null)
+            {
+                Log($"{u.Name} can't get to {door.name}.", Severity.Warning);
+                return;
+            }
+            if (u.escortPhase != EscortPhase.None)
+            {
+                CancelEscort(u); // clearing the door replaces the escort
+                u.escortPhase = EscortPhase.None;
+            }
+            u.path.Clear();
+            u.path.AddRange(path);
+            Log($"{u.Name} is on the way to clear {door.name}.");
+        }
+
+        /// <summary>A delivery truck parked across the door outside, or a heap of fallen scaffolding poles over it. Plain cubes.</summary>
+        void CreateBlockerView(BlockDoorIncident block)
+        {
+            var door = block.door;
+            if (blockerViews.ContainsKey(door)) return;
+            var root = new GameObject($"Blocked: {door.name}").transform;
+            root.SetParent(world, false);
+            // Local axes: +z points out of the venue (towards the safe zone behind the door), x runs along the door.
+            Vector2 outward = Vector2.zero;
+            foreach (int c in door.beyond) outward += FestivalVenue.CellCenter(c) - door.Center;
+            outward = outward.sqrMagnitude > 1e-4f ? outward.normalized : Vector2.down;
+            root.localPosition = new Vector3(door.Center.x, 0f, door.Center.y);
+            root.localRotation = Quaternion.LookRotation(new Vector3(outward.x, 0f, outward.y));
+            float length = door.Width + 1.5f;
+
+            if (block.reason == BlockDoorIncident.Reasons[0])
+            {
+                // Delivery truck, just outside, across the whole door.
+                var body = new Color(0.92f, 0.92f, 0.88f);
+                var cab = new Color(0.85f, 0.2f, 0.15f);
+                var tyre = new Color(0.08f, 0.08f, 0.08f);
+                AddPart(root, new Vector3(-0.6f, 1.55f, 1.6f), new Vector3(length, 2.3f, 2.3f), body);
+                AddPart(root, new Vector3(length * 0.5f + 0.4f, 1.15f, 1.6f), new Vector3(1.8f, 1.7f, 2.3f), cab);
+                AddPart(root, new Vector3(length * 0.5f + 1.0f, 1.45f, 1.6f), new Vector3(0.6f, 0.7f, 2.1f), new Color(0.3f, 0.45f, 0.6f)); // windscreen
+                foreach (float wx in new[] { -length * 0.5f + 0.3f, length * 0.5f - 0.2f, length * 0.5f + 0.7f })
+                    foreach (float wz in new[] { 0.5f, 2.7f })
+                        AddPart(root, new Vector3(wx, 0.4f, wz), new Vector3(0.8f, 0.8f, 0.3f), tyre);
+            }
+            else
+            {
+                // Collapsed scaffolding: poles and planks lying across the door, a couple still leaning.
+                var pole = new Color(0.6f, 0.62f, 0.66f);
+                var plank = new Color(0.62f, 0.45f, 0.25f);
+                var random = new System.Random(door.name.GetHashCode());
+                for (int k = 0; k < 7; k++)
+                {
+                    float z = -0.4f + (float)random.NextDouble() * 1.8f;
+                    var part = AddPart(root, new Vector3(((float)random.NextDouble() - 0.5f) * 1.5f, 0.15f + k * 0.1f, z),
+                        new Vector3(length + 1f, 0.15f, 0.15f), k % 3 == 2 ? plank : pole);
+                    part.localRotation = Quaternion.Euler(0f, ((float)random.NextDouble() - 0.5f) * 40f, 0f);
+                    if (k % 3 == 2) part.localScale = new Vector3(length, 0.1f, 0.5f);
+                }
+                foreach (float side in new[] { -1f, 1f })
+                {
+                    var leaning = AddPart(root, new Vector3(side * length * 0.4f, 1.3f, 0.9f), new Vector3(0.15f, 3f, 0.15f), pole);
+                    leaning.localRotation = Quaternion.Euler(-35f, 0f, side * 20f);
+                }
+            }
+            blockerViews[door] = root.gameObject;
+        }
 
         const float EscortPickupRange = 3f, EscortSpeedFactor = 0.7f, EscortFollowGap = 1f;
 
@@ -1122,6 +1243,15 @@ namespace CrushHour
                 return;
             }
 
+            // A blocked door: send the selected unit (or, for an entrance, the nearest one) to clear it.
+            // With nobody selected, clicking a blocked gate still opens/closes the gate behind the block.
+            var door = venue.DoorNear(cell);
+            if (door != null && door.blocked && (selectedUnit >= 0 || door.gate == null))
+            {
+                SendToClear(selectedUnit >= 0 ? selectedUnit : NearestUnit(ground, float.MaxValue), door);
+                return;
+            }
+
             var gate = venue.GateNear(cell);
             if (gate != null)
             {
@@ -1336,7 +1466,7 @@ namespace CrushHour
                 var u = units[i];
                 u.root.position = new Vector3(u.position.x, 0f, u.position.y);
                 u.ring.widthMultiplier = i == selectedUnit ? 0.35f : 0.12f;
-                bool ringOn = u.escortPhase != EscortPhase.Escorting; // no calming while walking someone out
+                bool ringOn = u.escortPhase != EscortPhase.Escorting && u.clearingDoor < 0; // no calming while walking someone out or clearing a door
                 if (u.ring.enabled != ringOn) u.ring.enabled = ringOn;
                 if (u.orderDoor >= 0) UpdateOrderArrow(u);
                 if (u.wave == null) continue;
@@ -1929,10 +2059,22 @@ namespace CrushHour
                 }
             }
             foreach (var (text, position) in labels) WorldLabel(position, text, worldLabelStyle);
-            foreach (var g in venue.gates)
+            foreach (var door in venue.doors)
             {
-                var style = TextStyle(11, Color.Lerp(GateColor(g), Color.white, 0.4f), FontStyle.Bold, TextAnchor.MiddleCenter);
-                WorldLabel(new Vector3(g.rect.center.x, 2f, g.rect.center.y), $"{g.name.ToUpperInvariant()}\n{GateStatus(g)}", style);
+                if (door.gate == null && !door.blocked) continue; // entrances already have their landmark label
+                var color = door.blocked ? WarningColor : GateColor(door.gate);
+                var style = TextStyle(11, Color.Lerp(color, Color.white, 0.4f), FontStyle.Bold, TextAnchor.MiddleCenter);
+                string status = door.blocked ? $"BLOCKED: {door.blockReason.ToUpperInvariant()}" : GateStatus(door.gate);
+                var position = new Vector3(door.Center.x, door.blocked ? 3.4f : 2f, door.Center.y);
+                WorldLabel(position, $"{door.name.ToUpperInvariant()}\n{status}", style);
+                if (door.blocked && door.clearProgress > 0f)
+                {
+                    // Clearing progress bar just under the label.
+                    Vector3 sp = cam.WorldToScreenPoint(position);
+                    if (sp.z < 0f) continue;
+                    var p = new Vector2(sp.x, Screen.height - sp.y) / uiScale;
+                    ProgressBar(new Rect(p.x - 40f, p.y + 18f, 80f, 7f), door.clearProgress, GoodColor);
+                }
             }
         }
 
@@ -1968,6 +2110,13 @@ namespace CrushHour
                 text = by >= 0 && by < units.Count ? $"<b>Drunk</b>: being walked out by {units[by].Name}."
                     : selectedUnit >= 0 ? $"<b>Drunk \u2013 needs escort</b>\nClick to have {units[selectedUnit].Name} walk them out."
                     : "<b>Drunk \u2013 needs escort</b>\nSelect a patrol or police officer, then click them.";
+            }
+            else if (venue.DoorNear(cell) is Door blockedDoor && blockedDoor.blocked)
+            {
+                text = $"<b>{blockedDoor.name}</b>\nBlocked: {blockedDoor.blockReason}. Send a patrol to clear it ({FestivalVenue.DoorClearTime:0} s).";
+                if (blockedDoor.clearProgress > 0f) text += $"\nCleared {blockedDoor.clearProgress * 100f:0}%. A second person works twice as fast.";
+                if (selectedUnit >= 0) text += $"\nClick to send {units[selectedUnit].Name}.";
+                else if (blockedDoor.gate == null) text += "\nClick to send the nearest patrol.";
             }
             else if (gate != null) text = $"<b>{gate.name}</b>: {GateStatus(gate).ToLowerInvariant()}. Click to {(gate.open ? "close" : "open")} it.";
             else

@@ -8,7 +8,7 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Tools > Crush Hour > Run Balance Baseline / Run Zone Order Test: runs <see cref="BalanceBaselineRunner"/> on a
+/// Tools > Crush Hour > Run Balance Baseline / Run Zone Order Test / Run Blocked Exit Test ...: runs <see cref="BalanceBaselineRunner"/> on a
 /// background thread so the editor stays usable, shows progress in Unity's background-tasks bar (cancellable there),
 /// logs each run to the Console and saves the Markdown table under Tools~/Verify/.
 /// Use these when Windows blocks the standalone program built by Tools~/Verify/verify.ps1.
@@ -33,6 +33,10 @@ static class BalanceBaselineMenu
     [MenuItem("Tools/Crush Hour/Run Incident Refactor Check")]
     static void RunIncidentRefactorCheck() =>
         Start("Incident refactor check", "incident-refactor-check.md", BalanceBaselineRunner.RefactorCheckRunCount(Seeds.Length), BalanceBaselineRunner.RunIncidentRefactorCheck);
+
+    [MenuItem("Tools/Crush Hour/Run Blocked Exit Test")]
+    static void RunBlockedExitTest() =>
+        Start("Blocked exit test", "blocked-exit-test.md", BalanceBaselineRunner.BlockedExitRunCount(Seeds.Length), BalanceBaselineRunner.RunBlockedExitTest);
 
     static void Start(string name, string file, int runs, Func<int[], Action<string>, Func<bool>, string> work)
     {
