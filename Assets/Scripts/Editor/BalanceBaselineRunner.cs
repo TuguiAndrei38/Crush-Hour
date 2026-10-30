@@ -50,18 +50,20 @@ namespace CrushHour
             public readonly List<Vector2> patrols = new(), police = new();
             public readonly IncidentSchedule schedule = new(MaxFireCells);
             public float time;
+            /// <summary>When the evacuation clock started (0 unless a test starts it later, like the game at the first disaster).</summary>
+            public float clockStart;
             public int steps;
             public double milliseconds;
 
             /// <summary>Pre-refactor fire path (StartFire + UpdateFire directly), kept only for <see cref="RunIncidentRefactorCheck"/>.</summary>
             public readonly bool legacyFire;
 
-            public Scenario(string siteName, int seed, bool staff, bool legacyFire = false)
+            public Scenario(string siteName, int seed, bool staff, bool legacyFire = false, CrowdSettings crowd = null)
             {
                 this.legacyFire = legacyFire;
                 rng = new System.Random(seed);
                 venue = new FestivalVenue();
-                settings = new CrowdSettings();
+                settings = crowd ?? new CrowdSettings();
                 sim = new CrowdSimulation(settings, venue, rng);
                 if (staff)
                 {
@@ -76,8 +78,12 @@ namespace CrushHour
             }
         }
 
-        /// <summary>Runs until everyone is out, the evacuation stalls, or time runs out. <paramref name="beforeStep"/> gets the time so far.</summary>
-        static void Simulate(Scenario s, Func<bool> cancelled, Action<float> beforeStep = null)
+        /// <summary>
+        /// Runs until everyone is out, the evacuation stalls, or time runs out. <paramref name="beforeStep"/> gets the time
+        /// so far. <paramref name="live"/> says whether the alarm is up (crowd incident mode, patrol effects, megaphones);
+        /// null = from the start, as in the fire tests.
+        /// </summary>
+        static void Simulate(Scenario s, Func<bool> cancelled, Action<float> beforeStep = null, Func<bool> live = null)
         {
             var changed = new List<Gate>();
             float announce = 0f, lastProgress = 0f;
@@ -91,13 +97,17 @@ namespace CrushHour
                 if (s.legacyFire) s.venue.UpdateFire(Dt, s.rng, MaxFireCells);
                 else s.schedule.Update(Dt, s.venue, sim, s.rng);
                 s.venue.UpdateDoorFields(3);
-                sim.Step(Dt, s.venue, true);
-                if (s.patrols.Count > 0) sim.ApplyStewards(s.patrols, Dt, true, s.settings.patrolRadius);
-                announce -= Dt;
-                if (announce <= 0f)
+                bool incident = live?.Invoke() ?? true;
+                sim.Step(Dt, s.venue, incident);
+                if (s.patrols.Count > 0) sim.ApplyStewards(s.patrols, Dt, incident, s.settings.patrolRadius);
+                if (incident)
                 {
-                    announce = AnnounceInterval;
-                    foreach (var p in s.police) sim.PoliceAnnouncement(p);
+                    announce -= Dt;
+                    if (announce <= 0f)
+                    {
+                        announce = AnnounceInterval;
+                        foreach (var p in s.police) sim.PoliceAnnouncement(p);
+                    }
                 }
                 s.time += Dt;
                 s.steps++;
@@ -107,8 +117,8 @@ namespace CrushHour
                     lastProgress = s.time;
                 }
                 // Like the game: drunk people never leave on their own, so the run ends on the sober ones.
-                bool stalled = sim.EvacuatingCount == sim.SoberActiveCount && s.time - lastProgress > 20f;
-                if (sim.SoberActiveCount == 0 || stalled || s.time >= TimeLimit) break;
+                bool stalled = sim.EvacuatingCount == sim.SoberActiveCount && s.time - Math.Max(lastProgress, s.clockStart) > 20f;
+                if (sim.SoberActiveCount == 0 || stalled || s.time - s.clockStart >= TimeLimit) break;
             }
             s.milliseconds = watch.Elapsed.TotalMilliseconds;
         }
@@ -290,6 +300,17 @@ namespace CrushHour
 
         const string GasSite = "the Generator";
 
+        /// <summary>Like the game's CheckGas: who notices <paramref name="leak"/> this step (a patrol or police ring with gas, or a cough), or null.</summary>
+        static string WhoNoticesGas(Scenario s, GasLeakIncident leak)
+        {
+            if (!leak.Started || leak.Detected || leak.Ignited) return null;
+            for (int p = 0; p < s.patrols.Count; p++)
+                if (GasLeakIncident.Smells(s.venue, s.patrols[p], s.settings.patrolRadius)) return $"{s.venue.regions[p].name} patrol";
+            for (int p = 0; p < s.police.Count; p++)
+                if (GasLeakIncident.Smells(s.venue, s.police[p], s.settings.policeAnnounceRadius)) return $"Police {p + 1}";
+            return s.sim.CoughingCount > 0 ? "a cough" : null;
+        }
+
         public static int GasLeakRunCount(int seedCount) => 2 * seedCount;
 
         /// <summary>
@@ -318,16 +339,9 @@ namespace CrushHour
                     int region = leak.region;
                     string door = "-";
                     int zonePeople = 0;
-                    float policeRadius = s.settings.policeAnnounceRadius;
                     Simulate(s, cancelled, time =>
                     {
-                        if (leak.Detected) return;
-                        string by = null;
-                        for (int p = 0; p < s.patrols.Count && by == null; p++)
-                            if (GasLeakIncident.Smells(venue, s.patrols[p], s.settings.patrolRadius)) by = $"{venue.regions[p].name} patrol";
-                        for (int p = 0; p < s.police.Count && by == null; p++)
-                            if (GasLeakIncident.Smells(venue, s.police[p], policeRadius)) by = $"Police {p + 1}";
-                        if (by == null && sim.CoughingCount > 0) by = "a cough";
+                        string by = WhoNoticesGas(s, leak);
                         if (by == null) return;
                         leak.Detect(by, time);
                         zonePeople = sim.CountInRegion(region, venue);
@@ -342,6 +356,72 @@ namespace CrushHour
 
                     string detected = leak.Detected ? $"{leak.detectedAt:0.0}s ({leak.detectedBy})" : "never";
                     string line = $"| {seed} | {(order ? "Zone order on detection" : "No reaction")} | {detected} | {door} | {zonePeople} | {sim.InjuredByGas} | {sim.InjuredCount} | {sim.SafeCount} | {sim.SoberActiveCount} | {s.time:0}s |";
+                    md.AppendLine(line);
+                    log?.Invoke(line);
+                }
+            }
+            return md.ToString();
+        }
+
+        // ================================================================ Difficulty test
+
+        static readonly Difficulty[] Difficulties = { Difficulty.Easy, Difficulty.Medium, Difficulty.Hard };
+
+        public static int DifficultyRunCount(int seedCount) => Difficulties.Length * seedCount;
+
+        /// <summary>
+        /// One random round (<see cref="RoundGenerator"/>) per difficulty and seed, like the game: the alarm and the
+        /// evacuation clock start at the first fire or collapse, or when a gas leak is noticed; staff stand at their
+        /// posts; every gate is opened at that moment. Reports the incidents (and when they started), blocked doors,
+        /// injuries by cause, drunk people left inside, evacuation time and score. Returns a Markdown table (null when cancelled).
+        /// </summary>
+        public static string RunDifficultyTest(int[] seeds, Action<string> log, Func<bool> cancelled)
+        {
+            var md = new StringBuilder();
+            md.AppendLine($"Random rounds (RoundGenerator), staff at their posts, all gates opened when the alarm goes up (first fire/collapse, or gas noticed). Time is from that moment. Seeds {string.Join(", ", seeds)}.");
+            md.AppendLine();
+            md.AppendLine("| Difficulty | Seed | People | Incidents (start time) | Blocked doors | Injured (crush / fire / smoke / gas / collapse) | Panic attacks | Safe | Still inside | Drunk left inside | Time | Score |");
+            md.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|");
+            foreach (var difficulty in Difficulties)
+            {
+                var ds = DifficultySettings.For(difficulty);
+                foreach (int seed in seeds)
+                {
+                    if (cancelled()) return null;
+                    var crowd = new CrowdSettings { agentCount = ds.playerCount, drunkFraction = ds.drunkFraction };
+                    var s = new Scenario(null, seed, true, false, crowd);
+                    var venue = s.venue;
+                    var sim = s.sim;
+                    RoundGenerator.Build(ds, venue, s.rng, s.schedule);
+
+                    var startedAt = new Dictionary<Incident, float>();
+                    bool alarm = false;
+                    Simulate(s, cancelled, time =>
+                    {
+                        foreach (var incident in s.schedule.incidents)
+                        {
+                            if (incident.Started && !startedAt.ContainsKey(incident)) startedAt[incident] = time;
+                            if (incident is GasLeakIncident leak && WhoNoticesGas(s, leak) is string by) leak.Detect(by, time);
+                        }
+                        if (alarm) return;
+                        alarm = s.schedule.incidents.Any(i => i.Started && (i.StartsEvacuation || (i is GasLeakIncident g && g.Detected)));
+                        if (!alarm) return;
+                        s.clockStart = time;
+                        foreach (var gate in venue.gates) gate.open = true;
+                    }, () => alarm);
+
+                    var parts = new List<string>();
+                    foreach (var incident in s.schedule.incidents)
+                    {
+                        string when = startedAt.TryGetValue(incident, out float t) ? $"{t:0}s" : "didn't start";
+                        if (incident is GasLeakIncident gas && gas.Detected) when += $", noticed {gas.detectedAt:0}s";
+                        if (incident is TowerCollapseIncident tower && tower.trigger != null && !tower.Started) continue; // chained, never set off
+                        parts.Add($"{RoundGenerator.Describe(incident)} ({when})");
+                    }
+                    int blocked = s.schedule.incidents.Count(i => i is BlockDoorIncident);
+                    float evacuation = alarm ? s.time - s.clockStart : 0f;
+                    int score = ds.Score(sim.SafeCount, sim.InjuredCount, sim.SoberActiveCount, sim.DrunkInsideCount, sim.PanicAttacksTotal, evacuation, TimeLimit);
+                    string line = $"| {ds.Name} | {seed} | {sim.count} | {string.Join("; ", parts)} | {blocked} | {sim.InjuredCount} ({sim.InjuredByCrush} / {sim.InjuredByFire} / {sim.InjuredBySmoke} / {sim.InjuredByGas} / {sim.InjuredByCollapse}) | {sim.PanicAttacksTotal} | {sim.SafeCount} | {sim.SoberActiveCount} | {sim.DrunkInsideCount} | {evacuation:0}s | {score} |";
                     md.AppendLine(line);
                     log?.Invoke(line);
                 }

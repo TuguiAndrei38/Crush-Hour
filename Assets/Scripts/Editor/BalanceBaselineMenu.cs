@@ -46,6 +46,10 @@ static class BalanceBaselineMenu
     static void RunGasLeakTest() =>
         Start("Gas leak test", "gas-leak-test.md", BalanceBaselineRunner.GasLeakRunCount(Seeds.Length), BalanceBaselineRunner.RunGasLeakTest);
 
+    [MenuItem("Tools/Crush Hour/Run Difficulty Test")]
+    static void RunDifficultyTest() =>
+        Start("Difficulty test", "difficulty-test.md", BalanceBaselineRunner.DifficultyRunCount(Seeds.Length), BalanceBaselineRunner.RunDifficultyTest);
+
     static void Start(string name, string file, int runs, Func<int[], Action<string>, Func<bool>, string> work)
     {
         if (task != null && !task.IsCompleted)

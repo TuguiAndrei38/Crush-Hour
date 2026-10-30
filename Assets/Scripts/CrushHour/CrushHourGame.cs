@@ -77,12 +77,8 @@ namespace CrushHour
         public int barrierBudget = 60;
         [Tooltip("Police officers with megaphones who announce the situation to everyone in earshot.")]
         public int megaphoneOfficers = 2;
-        [Tooltip("People in this scene (0 = use crowd.agentCount). Settings upgrades never reset it (unlike crowd.agentCount), so a test scene can keep a small crowd.")]
+        [Tooltip("Dev override: people in this scene, whatever the difficulty (0 = the difficulty's player count). Settings upgrades never reset it.")]
         [Min(0)] public int crowdSizeOverride;
-        [Tooltip("Dev: block a random exit (truck or scaffolding) as the show starts, until levels set up their own incidents.")]
-        public bool demoBlockedExit;
-        [Tooltip("Dev: a gas leak at the Generator or the Food Court as the show starts, until levels set up their own incidents.")]
-        public bool demoGasLeak;
         public float evacuationTimeLimit = 240f;
         public int maxFireCells = 400;
         [FormerlySerializedAs("stewardSpeed")] public float patrolSpeed = 3.5f;
@@ -170,6 +166,10 @@ namespace CrushHour
         float evacuationTime, lastProgressTime;
         /// <summary>This round's disasters. Empty until the show starts, then (by default) one fire at a random site.</summary>
         IncidentSchedule schedule;
+        /// <summary>Chosen in Planning (welcome card or F1/F2/F3), remembered in PlayerPrefs.</summary>
+        Difficulty difficulty = Difficulty.Medium;
+        DifficultySettings difficultySettings = DifficultySettings.For(Difficulty.Medium);
+        const string DifficultyPref = "CrushHour.Difficulty";
         readonly List<Incident> startedIncidents = new();
         int lastSafe;
         /// <summary>What the first evacuation incident is, as the police shout it ("Fire at the Food Court!").</summary>
@@ -252,6 +252,7 @@ namespace CrushHour
             dragLine.shadowCastingMode = ShadowCastingMode.Off;
             dragLine.enabled = false;
 
+            difficulty = (Difficulty)Mathf.Clamp(PlayerPrefs.GetInt(DifficultyPref, (int)Difficulty.Medium), 0, 2);
             LoadPersonModels();
             NewGame();
         }
@@ -310,7 +311,9 @@ namespace CrushHour
             seed = Environment.TickCount & int.MaxValue;
             rng = new System.Random(seed);
             venue = new FestivalVenue();
-            if (crowdSizeOverride > 0) crowd.agentCount = Mathf.Max(100, crowdSizeOverride);
+            difficultySettings = DifficultySettings.For(difficulty);
+            crowd.agentCount = crowdSizeOverride > 0 ? Mathf.Max(100, crowdSizeOverride) : difficultySettings.playerCount;
+            crowd.drunkFraction = difficultySettings.drunkFraction;
             sim = new CrowdSimulation(crowd, venue, rng);
             var bounds = new Bounds(new Vector3(W * 0.5f, 1f, H * 0.5f), new Vector3(W, 4f, H));
             crowdRenderer = new CrowdRenderer(sim, cubeMesh, agentRenderParams, personModels, bounds, rng) { ShowMarkers = stateMarkers };
@@ -616,21 +619,26 @@ namespace CrushHour
             if (sim.SoberActiveCount == 0 || stalled || evacuationTime >= evacuationTimeLimit) EndGame();
         }
 
+        /// <summary>Planning only: switches difficulty (saved) and starts a new game with its crowd.</summary>
+        void SetDifficulty(Difficulty d)
+        {
+            if (phase != Phase.Planning) return;
+            difficulty = d;
+            PlayerPrefs.SetInt(DifficultyPref, (int)d);
+            PlayerPrefs.Save();
+            deferred.Add(NewGame);
+        }
+
+        string DifficultyLabel => $"{difficultySettings.Name} (score \u00d7{difficultySettings.scoreMultiplier:0.#})";
+
         void StartShow()
         {
             if (phase != Phase.Planning) return;
             phase = Phase.Live;
             welcomeDismissed = true;
-            // Default round: one fire at a random site, 4-12 s into the show (levels will fill the schedule themselves).
-            if (schedule.incidents.Count == 0)
-            {
-                schedule.Add(new FireIncident(rng) { startTime = 4f + (float)rng.NextDouble() * 8f });
-                if (demoBlockedExit) schedule.Add(BlockDoorIncident.RandomDoor(venue, rng)); // blocked the moment the show starts
-                if (demoGasLeak) schedule.Add(new GasLeakIncident(rng)); // leaking (unnoticed) from the moment the show starts
-                // Chained: a light tower the fire gets within 4 m of comes down 10-20 s later.
-                for (int t = 0; t < venue.lightTowers.Count; t++) schedule.Add(TowerCollapseIncident.WhenFireNear(venue, t, rng));
-            }
-            Log("The headliner is on stage. Stay sharp...");
+            // A random round for the chosen difficulty: disasters, blocked exits, chained tower collapses.
+            if (schedule.incidents.Count == 0) RoundGenerator.Build(difficultySettings, venue, rng, schedule);
+            Log($"The headliner is on stage ({difficultySettings.Name}). Stay sharp...");
         }
 
         /// <summary>An incident just began: the first one starts the evacuation clock; each gets a feed line, banner and camera jump.</summary>
@@ -663,9 +671,10 @@ namespace CrushHour
         void CheckGas()
         {
             if (!venue.HasGas) return;
+            // The leak to report: the first one nobody has noticed yet, otherwise any that's still leaking gas.
             GasLeakIncident leak = null;
             foreach (var incident in schedule.incidents)
-                if (incident is GasLeakIncident g && g.Started && !g.Ignited) { leak = g; break; }
+                if (incident is GasLeakIncident g && g.Started && !g.Ignited && (leak == null || (leak.Detected && !g.Detected))) leak = g;
             if (leak == null) return;
 
             foreach (var u in units)
@@ -1237,8 +1246,7 @@ namespace CrushHour
             finalTrapped = sim.SoberActiveCount;
             finalDrunkInside = sim.DrunkInsideCount;
             finalAttacks = sim.PanicAttacksTotal;
-            finalScore = finalSafe * 10 - finalInjured * 100 - finalTrapped * 25 - finalDrunkInside * 50 - finalAttacks * 10
-                         + Mathf.Max(0, Mathf.RoundToInt(evacuationTimeLimit - evacuationTime)) * 10;
+            finalScore = difficultySettings.Score(finalSafe, finalInjured, finalTrapped, finalDrunkInside, finalAttacks, evacuationTime, evacuationTimeLimit);
 
             float safeRatio = finalSafe / (float)sim.count;
             stars = 0;
@@ -1514,6 +1522,9 @@ namespace CrushHour
             if (keyboard.digit1Key.wasPressedThisFrame) SetTool(Tool.Command);
             if (keyboard.digit2Key.wasPressedThisFrame) SetTool(Tool.Barrier);
             if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame) StartShow();
+            if (keyboard.f1Key.wasPressedThisFrame) SetDifficulty(Difficulty.Easy);
+            if (keyboard.f2Key.wasPressedThisFrame) SetDifficulty(Difficulty.Medium);
+            if (keyboard.f3Key.wasPressedThisFrame) SetDifficulty(Difficulty.Hard);
             if (keyboard.escapeKey.wasPressedThisFrame) selectedUnit = -1;
             var patrol = SelectedPatrol();
             if (patrol != null)
@@ -1816,6 +1827,7 @@ namespace CrushHour
                 border = new RectOffset(6, 6, 6, 6),
                 padding = new RectOffset(10, 10, 6, 6),
                 margin = new RectOffset(0, 0, 3, 3),
+                richText = true,
             };
             var normal = Rounded(fill, 6);
             var hover = Rounded(Color.Lerp(fill, Color.white, 0.15f), 6);
@@ -1940,15 +1952,15 @@ namespace CrushHour
         {
             var bar = Panel(new Rect(0, 0, vw, 64), BoxStyle(PanelColor, 0, 0));
             GUI.Label(new Rect(16, 8, 220, 28), "CRUSH HOUR", titleStyle);
-            GUI.Label(new Rect(17, 36, 220, 20), "Summer Music Festival", smallStyle);
+            GUI.Label(new Rect(17, 36, 260, 20), $"Summer Music Festival \u00b7 {DifficultyLabel}", smallStyle);
 
             // What's happening now.
-            float x = 230;
+            float x = 280;
             switch (phase)
             {
                 case Phase.Planning:
                     Chip(new Rect(x, 12, 120, 22), "PLANNING", SelectedColor);
-                    GUI.Label(new Rect(x, 38, 380, 20), "Position your team and barriers, then start the show.", smallStyle);
+                    GUI.Label(new Rect(x, 38, 390, 20), "Place your team and barriers, then start. F1/F2/F3: difficulty.", smallStyle);
                     break;
                 case Phase.Live when !incidentStarted:
                     Chip(new Rect(x, 12, 120, 22), "SHOW ON", GoodColor);
@@ -2304,12 +2316,24 @@ namespace CrushHour
 
         void DrawWelcome()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 280, vh * 0.5f - 210, 560, 420), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
+            var rect = Panel(new Rect(vw * 0.5f - 280, vh * 0.5f - 250, 560, 500), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
             GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 22, rect.width - 56, rect.height - 44));
             GUILayout.Label("Welcome, safety commander", titleStyle);
             GUILayout.Space(4);
-            GUILayout.Label($"{sim.count} fans are at the Summer Music Festival. Soon a fire will break out somewhere. " +
-                            "People will run from it, then head for the nearest gate. If it's shut, they try another, and the queues grow.", labelStyle);
+            GUILayout.Label($"{sim.count} fans are at the Summer Music Festival. Soon something will go wrong: a fire, a falling light tower, a gas leak, a blocked exit... " +
+                            "Every round is different. People head for the nearest gate; if it's shut, they try another, and the queues grow.", labelStyle);
+            GUILayout.Space(8);
+            // Difficulty: more people, more drunks, more blocked exits and disasters; higher score multiplier.
+            GUILayout.BeginHorizontal();
+            foreach (Difficulty d in new[] { Difficulty.Easy, Difficulty.Medium, Difficulty.Hard })
+            {
+                var s = DifficultySettings.For(d);
+                string label = $"{s.Name}  [F{(int)d + 1}]\n<size=10>{s.playerCount} people \u00b7 {s.disasterCount} disaster{(s.disasterCount > 1 ? "s" : "")} \u00b7 \u00d7{s.scoreMultiplier:0.#}</size>";
+                if (GUILayout.Button(label, d == difficulty ? selectedButtonStyle : buttonStyle, GUILayout.Height(46)))
+                    SetDifficulty(d);
+            }
+            GUILayout.EndHorizontal();
+            if (crowdSizeOverride > 0) GUILayout.Label($"Dev override: {crowdSizeOverride} people whatever the difficulty.", smallStyle);
             GUILayout.Space(10);
             WelcomeStep("1", "Plan", $"Every zone has a patrol ({venue.regions.Count} in all), plus {megaphoneOfficers} megaphone police. Move them by clicking them, then the map. Draw barriers to steer the crowd.");
             WelcomeStep("2", "React", "When the fire starts, open the emergency gates and send your team to the crowds. Select a patrol and press an arrow key to send its whole zone out that way. The megaphone police tell everyone in earshot where to go.");
@@ -2362,11 +2386,12 @@ namespace CrushHour
             ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : TextColor);
             ResultRow("Drunk left inside", finalDrunkInside == 0 ? "0" : $"{finalDrunkInside}  (-{finalDrunkInside * 50} points)", finalDrunkInside > 0 ? AgentColors[7] : TextColor);
             ResultRow("Evacuation time", FormatTime(evacuationTime), TextColor);
+            ResultRow("Difficulty", DifficultyLabel, TextColor);
             ResultRow("Score", finalScore.ToString(), TextColor);
             GUILayout.Space(8);
             GUILayout.Label(resultTip, mutedStyle);
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Play again: new crowd, new fire  [R]", goodButtonStyle, GUILayout.Height(42))) deferred.Add(NewGame);
+            if (GUILayout.Button("Play again: new crowd, new round  [R]", goodButtonStyle, GUILayout.Height(42))) deferred.Add(NewGame);
             GUILayout.EndArea();
         }
 
