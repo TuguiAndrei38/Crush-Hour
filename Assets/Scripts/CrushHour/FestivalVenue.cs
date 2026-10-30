@@ -117,6 +117,19 @@ namespace CrushHour
         /// </summary>
         public readonly float[] smoke = new float[CellCount];
         readonly float[] smokeNext = new float[CellCount];
+        /// <summary>
+        /// Gas concentration per cell (0-1): 1 at a leak, spreading like the smoke but slower (one cell per
+        /// <see cref="GasSpreadInterval"/> s) and with no wind (×<see cref="GasSpreadFactor"/> per cell in every
+        /// direction), lingering, thinning out once the leak stops. Not shown until someone notices it.
+        /// </summary>
+        public readonly float[] gas = new float[CellCount];
+        readonly float[] gasNext = new float[CellCount];
+        /// <summary>Cells leaking gas right now (kept at 1).</summary>
+        public readonly List<int> gasSources = new();
+        public const float GasSpreadInterval = 0.5f, GasSpreadFactor = 0.9f, GasLinger = 0.995f;
+        float gasTimer;
+        /// <summary>Any gas in the air (or leaking).</summary>
+        public bool HasGas { get; private set; }
         float smokeTimer;
         /// <summary>Spot fires started by embers so far, and the cell of the latest one.</summary>
         public int SpotFires { get; private set; }
@@ -404,6 +417,66 @@ namespace CrushHour
                 if (new RectInt(d.rect.xMin - margin, d.rect.yMin - margin, d.rect.width + 2 * margin, d.rect.height + 2 * margin).Contains(p))
                     return d;
             return null;
+        }
+
+        // ---------------------------------------------------------------- Gas
+
+        /// <summary>Spreads the gas (every <see cref="GasSpreadInterval"/> s). Does nothing (and touches no rng) while there's no gas.</summary>
+        public void UpdateGas(float dt)
+        {
+            if (!HasGas && gasSources.Count == 0) return;
+            gasTimer -= dt;
+            if (gasTimer > 0f) return;
+            gasTimer = GasSpreadInterval;
+            foreach (int c in gasSources) gas[c] = 1f;
+            float max = 0f;
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                {
+                    int c = Index(x, y);
+                    if (cells[c] == CellType.Outside) { gasNext[c] = 0f; continue; } // blows away in the open
+                    float g = gas[c] * GasLinger;
+                    if (x > 0) g = Mathf.Max(g, gas[c - 1] * GasSpreadFactor);
+                    if (x < Width - 1) g = Mathf.Max(g, gas[c + 1] * GasSpreadFactor);
+                    if (y > 0) g = Mathf.Max(g, gas[c - Width] * GasSpreadFactor);
+                    if (y < Height - 1) g = Mathf.Max(g, gas[c + Width] * GasSpreadFactor);
+                    if (g < 0.005f) g = 0f;
+                    gasNext[c] = g;
+                    max = Mathf.Max(max, g);
+                }
+            }
+            Array.Copy(gasNext, gas, CellCount);
+            HasGas = gasSources.Count > 0 || max > 0f;
+        }
+
+        /// <summary>All the gas is gone at once (it burnt off).</summary>
+        public void ClearGas()
+        {
+            Array.Clear(gas, 0, CellCount);
+            gasSources.Clear();
+            HasGas = false;
+        }
+
+        /// <summary>Is there gas of at least <paramref name="level"/> within <paramref name="radius"/> m of <paramref name="p"/>?</summary>
+        public bool GasNear(Vector2 p, float radius, float level)
+        {
+            if (!HasGas) return false;
+            int x0 = Mathf.Max(0, Mathf.FloorToInt(p.x - radius)), x1 = Mathf.Min(Width - 1, Mathf.FloorToInt(p.x + radius));
+            int y0 = Mathf.Max(0, Mathf.FloorToInt(p.y - radius)), y1 = Mathf.Min(Height - 1, Mathf.FloorToInt(p.y + radius));
+            float radiusSq = radius * radius;
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                    if (gas[Index(x, y)] >= level && (new Vector2(x + 0.5f, y + 0.5f) - p).sqrMagnitude <= radiusSq) return true;
+            return false;
+        }
+
+        /// <summary>Sets several cells on fire at once (a gas flash), then updates fire distances and routes once.</summary>
+        public void StartFires(IEnumerable<int> cellsToIgnite)
+        {
+            bool any = false;
+            foreach (int c in cellsToIgnite) any |= Ignite(c);
+            if (any) RecomputeFireDistance();
         }
 
         // ---------------------------------------------------------------- Collapses

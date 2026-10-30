@@ -191,6 +191,7 @@ MonoBehaviour:
   megaphoneOfficers: 2
   crowdSizeOverride: 400
   demoBlockedExit: 1
+  demoGasLeak: 1
   evacuationTimeLimit: 240
   announcementCooldown: 12
   announcementReach: 0.7

@@ -55,6 +55,16 @@ namespace CrushHour
         [Tooltip("Dose from which people are visibly intoxicated (coughing, slowed down).")]
         public float intoxicatedDose = 0.15f;
 
+        [Header("Gas")]
+        [Tooltip("Gas concentration (0-1) above which breathing it in poisons people. Gas can't be seen or smelt by the crowd: it doesn't scare anyone.")]
+        public float gasHarmLevel = 0.2f;
+        [Tooltip("Gas dose per second at full concentration. A dose of 1 means collapsing (injured).")]
+        public float gasDoseRate = 0.08f;
+        [Tooltip("How fast the gas dose wears off in clean air, per second.")]
+        public float gasRecovery = 0.03f;
+        [Tooltip("Gas dose from which people cough (the first cough gives the leak away).")]
+        public float coughDose = 0.1f;
+
         [Header("Crush")]
         [Tooltip("Crowd pressure (density x panic factor) above which people get hurt.")]
         public float crushThreshold = 8.5f;
@@ -154,6 +164,8 @@ namespace CrushHour
         /// <see cref="ShockFear"/> and fading to 0 over <see cref="ShockDuration"/> s. 0 for everyone unless <see cref="Shock"/> is called.
         /// </summary>
         public readonly float[] shock;
+        /// <summary>Gas breathed in (0-1); collapse at 1. Separate from smokeDose: gas doesn't scare anyone by itself.</summary>
+        public readonly float[] gasDose;
         /// <summary>Fear right after a shock: as much as standing 2 m from the flames.</summary>
         public const float ShockFear = 0.85f, ShockDuration = 10f;
         readonly List<int> nearby = new();
@@ -190,6 +202,9 @@ namespace CrushHour
         public int InjuredBySmoke { get; private set; }
         /// <summary>Crushed under a collapsing structure (light tower).</summary>
         public int InjuredByCollapse { get; private set; }
+        public int InjuredByGas { get; private set; }
+        /// <summary>People inside with a gas dose of at least coughDose.</summary>
+        public int CoughingCount { get; private set; }
         public int IntoxicatedCount { get; private set; }
         /// <summary>Drunk people still inside (active).</summary>
         public int DrunkInsideCount { get; private set; }
@@ -224,6 +239,7 @@ namespace CrushHour
             listeningTime = new float[count];
             reassuredTime = new float[count];
             shock = new float[count];
+            gasDose = new float[count];
             agentCell = new int[count];
             sorted = new int[count];
             orderedDoor = new int[count];
@@ -465,6 +481,21 @@ namespace CrushHour
                 bool inAttack = attackTime[i] > 0f;
 
                 float smokeHere = venue.smoke[c];
+                // Gas works whether or not anyone knows about it yet; nobody notices it by itself (no fear, no fleeing).
+                float gasHere = venue.gas[c];
+                if (gasHere > 0f || gasDose[i] > 0f)
+                {
+                    if (gasHere > settings.gasHarmLevel)
+                        gasDose[i] += (gasHere - settings.gasHarmLevel) / (1f - settings.gasHarmLevel) * settings.gasDoseRate * dt;
+                    else
+                        gasDose[i] = Mathf.Max(0f, gasDose[i] - settings.gasRecovery * dt);
+                    if (gasDose[i] >= 1f)
+                    {
+                        Injure(i);
+                        InjuredByGas++;
+                        continue;
+                    }
+                }
                 if (incident)
                 {
                     // Breathing smoke: a dose builds up the thicker it is and the longer you stay; it wears off in clean air.
@@ -740,7 +771,7 @@ namespace CrushHour
 
         void UpdateCounts()
         {
-            int active = 0, safe = 0, injured = 0, panicked = 0, leaving = 0, attacks = 0, intoxicated = 0, drunkInside = 0;
+            int active = 0, safe = 0, injured = 0, panicked = 0, leaving = 0, attacks = 0, intoxicated = 0, drunkInside = 0, coughing = 0;
             for (int i = 0; i < count; i++)
             {
                 switch (state[i])
@@ -751,6 +782,7 @@ namespace CrushHour
                         if (evacuating[i]) leaving++;
                         if (attackTime[i] > 0f) attacks++;
                         if (smokeDose[i] >= settings.intoxicatedDose) intoxicated++;
+                        if (gasDose[i] >= settings.coughDose) coughing++;
                         if (drunk[i]) drunkInside++;
                         break;
                     case AgentState.Safe: safe++; break;
@@ -764,6 +796,7 @@ namespace CrushHour
             EvacuatingCount = leaving;
             PanicAttackCount = attacks;
             IntoxicatedCount = intoxicated;
+            CoughingCount = coughing;
             DrunkInsideCount = drunkInside;
         }
 
@@ -1088,13 +1121,13 @@ namespace CrushHour
             }
         }
 
-        /// <summary>Display bucket: 0 calm, 1 informed, 2 alarmed, 3 panicking, 4 injured, 5 panic attack, 6 intoxicated by smoke, -1 safe (not shown).</summary>
+        /// <summary>Display bucket: 0 calm, 1 informed, 2 alarmed, 3 panicking, 4 injured, 5 panic attack, 6 intoxicated by smoke or gas, -1 safe (not shown).</summary>
         public int DisplayState(int i)
         {
             if (state[i] == AgentState.Safe) return -1;
             if (state[i] == AgentState.Injured) return 4;
             if (attackTime[i] > 0f) return 5;
-            if (smokeDose[i] >= settings.intoxicatedDose) return 6;
+            if (smokeDose[i] >= settings.intoxicatedDose || gasDose[i] >= settings.intoxicatedDose) return 6;
             if (drunk[i]) return 7;
             float pv = panic[i];
             return pv > 0.7f ? 3 : pv > 0.3f ? 2 : informed[i] && evacuating[i] ? 1 : 0;

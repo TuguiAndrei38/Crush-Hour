@@ -286,6 +286,69 @@ namespace CrushHour
             return md.ToString();
         }
 
+        // ================================================================ Gas leak test
+
+        const string GasSite = "the Generator";
+
+        public static int GasLeakRunCount(int seedCount) => 2 * seedCount;
+
+        /// <summary>
+        /// Gas leak test: a leak at the Generator from 0 s, no fire, staff at their posts, gates shut. It's detected when
+        /// a patrol or police ring has gas in it, or someone coughs (like the game). Per seed: no reaction (staff just
+        /// stand there), or the zone patrol of the leak's zone orders its zone out, away from the leak, the moment it's
+        /// detected. Returns a Markdown table (null when cancelled).
+        /// </summary>
+        public static string RunGasLeakTest(int[] seeds, Action<string> log, Func<bool> cancelled)
+        {
+            var md = new StringBuilder();
+            md.AppendLine($"Gas leak at the Generator from 0 s (leaks {GasLeakIncident.LeakDuration:0} s), no fire, staff at their posts, gates shut. Detection: gas ≥ {GasLeakIncident.DetectLevel:0.00} in a patrol/police ring, or a cough. Seeds {string.Join(", ", seeds)}.");
+            md.AppendLine();
+            md.AppendLine("| Seed | Response | Detected at (by) | Door ordered | People in zone | Injured by gas | Injured total | Safe | Still inside | Time |");
+            md.AppendLine("|---|---|---|---|---|---|---|---|---|---|");
+            foreach (int seed in seeds)
+            {
+                foreach (bool order in new[] { false, true })
+                {
+                    if (cancelled()) return null;
+                    var s = new Scenario(null, seed, true);
+                    var venue = s.venue;
+                    var sim = s.sim;
+                    var leak = new GasLeakIncident(s.rng, GasSite);
+                    s.schedule.StartNow(leak, venue, sim);
+                    int region = leak.region;
+                    string door = "-";
+                    int zonePeople = 0;
+                    float policeRadius = s.settings.policeAnnounceRadius;
+                    Simulate(s, cancelled, time =>
+                    {
+                        if (leak.Detected) return;
+                        string by = null;
+                        for (int p = 0; p < s.patrols.Count && by == null; p++)
+                            if (GasLeakIncident.Smells(venue, s.patrols[p], s.settings.patrolRadius)) by = $"{venue.regions[p].name} patrol";
+                        for (int p = 0; p < s.police.Count && by == null; p++)
+                            if (GasLeakIncident.Smells(venue, s.police[p], policeRadius)) by = $"Police {p + 1}";
+                        if (by == null && sim.CoughingCount > 0) by = "a cough";
+                        if (by == null) return;
+                        leak.Detect(by, time);
+                        zonePeople = sim.CountInRegion(region, venue);
+                        if (!order) return;
+                        var post = venue.regions[region].post;
+                        Vector2 postCenter = new(post.x + 0.5f, post.y + 0.5f), leakCenter = new(leak.cell.x + 0.5f, leak.cell.y + 0.5f);
+                        Vector2 away = postCenter - leakCenter;
+                        if (away.sqrMagnitude < 4f) away = new Vector2(FestivalVenue.Width * 0.5f, FestivalVenue.Height * 0.5f) - leakCenter;
+                        int d = sim.OrderRegionEvacuation(region, away, venue);
+                        door = d >= 0 ? venue.doors[d].name : "none";
+                    });
+
+                    string detected = leak.Detected ? $"{leak.detectedAt:0.0}s ({leak.detectedBy})" : "never";
+                    string line = $"| {seed} | {(order ? "Zone order on detection" : "No reaction")} | {detected} | {door} | {zonePeople} | {sim.InjuredByGas} | {sim.InjuredCount} | {sim.SafeCount} | {sim.SoberActiveCount} | {s.time:0}s |";
+                    md.AppendLine(line);
+                    log?.Invoke(line);
+                }
+            }
+            return md.ToString();
+        }
+
         // ================================================================ Tower collapse test
 
         const string CollapseFireSite = "Stage Left";

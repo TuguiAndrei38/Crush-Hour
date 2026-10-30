@@ -38,6 +38,17 @@ namespace CrushHour
         public virtual bool StartsEvacuation => true;
         /// <summary>What the megaphone police shout about it (the first evacuation incident of the round).</summary>
         public virtual string Announcement => Headline;
+        /// <summary>
+        /// Nobody notices it when it starts (a gas leak): the game shows no banner or feed line then; the incident is
+        /// announced later, when someone detects it.
+        /// </summary>
+        public virtual bool Silent => false;
+
+        /// <summary>The schedule it's in (set by <see cref="IncidentSchedule.Add"/> / <see cref="IncidentSchedule.StartNow"/>).</summary>
+        internal IncidentSchedule owner;
+
+        /// <summary>Starts another incident caused by this one (a gas cloud catching fire) at the end of this step.</summary>
+        protected void StartFollowUp(Incident next) => owner?.QueueStart(next);
 
         internal float timer;
         internal bool timerArmed;
@@ -94,6 +105,7 @@ namespace CrushHour
     {
         readonly System.Random rng;
         readonly int siteIndex;
+        readonly bool fixedCell;
         public string siteName;
         public Vector2Int cell;
 
@@ -102,6 +114,16 @@ namespace CrushHour
         {
             this.rng = rng;
             this.siteIndex = siteIndex;
+            name = "Fire";
+        }
+
+        /// <summary>A fire at exactly <paramref name="at"/> (not a fire site), e.g. where a gas cloud met the flames.</summary>
+        public FireIncident(Vector2Int at, string site, int region)
+        {
+            fixedCell = true;
+            cell = at;
+            siteName = site;
+            this.region = region;
             name = "Fire";
         }
 
@@ -118,6 +140,11 @@ namespace CrushHour
 
         protected override void Start(FestivalVenue venue, CrowdSimulation sim)
         {
+            if (fixedCell)
+            {
+                venue.StartFire(cell);
+                return;
+            }
             int index = siteIndex >= 0 ? siteIndex : rng.Next(venue.fireSites.Count);
             var site = venue.fireSites[index];
             siteName = site.name;
@@ -263,6 +290,97 @@ namespace CrushHour
     }
 
     /// <summary>
+    /// A gas leak (the Generator, or the gas bottles at the Food Court): the venue's <see cref="FestivalVenue.gas"/> field
+    /// spreads from the leak (slower than smoke, no wind) for <see cref="LeakDuration"/> s, then thins out. It's
+    /// <see cref="Silent"/>: no flames, nobody sees it, nobody runs from it (CrowdSimulation.gasDose: people cough, then
+    /// collapse). The crowd only reacts to people falling around them or to staff telling them. It's
+    /// <see cref="Detected"/> when someone coughs or a patrol/police officer has gas in their ring (<see cref="Smells"/>);
+    /// the game then raises the alarm. If gas of <see cref="IgniteLevel"/> reaches the flames it catches: the thick part
+    /// flashes into fire and a <see cref="FireIncident"/> starts where it met the flames; the gas is gone.
+    /// </summary>
+    public class GasLeakIncident : Incident
+    {
+        public static readonly string[] Sites = { "the Generator", "the Food Court" };
+        public const float LeakDuration = 90f, DetectLevel = 0.05f, IgniteLevel = 0.25f, FlashLevel = 0.6f;
+
+        readonly int siteIndex;
+        readonly System.Random rng;
+        public string siteName;
+        public Vector2Int cell;
+
+        public bool Detected { get; private set; }
+        /// <summary>Who noticed it ("the Backstage patrol", "coughing people"); set by <see cref="Detect"/>.</summary>
+        public string detectedBy;
+        public float detectedAt = -1f;
+        public bool Ignited { get; private set; }
+        /// <summary>The fire it started, once it caught.</summary>
+        public FireIncident ignition;
+
+        /// <param name="site">One of <see cref="Sites"/>, or null for a random one (picked when it starts).</param>
+        public GasLeakIncident(System.Random rng, string site = null)
+        {
+            this.rng = rng;
+            siteIndex = site == null ? -1 : System.Array.IndexOf(Sites, site);
+            name = "Gas leak";
+        }
+
+        public override bool StartsEvacuation => false; // the game starts the evacuation when it's detected
+        public override bool Silent => true;
+        public override string SiteName => siteName ?? "an unknown spot";
+        public override Vector2Int FocusCell => cell;
+        public override string Headline => $"GAS LEAK AT {SiteName.ToUpperInvariant()}!";
+        public override string LogText => $"GAS LEAK at {SiteName}! People in it cough and collapse; nobody runs from it on their own.";
+        public override string Advice => "Order the zones nearby out and keep people out of the yellow cloud. Keep it away from the flames.";
+        public override string Announcement => $"Gas leak at {SiteName}!";
+
+        /// <summary>Marks it as noticed (once).</summary>
+        public void Detect(string by, float time)
+        {
+            if (Detected) return;
+            Detected = true;
+            detectedBy = by;
+            detectedAt = time;
+        }
+
+        /// <summary>Would a patrolman or police officer at <paramref name="p"/> with ring <paramref name="radius"/> smell it?</summary>
+        public static bool Smells(FestivalVenue venue, Vector2 p, float radius) => venue.GasNear(p, radius, DetectLevel);
+
+        protected override void Start(FestivalVenue venue, CrowdSimulation sim)
+        {
+            int index = siteIndex >= 0 ? siteIndex : rng.Next(Sites.Length);
+            var site = venue.fireSites.Find(s => s.name == Sites[index]);
+            siteName = site.name;
+            cell = site.cell;
+            region = site.region;
+            venue.gasSources.Add(FestivalVenue.Index(cell.x, cell.y));
+        }
+
+        protected override void Update(float dt, FestivalVenue venue, CrowdSimulation sim)
+        {
+            if (Ignited) return;
+            int source = FestivalVenue.Index(cell.x, cell.y);
+            if (Age >= LeakDuration) venue.gasSources.Remove(source);
+            if (venue.fireCells.Count == 0 || !venue.HasGas) return;
+
+            // Gas thick enough to burn, next to the flames?
+            int contact = -1;
+            for (int c = 0; c < FestivalVenue.CellCount && contact < 0; c++)
+                if (venue.gas[c] >= IgniteLevel && venue.fireDistance[c] <= 1 && venue.cells[c] != CellType.Fire) contact = c;
+            if (contact < 0) return;
+
+            Ignited = true;
+            var flash = new List<int>();
+            for (int c = 0; c < FestivalVenue.CellCount; c++)
+                if (venue.gas[c] >= FlashLevel) flash.Add(c);
+            venue.ClearGas();
+            venue.StartFires(flash);
+            var at = new Vector2Int(contact % FestivalVenue.Width, contact / FestivalVenue.Width);
+            ignition = new FireIncident(at, $"the gas cloud by {venue.DescribeLocation(contact)}", venue.regionOf[contact]);
+            StartFollowUp(ignition);
+        }
+    }
+
+    /// <summary>
     /// The incidents of a round. <see cref="Update"/> runs every simulation step while the show is live:
     /// 1. pending incidents whose trigger is met count down their <see cref="Incident.startTime"/> and start at 0;
     /// 2. if anything had already started before this step, the venue's fire spreads once and every incident started
@@ -275,15 +393,23 @@ namespace CrushHour
         public int maxFireCells;
         public bool AnyStarted { get; private set; }
         readonly List<Incident> startedThisStep = new();
+        readonly List<Incident> queued = new();
 
         public IncidentSchedule(int maxFireCells) => this.maxFireCells = maxFireCells;
 
-        public void Add(Incident incident) => incidents.Add(incident);
+        public void Add(Incident incident)
+        {
+            incident.owner = this;
+            incidents.Add(incident);
+        }
+
+        /// <summary>Starts <paramref name="incident"/> at the end of the current <see cref="Update"/> (follow-ups).</summary>
+        internal void QueueStart(Incident incident) => queued.Add(incident);
 
         /// <summary>Starts <paramref name="incident"/> right away (headless tests). From the next step on it's updated as usual.</summary>
         public void StartNow(Incident incident, FestivalVenue venue, CrowdSimulation sim)
         {
-            if (!incidents.Contains(incident)) incidents.Add(incident);
+            if (!incidents.Contains(incident)) Add(incident);
             incident.Begin(venue, sim);
             AnyStarted = true;
         }
@@ -317,8 +443,22 @@ namespace CrushHour
 
             if (!wasRunning) return false;
             bool fireChanged = venue.UpdateFire(dt, rng, maxFireCells);
+            venue.UpdateGas(dt); // no-op without gas
             foreach (var incident in incidents)
                 if (incident.Started && !startedThisStep.Contains(incident)) incident.Tick(dt, venue, sim);
+
+            // Incidents caused by others this step (gas catching fire) start now; they're updated from the next step.
+            if (queued.Count > 0)
+            {
+                foreach (var incident in queued)
+                {
+                    Add(incident);
+                    incident.Begin(venue, sim);
+                    started?.Add(incident);
+                }
+                queued.Clear();
+                fireChanged = true;
+            }
             return fireChanged;
         }
     }

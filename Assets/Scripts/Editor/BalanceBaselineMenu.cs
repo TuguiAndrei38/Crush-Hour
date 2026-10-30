@@ -42,6 +42,10 @@ static class BalanceBaselineMenu
     static void RunTowerCollapseTest() =>
         Start("Tower collapse test", "tower-collapse-test.md", BalanceBaselineRunner.TowerCollapseRunCount(Seeds.Length), BalanceBaselineRunner.RunTowerCollapseTest);
 
+    [MenuItem("Tools/Crush Hour/Run Gas Leak Test")]
+    static void RunGasLeakTest() =>
+        Start("Gas leak test", "gas-leak-test.md", BalanceBaselineRunner.GasLeakRunCount(Seeds.Length), BalanceBaselineRunner.RunGasLeakTest);
+
     static void Start(string name, string file, int runs, Func<int[], Action<string>, Func<bool>, string> work)
     {
         if (task != null && !task.IsCompleted)

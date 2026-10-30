@@ -81,6 +81,8 @@ namespace CrushHour
         [Min(0)] public int crowdSizeOverride;
         [Tooltip("Dev: block a random exit (truck or scaffolding) as the show starts, until levels set up their own incidents.")]
         public bool demoBlockedExit;
+        [Tooltip("Dev: a gas leak at the Generator or the Food Court as the show starts, until levels set up their own incidents.")]
+        public bool demoGasLeak;
         public float evacuationTimeLimit = 240f;
         public int maxFireCells = 400;
         [FormerlySerializedAs("stewardSpeed")] public float patrolSpeed = 3.5f;
@@ -141,6 +143,7 @@ namespace CrushHour
         static readonly Color Scorched = new(0.12f, 0.08f, 0.05f);
         static readonly Color Blocked = new(0.18f, 0.18f, 0.18f);
         static readonly Color SmokeShade = new(0.14f, 0.14f, 0.16f);
+        static readonly Color GasColor = new(0.78f, 0.9f, 0.2f);
         static readonly Color[] SmokeColors = { new(0.2f, 0.2f, 0.22f), new(0.3f, 0.3f, 0.32f), new(0.42f, 0.41f, 0.4f) };
         static readonly Vector3 Wind = new(0.7f, 0f, 0.35f);
 
@@ -199,6 +202,10 @@ namespace CrushHour
         readonly Dictionary<int, Transform> towerViews = new(), towerPivots = new();
         /// <summary>Seconds since each tower started falling (fall animation).</summary>
         readonly Dictionary<TowerCollapseIncident, float> towerFallTime = new();
+        /// <summary>The gas layer is drawn on the ground once someone has noticed the gas.</summary>
+        bool gasVisible;
+        /// <summary>Units that have already reported smelling gas.</summary>
+        readonly HashSet<Unit> smeltGas = new();
         readonly List<Unit> units = new();
         readonly List<Puff> smoke = new();
         float smokeBudget, lastSpotFireLog;
@@ -289,6 +296,8 @@ namespace CrushHour
             towerViews.Clear();
             towerPivots.Clear();
             towerFallTime.Clear();
+            smeltGas.Clear();
+            gasVisible = false;
             units.Clear();
             smoke.Clear();
             smokeBudget = 0f;
@@ -577,6 +586,7 @@ namespace CrushHour
                 foreach (var incident in startedIncidents) OnIncidentStarted(incident);
                 foreach (var incident in schedule.incidents)
                     if (incident is TowerCollapseIncident tower && tower.Collapsed && !tower.collapseShown) OnTowerCollapsed(tower);
+                CheckGas();
                 if (fireChanged) OnFireChanged();
             }
 
@@ -616,6 +626,7 @@ namespace CrushHour
             {
                 schedule.Add(new FireIncident(rng) { startTime = 4f + (float)rng.NextDouble() * 8f });
                 if (demoBlockedExit) schedule.Add(BlockDoorIncident.RandomDoor(venue, rng)); // blocked the moment the show starts
+                if (demoGasLeak) schedule.Add(new GasLeakIncident(rng)); // leaking (unnoticed) from the moment the show starts
                 // Chained: a light tower the fire gets within 4 m of comes down 10-20 s later.
                 for (int t = 0; t < venue.lightTowers.Count; t++) schedule.Add(TowerCollapseIncident.WhenFireNear(venue, t, rng));
             }
@@ -633,6 +644,7 @@ namespace CrushHour
                 evacuationTime = 0f;
             }
             SyncFireViews();
+            if (incident.Silent) return; // nobody knows yet: announced when it's detected (see CheckGas)
             if (incident is BlockDoorIncident block) CreateBlockerView(block);
             if (incident is TowerCollapseIncident swaying) HingeTower(swaying);
             var severity = incident.StartsEvacuation ? Severity.Danger : Severity.Warning;
@@ -640,6 +652,52 @@ namespace CrushHour
             ShowBanner(incident.Headline, incident.Advice, severity);
             var focus = incident.FocusCell;
             cameraRig.Focus(new Vector3(focus.x, 0f, focus.y));
+        }
+
+        // ---------------------------------------------------------------- Gas leak
+
+        /// <summary>
+        /// Every step while Live: a gas leak nobody knows about is given away by the first cough or by a patrolman or
+        /// police officer getting gas in their ring ("Food Court patrol smells gas!"; each unit reports once).
+        /// </summary>
+        void CheckGas()
+        {
+            if (!venue.HasGas) return;
+            GasLeakIncident leak = null;
+            foreach (var incident in schedule.incidents)
+                if (incident is GasLeakIncident g && g.Started && !g.Ignited) { leak = g; break; }
+            if (leak == null) return;
+
+            foreach (var u in units)
+            {
+                if (smeltGas.Contains(u) || !GasLeakIncident.Smells(venue, u.position, RoleRadius(u.role))) continue;
+                smeltGas.Add(u);
+                string who = u.homeRegion >= 0 ? $"{venue.regions[u.homeRegion].name} patrol" : u.Name;
+                Log($"{who} smells gas!", Severity.Danger);
+                DetectGas(leak, $"the {who}");
+            }
+            if (!leak.Detected && sim.CoughingCount > 0)
+            {
+                Log($"People are coughing near {leak.SiteName}. There's gas in the air!", Severity.Danger);
+                DetectGas(leak, "coughing people");
+            }
+        }
+
+        /// <summary>The leak has been noticed: show the gas, raise the alarm (if nothing else has), banner and camera.</summary>
+        void DetectGas(GasLeakIncident leak, string by)
+        {
+            gasVisible = true;
+            if (leak.Detected) return;
+            leak.Detect(by, evacuationTime);
+            if (!incidentStarted)
+            {
+                incidentAnnouncement = leak.Announcement;
+                incidentStarted = true;
+                evacuationTime = 0f;
+            }
+            Log(leak.LogText, Severity.Danger);
+            ShowBanner(leak.Headline, leak.Advice, Severity.Danger);
+            cameraRig.Focus(new Vector3(leak.FocusCell.x, 0f, leak.FocusCell.y));
         }
 
         // ---------------------------------------------------------------- Light tower collapse
@@ -1149,7 +1207,7 @@ namespace CrushHour
             }
             if (sim.InjuredCount > lastInjured)
             {
-                Log($"{sim.InjuredCount - lastInjured} more people injured (total {sim.InjuredCount}: {sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke, {sim.InjuredByCollapse} crushed by collapse).", Severity.Danger);
+                Log($"{sim.InjuredCount - lastInjured} more people injured (total {sim.InjuredCount}: {sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke, {sim.InjuredByGas} gas, {sim.InjuredByCollapse} crushed by collapse).", Severity.Danger);
                 lastInjured = sim.InjuredCount;
             }
             if (sim.PanicAttacksTotal > lastAttacks)
@@ -1193,6 +1251,8 @@ namespace CrushHour
                 resultTip = "No emergency gate was opened. People tried the gates, found them shut and all squeezed through the two narrow entrances.";
             else if (sim.InjuredByCollapse > 0 && sim.InjuredByCollapse >= sim.InjuredByCrush && sim.InjuredByCollapse >= sim.InjuredBySmoke)
                 resultTip = "The light tower came down on people. When a tower sways you have 6 seconds: select that zone's patrol and order the zone out.";
+            else if (sim.InjuredByGas > 0 && sim.InjuredByGas >= sim.InjuredByCrush && sim.InjuredByGas >= sim.InjuredBySmoke)
+                resultTip = "The gas got people. Nobody runs from it on their own: as soon as a patrol smells it, order the zones around the leak out.";
             else if (sim.InjuredBySmoke > sim.InjuredByCrush && sim.InjuredBySmoke > 0)
                 resultTip = "The smoke got people. It drifts downwind of the fire: open gates away from the plume and get people moving early.";
             else if (finalInjured > 0)
@@ -1609,6 +1669,13 @@ namespace CrushHour
                     CellType.Fire => Scorched,
                     _ => Blocked,
                 };
+            }
+            if (gasVisible && venue.HasGas)
+            {
+                // Yellow-green haze where the gas is.
+                for (int i = 0; i < groundPixels.Length; i++)
+                    if (venue.gas[i] > GasLeakIncident.DetectLevel && venue.cells[i] != CellType.Outside)
+                        groundPixels[i] = Color.Lerp(groundPixels[i], GasColor, Mathf.Min(0.75f, 0.2f + venue.gas[i] * 0.6f));
             }
             if (showRegions) DrawRegionOutlines();
             groundTexture.SetPixels32(groundPixels);
@@ -2214,7 +2281,8 @@ namespace CrushHour
                 {
                     CellType.Open => $"{sim.density[cell]:0.0} people per m²   pressure {sim.pressure[cell]:0.0}" +
                                      (sim.pressure[cell] > crowd.crushThreshold * 0.8f ? "  <b>CRUSH RISK</b>" : "") +
-                                     (venue.smoke[cell] > 0.1f ? $"\nSmoke {venue.smoke[cell] * 100f:0}%" + (venue.smoke[cell] > crowd.smokeHarmLevel ? " <b>TOXIC</b>" : "") : ""),
+                                     (venue.smoke[cell] > 0.1f ? $"\nSmoke {venue.smoke[cell] * 100f:0}%" + (venue.smoke[cell] > crowd.smokeHarmLevel ? " <b>TOXIC</b>" : "") : "") +
+                                     (gasVisible && venue.gas[cell] > GasLeakIncident.DetectLevel ? $"\nGas {venue.gas[cell] * 100f:0}%" + (venue.gas[cell] > crowd.gasHarmLevel ? " <b>POISONOUS</b>" : "") : ""),
                     CellType.Fire => "Fire",
                     CellType.Barrier => "Barrier (right-click with the Barrier tool to remove)",
                     CellType.Outside => "Outside: safe",
@@ -2288,7 +2356,7 @@ namespace CrushHour
             GUILayout.Space(8);
 
             ResultRow("Safe", $"{finalSafe} / {sim.count}  ({finalSafe * 100f / sim.count:0}%)", GoodColor);
-            ResultRow("Injured", finalInjured == 0 ? "0" : $"{finalInjured}  ({sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke)", finalInjured > 0 ? DangerColor : TextColor);
+            ResultRow("Injured", finalInjured == 0 ? "0" : $"{finalInjured}  ({sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke, {sim.InjuredByGas} gas)", finalInjured > 0 ? DangerColor : TextColor);
             if (sim.InjuredByCollapse > 0) ResultRow("Crushed by collapse", sim.InjuredByCollapse.ToString(), DangerColor);
             ResultRow("Panic attacks", finalAttacks.ToString(), finalAttacks > 0 ? AgentColors[5] : TextColor);
             ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : TextColor);
