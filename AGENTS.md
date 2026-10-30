@@ -17,6 +17,7 @@ Notes for coding agents working in this Unity project.
 | Scene | What it is |
 |---|---|
 | `Assets/Scenes/CrushHourFestival.unity` | **Main prototype.** Top-down crowd-safety sim at a music festival. First in Build Settings. |
+| `Assets/Scenes/CrushHourFestival_Dev.unity` | Working copy of the festival scene for week 5 development, with a small crowd (`crowdSizeOverride: 400`). Not in Build Settings. |
 | `Assets/Scenes/SampleScene.unity` | Earlier experiment: a voxel cube terrain plus a first-person controller. |
 
 Both scenes are set up by editor scripts (see below), not by hand.
@@ -129,6 +130,7 @@ Both scenes are set up by editor scripts (see below), not by hand.
   - Tools: command (units and gates) and barriers (budget 60). Also scoring (−10 per panic attack, −25 per sober person still inside, −50 per drunk person left inside) and stars (3 stars also need no drunk person left inside). Results show "Still inside" (sober) and "Drunk left inside". Game speed is 1× or 2× (`Speeds`).
   - The simulation runs on a fixed 0.04 s step, at most 6 steps per frame.
   - Voxel smoke: a pool of up to 160 unlit grey cubes rising from random fire cells and drifting with `Wind`. Ember spot fires are logged.
+  - `crowdSizeOverride` (0 = off): when above 0, `NewGame` sets `crowd.agentCount` to it (at least 100) before building the crowd. It sits outside `crowd`, so `UpgradeSettings` never resets it; that's how the dev scene keeps 400 people even though its saved `settingsVersion` (3) makes the crowd settings reset to code defaults on load.
   - **Settings version:** every Inspector value is saved in the scene and overrides code defaults. When you retune defaults, bump `CurrentSettingsVersion`; `UpgradeSettings` (run from `OnValidate` and `Awake`) then resets the team size, `maxFireCells` and `crowd` in older scenes. Version 3 fixed a scene stuck on 6 stewards, a 160-cell fire and old crowd settings. Version 4 applies the 400-cell fire and the new crowd settings. Version 5: zone patrolmen replace the stewards (`stewardCount` is gone; `stewardSpeed` became `patrolSpeed` via `FormerlySerializedAs`), and `crowd.patrolRadius` is new. Version 6: drunk people (`crowd.drunkFraction` 0.02 and the other drunk settings).
   - **UI** (IMGUI) is scaled by `Screen.height / 900` through `GUI.matrix`. All layout uses the virtual `vw`×`vh` size, and `guiRects` are in virtual units (`IsOverGui` converts).
     - Rounded panels and buttons use procedurally generated textures (`Rounded`, cached).

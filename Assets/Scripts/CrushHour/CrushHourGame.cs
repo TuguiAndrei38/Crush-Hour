@@ -75,6 +75,8 @@ namespace CrushHour
         public int barrierBudget = 60;
         [Tooltip("Police officers with megaphones who announce the situation to everyone in earshot.")]
         public int megaphoneOfficers = 2;
+        [Tooltip("People in this scene (0 = use crowd.agentCount). Settings upgrades never reset it (unlike crowd.agentCount), so a test scene can keep a small crowd.")]
+        [Min(0)] public int crowdSizeOverride;
         public float evacuationTimeLimit = 240f;
         public int maxFireCells = 400;
         [FormerlySerializedAs("stewardSpeed")] public float patrolSpeed = 3.5f;
@@ -281,6 +283,7 @@ namespace CrushHour
             seed = Environment.TickCount & int.MaxValue;
             rng = new System.Random(seed);
             venue = new FestivalVenue();
+            if (crowdSizeOverride > 0) crowd.agentCount = Mathf.Max(100, crowdSizeOverride);
             sim = new CrowdSimulation(crowd, venue, rng);
             var bounds = new Bounds(new Vector3(W * 0.5f, 1f, H * 0.5f), new Vector3(W, 4f, H));
             crowdRenderer = new CrowdRenderer(sim, cubeMesh, agentRenderParams, personModels, bounds, rng) { ShowMarkers = stateMarkers };
