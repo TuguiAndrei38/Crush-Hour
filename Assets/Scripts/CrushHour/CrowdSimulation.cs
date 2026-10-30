@@ -149,6 +149,13 @@ namespace CrushHour
         public readonly float[] smokeDose;
         /// <summary>Seconds left standing still listening to a steward (refreshed while still panicked), and of staying reassured afterwards.</summary>
         public readonly float[] listeningTime, reassuredTime;
+        /// <summary>
+        /// Fright from a sudden shock (a light tower crashing down nearby): a floor under the fear they feel, starting at
+        /// <see cref="ShockFear"/> and fading to 0 over <see cref="ShockDuration"/> s. 0 for everyone unless <see cref="Shock"/> is called.
+        /// </summary>
+        public readonly float[] shock;
+        /// <summary>Fear right after a shock: as much as standing 2 m from the flames.</summary>
+        public const float ShockFear = 0.85f, ShockDuration = 10f;
         readonly List<int> nearby = new();
         readonly System.Random rng;
         float[] doorCrowd = Array.Empty<float>();
@@ -181,6 +188,8 @@ namespace CrushHour
         public int InjuredByCrush { get; private set; }
         public int InjuredByFire { get; private set; }
         public int InjuredBySmoke { get; private set; }
+        /// <summary>Crushed under a collapsing structure (light tower).</summary>
+        public int InjuredByCollapse { get; private set; }
         public int IntoxicatedCount { get; private set; }
         /// <summary>Drunk people still inside (active).</summary>
         public int DrunkInsideCount { get; private set; }
@@ -214,6 +223,7 @@ namespace CrushHour
             smokeDose = new float[count];
             listeningTime = new float[count];
             reassuredTime = new float[count];
+            shock = new float[count];
             agentCell = new int[count];
             sorted = new int[count];
             orderedDoor = new int[count];
@@ -483,6 +493,12 @@ namespace CrushHour
                     // Touching distance of the flames is terrifying; further away it is frightening but bearable. So is choking smoke.
                     float fear = fd <= 1 ? 1f : fd < sight ? 0.85f * Mathf.Clamp01(1f - (fd - 2f) / sight) : 0f;
                     fear = Mathf.Max(fear, smokeHere * 0.6f);
+                    if (shock[i] > 0f)
+                    {
+                        // Still shaken by something that just crashed down next to them.
+                        fear = Mathf.Max(fear, shock[i]);
+                        shock[i] = Mathf.Max(0f, shock[i] - ShockFear / ShockDuration * dt);
+                    }
                     // Being squeezed, and being stuck in a jam for a long time, wears people down.
                     float crush = Mathf.Clamp01((localDensity - 3f) / 4f) + Mathf.Clamp01((stuckTime[i] - 1f) / 6f) * 0.8f;
                     float social = neighbours > 0 ? panicSum / neighbours * settings.contagionFalloff : 0f;
@@ -1019,6 +1035,40 @@ namespace CrushHour
                 }
             }
             return nearby;
+        }
+
+        /// <summary>Injures everyone (still inside and not hurt yet) standing in one of <paramref name="cells"/>. Returns how many.</summary>
+        public int CrushUnder(ICollection<int> cells)
+        {
+            int crushed = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (state[i] != AgentState.Active || !cells.Contains(CellOf(position[i]))) continue;
+                Injure(i);
+                InjuredByCollapse++;
+                crushed++;
+            }
+            UpdateCounts();
+            return crushed;
+        }
+
+        /// <summary>
+        /// A crash nearby: everyone within <paramref name="radius"/> of <paramref name="center"/> gets a fright of
+        /// <see cref="ShockFear"/> (fading over <see cref="ShockDuration"/> s) and starts heading out (drunk people
+        /// only get the fright). Returns how many were shaken.
+        /// </summary>
+        public int Shock(Vector2 center, float radius)
+        {
+            int shaken = 0;
+            float radiusSq = radius * radius;
+            for (int i = 0; i < count; i++)
+            {
+                if (state[i] != AgentState.Active || (position[i] - center).sqrMagnitude > radiusSq) continue;
+                shock[i] = Mathf.Max(shock[i], ShockFear);
+                if (!drunk[i]) evacuating[i] = true;
+                shaken++;
+            }
+            return shaken;
         }
 
         /// <summary>Moves everybody standing in <paramref name="cell"/> to a free neighbouring cell (a barrier or gate closed on them).</summary>

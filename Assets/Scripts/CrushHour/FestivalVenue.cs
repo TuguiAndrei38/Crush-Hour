@@ -102,6 +102,8 @@ namespace CrushHour
         public readonly List<Gate> gates = new();
         public readonly List<Door> doors = new();
         public readonly List<Landmark> landmarks = new();
+        /// <summary>The two Light Tower landmarks (west at 30,46 and east at 72,46), which can collapse.</summary>
+        public readonly List<Landmark> lightTowers = new();
         /// <summary>Where an incident can start, and the region it's in.</summary>
         public readonly List<(string name, Vector2Int cell, int region)> fireSites = new();
         public readonly List<Region> regions = new();
@@ -158,6 +160,7 @@ namespace CrushHour
             AddBlock("Sound Desk", new RectInt(49, 40, 6, 4), new Color(0.15f, 0.15f, 0.17f), 2.5f, false);
             AddBlock("Light Tower", new RectInt(30, 46, 2, 2), new Color(0.2f, 0.2f, 0.22f), 6f, false);
             AddBlock("Light Tower", new RectInt(72, 46, 2, 2), new Color(0.2f, 0.2f, 0.22f), 6f, false);
+            lightTowers.AddRange(landmarks.FindAll(l => l.name == "Light Tower"));
             var stall = new Color(0.65f, 0.42f, 0.22f);
             foreach (int sx in new[] { 10, 17, 24 })
             {
@@ -401,6 +404,68 @@ namespace CrushHour
                 if (new RectInt(d.rect.xMin - margin, d.rect.yMin - margin, d.rect.width + 2 * margin, d.rect.height + 2 * margin).Contains(p))
                     return d;
             return null;
+        }
+
+        // ---------------------------------------------------------------- Collapses
+
+        public const int TowerFallLength = 8;
+
+        /// <summary>Distance (cells, capped at <see cref="MaxFireDistance"/>) from the nearest flames to any cell of <paramref name="rect"/>.</summary>
+        public int FireDistanceTo(RectInt rect)
+        {
+            int best = MaxFireDistance;
+            foreach (var p in rect.allPositionsWithin)
+                if (InBounds(p.x, p.y)) best = Mathf.Min(best, fireDistance[Index(p.x, p.y)]);
+            return best;
+        }
+
+        /// <summary>
+        /// The cells a tower covers when it falls in <paramref name="direction"/> (one of the 4 axis directions):
+        /// <see cref="TowerFallLength"/> cells long from its side, as wide as the tower.
+        /// </summary>
+        public static List<int> TowerFallCells(Landmark tower, Vector2Int direction)
+        {
+            var result = new List<int>();
+            var r = tower.rect;
+            int across = direction.x != 0 ? r.height : r.width;
+            for (int s = 0; s < TowerFallLength; s++)
+            {
+                for (int w = 0; w < across; w++)
+                {
+                    int x = direction.x > 0 ? r.xMax + s : direction.x < 0 ? r.xMin - 1 - s : r.xMin + w;
+                    int y = direction.y > 0 ? r.yMax + s : direction.y < 0 ? r.yMin - 1 - s : r.yMin + w;
+                    if (InBounds(x, y)) result.Add(Index(x, y));
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Wreckage on <paramref name="wreck"/>: open ground and barriers become low obstacles (burning cells keep burning,
+        /// fence and gates stay). A door the wreckage lands on is blocked (<see cref="SetDoorBlocked"/>, reason
+        /// <paramref name="reason"/>); those doors are added to <paramref name="blockedDoors"/>. Routes and flee directions update.
+        /// </summary>
+        public void AddWreckage(List<int> wreck, string reason, List<Door> blockedDoors)
+        {
+            foreach (int i in wreck)
+            {
+                var door = DoorNear(i, 0);
+                if (door != null)
+                {
+                    if (!door.blocked)
+                    {
+                        SetDoorBlocked(door, true, reason);
+                        blockedDoors?.Add(door);
+                    }
+                    continue;
+                }
+                if (cells[i] != CellType.Open && cells[i] != CellType.Barrier) continue;
+                cells[i] = CellType.Obstacle;
+                flammable[i] = false; // steel
+                blockHeight[i] = 0.8f;
+            }
+            if (fireCells.Count > 0) RecomputeFireDistance(); // walkability changed; also marks routes dirty
+            else MarkRoutesDirty();
         }
 
         // ---------------------------------------------------------------- Blocked doors

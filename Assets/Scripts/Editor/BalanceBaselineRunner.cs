@@ -40,7 +40,7 @@ namespace CrushHour
 
         // ================================================================ Shared scenario loop
 
-        /// <summary>One fire scenario: a fresh venue and crowd for <paramref name="seed"/>, the fire at <paramref name="siteName"/>.</summary>
+        /// <summary>One scenario: a fresh venue and crowd for <paramref name="seed"/>, the fire at <paramref name="siteName"/> (null: no fire).</summary>
         sealed class Scenario
         {
             public System.Random rng;
@@ -69,7 +69,8 @@ namespace CrushHour
                     foreach (var region in venue.regions) patrols.Add(new Vector2(region.post.x + 0.5f, region.post.y + 0.5f));
                     police.AddRange(PolicePosts);
                 }
-                // Same path as the game: the fire is an incident in a schedule, started at once here.
+                // Same path as the game: the fire is an incident in a schedule, started at once here. No site: no fire.
+                if (siteName == null) return;
                 if (legacyFire) venue.StartFire(venue.fireSites.First(s => s.name == siteName).cell);
                 else schedule.StartNow(FireIncident.At(venue, siteName, rng), venue, sim);
             }
@@ -278,6 +279,70 @@ namespace CrushHour
 
                     int zoneViaGate = zonePeople.Count(i => sim.exitDoor[i] == gateDoor);
                     string line = $"| {seed} | {(order ? "yes" : "no")} | {chosen} | {zonePeople.Count} | {zoneViaGate} | {sim.exitsByDoor[gateDoor]} | {sim.SafeCount} | {sim.InjuredCount} | {sim.ActiveCount} | {s.time:0}s |";
+                    md.AppendLine(line);
+                    log?.Invoke(line);
+                }
+            }
+            return md.ToString();
+        }
+
+        // ================================================================ Tower collapse test
+
+        const string CollapseFireSite = "Stage Left";
+        const int CollapseTower = 0; // west light tower (30,46)
+        static readonly Vector2Int CollapseDirection = Vector2Int.up; // into the crowd in front of the stage
+
+        public static int TowerCollapseRunCount(int seedCount) => 3 * seedCount;
+
+        /// <summary>
+        /// Light tower collapse test, staff at their posts and every gate opened at the start. Per seed: the west tower
+        /// sways from 0 s and falls north (into the stage crowd) at 6 s, alone; the same plus a fire at Stage Left at 0 s;
+        /// and only the fire at Stage Left, with both towers chained to it (they fall 10-20 s after the flames get within
+        /// 4 m). Returns a Markdown table (null when cancelled).
+        /// </summary>
+        public static string RunTowerCollapseTest(int[] seeds, Action<string> log, Func<bool> cancelled)
+        {
+            var md = new StringBuilder();
+            md.AppendLine($"Staff at their posts, all gates opened at 0 s. West light tower sways from 0 s and falls north at {TowerCollapseIncident.SwayTime:0} s (wreck {FestivalVenue.TowerFallLength}×2 m, fright radius {TowerCollapseIncident.ShockRadius:0} m), alone or with a fire at {CollapseFireSite} at 0 s; last case: fire only, towers chained to it. Seeds {string.Join(", ", seeds)}.");
+            md.AppendLine();
+            md.AppendLine("| Seed | Case | Tower fell at | Crushed by collapse | Shaken | Injured (crush / fire / smoke) | Panic attacks | Safe | Still inside | Time |");
+            md.AppendLine("|---|---|---|---|---|---|---|---|---|---|");
+            string[] cases = { "Collapse only", $"Collapse + fire at {CollapseFireSite}", $"Fire at {CollapseFireSite}, towers chained" };
+            foreach (int seed in seeds)
+            {
+                for (int k = 0; k < cases.Length; k++)
+                {
+                    if (cancelled()) return null;
+                    var s = new Scenario(k == 0 ? null : CollapseFireSite, seed, true);
+                    var venue = s.venue;
+                    var sim = s.sim;
+                    foreach (var gate in venue.gates) gate.open = true;
+                    var towers = new List<TowerCollapseIncident>();
+                    if (k < 2)
+                    {
+                        var tower = new TowerCollapseIncident(venue, CollapseTower, CollapseDirection);
+                        towers.Add(tower);
+                        s.schedule.StartNow(tower, venue, sim);
+                    }
+                    else
+                    {
+                        for (int t = 0; t < venue.lightTowers.Count; t++)
+                        {
+                            var tower = TowerCollapseIncident.WhenFireNear(venue, t, s.rng);
+                            towers.Add(tower);
+                            s.schedule.Add(tower);
+                        }
+                    }
+                    var fellAt = new Dictionary<TowerCollapseIncident, float>();
+                    Simulate(s, cancelled, time =>
+                    {
+                        foreach (var tower in towers)
+                            if (tower.Collapsed && !fellAt.ContainsKey(tower)) fellAt[tower] = time;
+                    });
+
+                    string fell = fellAt.Count == 0 ? "didn't fall" : string.Join(", ", fellAt.Select(kv => $"{kv.Key.SiteName.Replace("the ", "")} {kv.Value:0.0}s"));
+                    int shaken = towers.Sum(t => t.Shaken);
+                    string line = $"| {seed} | {cases[k]} | {fell} | {sim.InjuredByCollapse} | {shaken} | {sim.InjuredCount} ({sim.InjuredByCrush} / {sim.InjuredByFire} / {sim.InjuredBySmoke}) | {sim.PanicAttacksTotal} | {sim.SafeCount} | {sim.SoberActiveCount} | {s.time:0}s |";
                     md.AppendLine(line);
                     log?.Invoke(line);
                 }

@@ -36,6 +36,8 @@ namespace CrushHour
         /// a blocked exit on its own doesn't, people only find out when they get there.
         /// </summary>
         public virtual bool StartsEvacuation => true;
+        /// <summary>What the megaphone police shout about it (the first evacuation incident of the round).</summary>
+        public virtual string Announcement => Headline;
 
         internal float timer;
         internal bool timerArmed;
@@ -60,17 +62,27 @@ namespace CrushHour
         protected virtual void Update(float dt, FestivalVenue venue, CrowdSimulation sim) { }
     }
 
-    /// <summary>"Start when incident X has run for N seconds (and/or the fire has reached N cells)."</summary>
+    /// <summary>
+    /// "Start when incident X has run for N seconds", "... when the fire has reached N cells", "... when the fire is
+    /// within N m of this rectangle", or any combination (all set conditions must hold; at least one must be set).
+    /// </summary>
     public class IncidentTrigger
     {
         public Incident after;
         public float afterSeconds;
         /// <summary>Total burning cells in the venue needed (0 = don't care).</summary>
         public int afterFireCells;
+        /// <summary>When <see cref="fireNearRange"/> &gt; 0: the flames must be within that many cells of <see cref="fireNear"/>.</summary>
+        public RectInt fireNear;
+        public int fireNearRange;
 
-        public bool IsMet(FestivalVenue venue) =>
-            after != null && after.Started && after.Age >= afterSeconds &&
-            (afterFireCells <= 0 || venue.fireCells.Count >= afterFireCells);
+        public bool IsMet(FestivalVenue venue)
+        {
+            if (after != null && (!after.Started || after.Age < afterSeconds)) return false;
+            if (afterFireCells > 0 && venue.fireCells.Count < afterFireCells) return false;
+            if (fireNearRange > 0 && venue.FireDistanceTo(fireNear) > fireNearRange) return false;
+            return after != null || afterFireCells > 0 || fireNearRange > 0;
+        }
     }
 
     /// <summary>
@@ -102,6 +114,7 @@ namespace CrushHour
         public override string Headline => $"FIRE AT {SiteName.ToUpperInvariant()}!";
         public override string LogText => $"FIRE at {SiteName}! People nearby are running from it.";
         public override string Advice => "Open the gates and send your team to the crowds.";
+        public override string Announcement => $"Fire at {SiteName}!";
 
         protected override void Start(FestivalVenue venue, CrowdSimulation sim)
         {
@@ -156,6 +169,96 @@ namespace CrushHour
         {
             venue.SetDoorBlocked(door, true, reason);
             foreach (var p in door.rect.allPositionsWithin) sim.Evict(FestivalVenue.Index(p.x, p.y), venue);
+        }
+    }
+
+    /// <summary>
+    /// A light tower comes down. When it starts it sways for <see cref="SwayTime"/> s (warning: banner, wobble; zone
+    /// orders work), then falls in <see cref="direction"/>: the <see cref="FestivalVenue.TowerFallLength"/> × 2 m strip
+    /// under it becomes wreckage (low obstacles; a door under it is blocked, see <see cref="BlockDoorIncident"/>), everyone
+    /// standing there is injured (<see cref="CrowdSimulation.InjuredByCollapse"/>) and everyone within
+    /// <see cref="ShockRadius"/> m gets a big fright (<see cref="CrowdSimulation.Shock"/>) and heads out.
+    /// <see cref="WhenFireNear"/> chains it to the fire: it starts falling 10-20 s after the flames get within 4 m.
+    /// </summary>
+    public class TowerCollapseIncident : Incident
+    {
+        public const float SwayTime = 6f, ShockRadius = 12f;
+        public const int FireNearRange = 4;
+        public const string WreckReason = "Collapsed light tower";
+        static readonly Vector2Int[] Directions = { Vector2Int.right, Vector2Int.left, Vector2Int.up, Vector2Int.down };
+
+        public readonly int towerIndex;
+        public readonly Landmark tower;
+        /// <summary>Which way it falls (grid x, y; one of the 4 axis directions).</summary>
+        public readonly Vector2Int direction;
+        /// <summary>Cells the wreckage lands on.</summary>
+        public readonly List<int> wreck;
+        /// <summary>Doors the wreckage blocked.</summary>
+        public readonly List<Door> blockedDoors = new();
+        readonly string side, regionName;
+
+        public bool Collapsed { get; private set; }
+        public int Crushed { get; private set; }
+        public int Shaken { get; private set; }
+        /// <summary>Set by the game once it has shown the collapse (feed line, banner, wreckage).</summary>
+        public bool collapseShown;
+
+        /// <param name="towerIndex">Index into venue.lightTowers: 0 = west (30,46), 1 = east (72,46).</param>
+        public TowerCollapseIncident(FestivalVenue venue, int towerIndex, Vector2Int direction)
+        {
+            this.towerIndex = towerIndex;
+            this.direction = direction;
+            tower = venue.lightTowers[towerIndex];
+            wreck = FestivalVenue.TowerFallCells(tower, direction);
+            name = "Light tower collapse";
+            side = tower.rect.center.x < FestivalVenue.Width * 0.5f ? "west" : "east";
+            region = venue.regionOf[FestivalVenue.CellAt(tower.rect.center)];
+            regionName = region >= 0 ? venue.regions[region].name : "the stage";
+        }
+
+        /// <summary>Falls in a random direction (picked now, with <paramref name="rng"/>).</summary>
+        public static TowerCollapseIncident RandomDirection(FestivalVenue venue, int towerIndex, System.Random rng) =>
+            new(venue, towerIndex, Directions[rng.Next(Directions.Length)]);
+
+        /// <summary>Chained to the fire: falls 10-20 s (sway included) after the flames get within 4 m of it.</summary>
+        public static TowerCollapseIncident WhenFireNear(FestivalVenue venue, int towerIndex, System.Random rng)
+        {
+            var t = RandomDirection(venue, towerIndex, rng);
+            float fallsAfter = 10f + (float)rng.NextDouble() * 10f;
+            t.startTime = Mathf.Max(0f, fallsAfter - SwayTime);
+            t.trigger = new IncidentTrigger { fireNear = t.tower.rect, fireNearRange = FireNearRange };
+            return t;
+        }
+
+        /// <summary>0 when it starts swaying, 1 when it falls.</summary>
+        public float SwayProgress => Collapsed ? 1f : Mathf.Clamp01(Age / SwayTime);
+        public override string SiteName => $"the {side} light tower";
+        public override Vector2Int FocusCell => Vector2Int.FloorToInt(tower.rect.center);
+        public override string Headline => "LIGHT TOWER IS SWAYING!";
+        public override string LogText => $"The {side} light tower ({regionName} zone) is swaying! It will come down in {SwayTime:0} s.";
+        public override string Advice => "Get people away from it: select the zone patrol and order the zone out.";
+        public override string Announcement => $"A light tower is coming down by {regionName}!";
+
+        /// <summary>Middle of the strip it lands on.</summary>
+        public Vector2 WreckCenter
+        {
+            get
+            {
+                Vector2 sum = Vector2.zero;
+                foreach (int c in wreck) sum += FestivalVenue.CellCenter(c);
+                return wreck.Count > 0 ? sum / wreck.Count : tower.rect.center;
+            }
+        }
+
+        protected override void Start(FestivalVenue venue, CrowdSimulation sim) { } // swaying: the warning
+
+        protected override void Update(float dt, FestivalVenue venue, CrowdSimulation sim)
+        {
+            if (Collapsed || Age < SwayTime) return;
+            Collapsed = true;
+            Crushed = sim.CrushUnder(wreck);
+            venue.AddWreckage(wreck, WreckReason, blockedDoors);
+            Shaken = sim.Shock(WreckCenter, ShockRadius);
         }
     }
 

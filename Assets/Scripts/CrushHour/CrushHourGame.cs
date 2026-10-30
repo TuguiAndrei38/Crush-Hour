@@ -169,7 +169,8 @@ namespace CrushHour
         IncidentSchedule schedule;
         readonly List<Incident> startedIncidents = new();
         int lastSafe;
-        string incidentSite;
+        /// <summary>What the first evacuation incident is, as the police shout it ("Fire at the Food Court!").</summary>
+        string incidentAnnouncement;
 
         // Results
         int finalSafe, finalInjured, finalTrapped, finalAttacks, finalDrunkInside, finalScore, stars;
@@ -194,6 +195,10 @@ namespace CrushHour
         readonly List<MeshRenderer> gateViews = new();
         /// <summary>The truck or scaffolding in front of each blocked door.</summary>
         readonly Dictionary<Door, GameObject> blockerViews = new();
+        /// <summary>Light tower blocks (index = venue.lightTowers), and the pivot each is hinged on once it starts swaying.</summary>
+        readonly Dictionary<int, Transform> towerViews = new(), towerPivots = new();
+        /// <summary>Seconds since each tower started falling (fall animation).</summary>
+        readonly Dictionary<TowerCollapseIncident, float> towerFallTime = new();
         readonly List<Unit> units = new();
         readonly List<Puff> smoke = new();
         float smokeBudget, lastSpotFireLog;
@@ -281,6 +286,9 @@ namespace CrushHour
             fireViews.Clear();
             gateViews.Clear();
             blockerViews.Clear();
+            towerViews.Clear();
+            towerPivots.Clear();
+            towerFallTime.Clear();
             units.Clear();
             smoke.Clear();
             smokeBudget = 0f;
@@ -306,7 +314,7 @@ namespace CrushHour
             simAccumulator = evacuationTime = warningTimer = lastProgressTime = 0f;
             attackWarningTime = -99f;
             bannerTime = 0f;
-            incidentSite = null;
+            incidentAnnouncement = null;
             schedule = new IncidentSchedule(maxFireCells);
             dragLine.enabled = false;
 
@@ -352,7 +360,12 @@ namespace CrushHour
             var labelPositions = new Dictionary<string, (Vector3 sum, int n)>();
             foreach (var l in venue.landmarks)
             {
-                if (l.solid) CreateBlock(l.name, l.rect, l.height, l.color, 0.15f);
+                if (l.solid)
+                {
+                    var block = CreateBlock(l.name, l.rect, l.height, l.color, 0.15f);
+                    int tower = venue.lightTowers.IndexOf(l);
+                    if (tower >= 0) towerViews[tower] = block.transform;
+                }
                 var p = new Vector3(l.rect.center.x, l.height + 0.5f, l.rect.center.y);
                 labelPositions[l.name] = labelPositions.TryGetValue(l.name, out var acc) ? (acc.sum + p, acc.n + 1) : (p, 1);
             }
@@ -562,6 +575,8 @@ namespace CrushHour
             {
                 bool fireChanged = schedule.Update(dt, venue, sim, rng, startedIncidents);
                 foreach (var incident in startedIncidents) OnIncidentStarted(incident);
+                foreach (var incident in schedule.incidents)
+                    if (incident is TowerCollapseIncident tower && tower.Collapsed && !tower.collapseShown) OnTowerCollapsed(tower);
                 if (fireChanged) OnFireChanged();
             }
 
@@ -601,6 +616,8 @@ namespace CrushHour
             {
                 schedule.Add(new FireIncident(rng) { startTime = 4f + (float)rng.NextDouble() * 8f });
                 if (demoBlockedExit) schedule.Add(BlockDoorIncident.RandomDoor(venue, rng)); // blocked the moment the show starts
+                // Chained: a light tower the fire gets within 4 m of comes down 10-20 s later.
+                for (int t = 0; t < venue.lightTowers.Count; t++) schedule.Add(TowerCollapseIncident.WhenFireNear(venue, t, rng));
             }
             Log("The headliner is on stage. Stay sharp...");
         }
@@ -611,17 +628,85 @@ namespace CrushHour
             // A blocked exit alone doesn't raise the alarm; the first fire (or other evacuation incident) does.
             if (incident.StartsEvacuation && !incidentStarted)
             {
-                incidentSite = incident.SiteName;
+                incidentAnnouncement = incident.Announcement;
                 incidentStarted = true;
                 evacuationTime = 0f;
             }
             SyncFireViews();
             if (incident is BlockDoorIncident block) CreateBlockerView(block);
+            if (incident is TowerCollapseIncident swaying) HingeTower(swaying);
             var severity = incident.StartsEvacuation ? Severity.Danger : Severity.Warning;
             Log(incident.LogText, severity);
             ShowBanner(incident.Headline, incident.Advice, severity);
             var focus = incident.FocusCell;
             cameraRig.Focus(new Vector3(focus.x, 0f, focus.y));
+        }
+
+        // ---------------------------------------------------------------- Light tower collapse
+
+        /// <summary>Puts the tower block on a pivot at its foot on the side it will fall to, so it can sway and topple.</summary>
+        void HingeTower(TowerCollapseIncident t)
+        {
+            if (towerPivots.ContainsKey(t.towerIndex) || !towerViews.TryGetValue(t.towerIndex, out var view)) return;
+            var r = t.tower.rect;
+            Vector2 foot = r.center + new Vector2(t.direction.x * r.width, t.direction.y * r.height) * 0.5f;
+            var pivot = new GameObject($"{view.name} (hinge)").transform;
+            pivot.SetParent(world, false);
+            pivot.localPosition = new Vector3(foot.x, 0f, foot.y);
+            view.SetParent(pivot, true);
+            towerPivots[t.towerIndex] = pivot;
+        }
+
+        /// <summary>Axis the tower tips over around: turning "up" towards its fall direction.</summary>
+        static Vector3 FallAxis(TowerCollapseIncident t) => Vector3.Cross(Vector3.up, new Vector3(t.direction.x, 0f, t.direction.y));
+
+        /// <summary>Wobble while swaying (growing towards the fall), then a quick topple once it has collapsed.</summary>
+        void UpdateTowerViews()
+        {
+            foreach (var incident in schedule.incidents)
+            {
+                if (incident is not TowerCollapseIncident t || !t.Started || !towerPivots.TryGetValue(t.towerIndex, out var pivot)) continue;
+                float angle;
+                if (!t.Collapsed)
+                    angle = Mathf.Sin(t.Age * 7f) * (1.5f + 6f * t.SwayProgress) + 4f * t.SwayProgress; // leaning further each swing
+                else
+                {
+                    float fall = towerFallTime.TryGetValue(t, out float f) ? f : 0f;
+                    if (!paused) towerFallTime[t] = fall += Time.deltaTime;
+                    angle = Mathf.Min(90f, 90f * Mathf.Pow(fall / 0.8f, 2f));
+                }
+                pivot.localRotation = Quaternion.AngleAxis(angle, FallAxis(t));
+            }
+        }
+
+        /// <summary>The tower is down: rubble on the wreck cells, feed lines and banner.</summary>
+        void OnTowerCollapsed(TowerCollapseIncident t)
+        {
+            t.collapseShown = true;
+            towerFallTime[t] = 0f;
+            HingeTower(t); // in case it started before the views existed
+            SyncFireViews(); // barriers under the wreck are gone
+
+            var rubble = new GameObject($"Wreck of {t.SiteName}").transform;
+            rubble.SetParent(world, false);
+            var steel = new Color(0.32f, 0.32f, 0.35f);
+            var random = new System.Random(t.towerIndex * 7919 + t.direction.x * 31 + t.direction.y);
+            foreach (int c in t.wreck)
+            {
+                if (venue.cells[c] != CellType.Obstacle) continue;
+                var p = FestivalVenue.CellCenter(c);
+                var piece = AddPart(rubble, new Vector3(p.x, 0.25f, p.y), new Vector3(0.9f, 0.5f, 0.9f), steel);
+                piece.localRotation = Quaternion.Euler(0f, (float)random.NextDouble() * 50f - 25f, 0f);
+            }
+            // The lighting rig at the far end.
+            var end = FestivalVenue.CellCenter(t.wreck[^1]);
+            AddPart(rubble, new Vector3(end.x, 0.5f, end.y), new Vector3(2f, 0.9f, 1.4f), new Color(1f, 0.85f, 0.35f));
+
+            string crushed = t.Crushed == 1 ? "1 person was" : $"{t.Crushed} people were";
+            Log($"{t.SiteName.Substring(0, 1).ToUpperInvariant()}{t.SiteName.Substring(1)} has collapsed! {crushed} crushed under it. {t.Shaken} people nearby are fleeing in fright.", Severity.Danger);
+            ShowBanner("LIGHT TOWER COLLAPSED!", t.Crushed > 0 ? $"{crushed} crushed. Keep people away from the wreckage." : "Nobody was under it. Keep people away from the wreckage.", Severity.Danger);
+            foreach (var door in t.blockedDoors)
+                Log($"The wreckage is blocking {door.name}. Send a patrol to clear it ({FestivalVenue.DoorClearTime:0} s).", Severity.Warning);
         }
 
         /// <summary>The fire spread this step: new flame cubes, and a feed line for new ember spot fires (at most every 6 s).</summary>
@@ -736,7 +821,7 @@ namespace CrushHour
                 u.waveTime = 0f;
                 int informed = sim.PoliceAnnouncement(u.position);
                 if (!u.hasAnnounced || informed >= 25)
-                    Log($"{u.Name} near {venue.DescribeLocation(FestivalVenue.CellAt(u.position))}: \"Fire at {incidentSite}! Walk to an open gate.\" ({informed} now know the way)");
+                    Log($"{u.Name} near {venue.DescribeLocation(FestivalVenue.CellAt(u.position))}: \"{incidentAnnouncement} Walk to an open gate.\" ({informed} now know the way)");
                 u.hasAnnounced = true;
             }
         }
@@ -1064,7 +1149,7 @@ namespace CrushHour
             }
             if (sim.InjuredCount > lastInjured)
             {
-                Log($"{sim.InjuredCount - lastInjured} more people injured (total {sim.InjuredCount}: {sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke).", Severity.Danger);
+                Log($"{sim.InjuredCount - lastInjured} more people injured (total {sim.InjuredCount}: {sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke, {sim.InjuredByCollapse} crushed by collapse).", Severity.Danger);
                 lastInjured = sim.InjuredCount;
             }
             if (sim.PanicAttacksTotal > lastAttacks)
@@ -1106,6 +1191,8 @@ namespace CrushHour
             resultTitle = finalTrapped == 0 ? "Festival evacuated" : evacuationTime >= evacuationTimeLimit ? "Time's up" : "Evacuation stalled";
             if (gatesOpened == 0)
                 resultTip = "No emergency gate was opened. People tried the gates, found them shut and all squeezed through the two narrow entrances.";
+            else if (sim.InjuredByCollapse > 0 && sim.InjuredByCollapse >= sim.InjuredByCrush && sim.InjuredByCollapse >= sim.InjuredBySmoke)
+                resultTip = "The light tower came down on people. When a tower sways you have 6 seconds: select that zone's patrol and order the zone out.";
             else if (sim.InjuredBySmoke > sim.InjuredByCrush && sim.InjuredBySmoke > 0)
                 resultTip = "The smoke got people. It drifts downwind of the fire: open gates away from the plume and get people moving early.";
             else if (finalInjured > 0)
@@ -1489,6 +1576,8 @@ namespace CrushHour
                 if (gateViews[i].sharedMaterial != material) gateViews[i].sharedMaterial = material;
             }
 
+            UpdateTowerViews();
+
             float time = Time.time;
             foreach (var kv in fireViews)
             {
@@ -1803,7 +1892,7 @@ namespace CrushHour
                     GUI.Label(new Rect(x + 130, 12, 120, 22), $"{FormatTime(evacuationTime)} / {FormatTime(evacuationTimeLimit)}", labelStyle);
                     ProgressBar(new Rect(x + 230, 17, 140, 10), evacuationTime / evacuationTimeLimit,
                         Color.Lerp(GoodColor, DangerColor, evacuationTime / evacuationTimeLimit));
-                    GUI.Label(new Rect(x, 38, 380, 20), $"Fire at {incidentSite}", smallStyle);
+                    GUI.Label(new Rect(x, 38, 380, 20), incidentAnnouncement, smallStyle);
                     break;
                 default:
                     Chip(new Rect(x, 12, 120, 22), "RESULTS", MutedText);
@@ -2200,6 +2289,7 @@ namespace CrushHour
 
             ResultRow("Safe", $"{finalSafe} / {sim.count}  ({finalSafe * 100f / sim.count:0}%)", GoodColor);
             ResultRow("Injured", finalInjured == 0 ? "0" : $"{finalInjured}  ({sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke)", finalInjured > 0 ? DangerColor : TextColor);
+            if (sim.InjuredByCollapse > 0) ResultRow("Crushed by collapse", sim.InjuredByCollapse.ToString(), DangerColor);
             ResultRow("Panic attacks", finalAttacks.ToString(), finalAttacks > 0 ? AgentColors[5] : TextColor);
             ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : TextColor);
             ResultRow("Drunk left inside", finalDrunkInside == 0 ? "0" : $"{finalDrunkInside}  (-{finalDrunkInside * 50} points)", finalDrunkInside > 0 ? AgentColors[7] : TextColor);

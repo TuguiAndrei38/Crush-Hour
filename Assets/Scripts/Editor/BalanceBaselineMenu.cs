@@ -38,6 +38,10 @@ static class BalanceBaselineMenu
     static void RunBlockedExitTest() =>
         Start("Blocked exit test", "blocked-exit-test.md", BalanceBaselineRunner.BlockedExitRunCount(Seeds.Length), BalanceBaselineRunner.RunBlockedExitTest);
 
+    [MenuItem("Tools/Crush Hour/Run Tower Collapse Test")]
+    static void RunTowerCollapseTest() =>
+        Start("Tower collapse test", "tower-collapse-test.md", BalanceBaselineRunner.TowerCollapseRunCount(Seeds.Length), BalanceBaselineRunner.RunTowerCollapseTest);
+
     static void Start(string name, string file, int runs, Func<int[], Action<string>, Func<bool>, string> work)
     {
         if (task != null && !task.IsCompleted)
