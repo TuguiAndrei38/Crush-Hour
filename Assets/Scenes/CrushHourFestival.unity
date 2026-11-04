@@ -119,6 +119,155 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &222953577
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 222953580}
+  - component: {fileID: 222953579}
+  - component: {fileID: 222953578}
+  m_Layer: 0
+  m_Name: Player
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &222953578
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 222953577}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ad5675353b76c7d4c99890e5a0e60483, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FirstPersonController
+  cameraRoot: {fileID: 1702553943}
+  walkSpeed: 4.5
+  sprintSpeed: 7.5
+  groundAcceleration: 60
+  airAcceleration: 20
+  jumpHeight: 1.25
+  gravity: -25
+  mouseSensitivity: 0.1
+  gamepadLookSpeed: 180
+  maxPitch: 89
+  invertY: 0
+  snapToGroundOnStart: 1
+  respawnBelowY: -30
+  showCrosshair: 1
+--- !u!143 &222953579
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 222953577}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 1.8
+  m_Radius: 0.4
+  m_SlopeLimit: 45
+  m_StepOffset: 0.4
+  m_SkinWidth: 0.05
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0.9, z: 0}
+--- !u!4 &222953580
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 222953577}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.5, y: 23.1, z: 0.5}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1702553943}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1234868531
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1234868533}
+  - component: {fileID: 1234868532}
+  m_Layer: 0
+  m_Name: Cube Terrain
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1234868532
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1234868531}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a2915ec6819771148ab0e0b310fff250, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CubeTerrain
+  sizeX: 128
+  sizeZ: 128
+  chunkSize: 16
+  seed: 1234
+  noiseScale: 0.02
+  octaves: 4
+  persistence: 0.5
+  lacunarity: 2
+  baseHeight: 4
+  heightAmplitude: 32
+  heightExponent: 1.8
+  sandLevel: 7
+  rockLevel: 22
+  snowLevel: 28
+  dirtDepth: 3
+  grassMaterial: {fileID: 2100000, guid: 2d38925660d357641b5e1d71f9e9f5ba, type: 2}
+  dirtMaterial: {fileID: 2100000, guid: ce4eb247fbcfee24a928d428c8dfec29, type: 2}
+  stoneMaterial: {fileID: 2100000, guid: fa0da69a651c32a4f9d17ce15d7cf7c8, type: 2}
+  sandMaterial: {fileID: 2100000, guid: 1a7eaf0ca6d75824e8d927747b18bf7f, type: 2}
+  snowMaterial: {fileID: 2100000, guid: c7447502a5ac09541b3d9a924867e9df, type: 2}
+--- !u!4 &1234868533
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1234868531}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -64, y: 0, z: -64}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1362575999
 GameObject:
   m_ObjectHideFlags: 0
@@ -187,13 +336,11 @@ MonoBehaviour:
   modelYawOffset: 0
   stateMarkers: 1
   barrierBudget: 60
-  stewardCount: 4
   megaphoneOfficers: 2
+  crowdSizeOverride: 0
   evacuationTimeLimit: 240
-  announcementCooldown: 12
-  announcementReach: 0.7
-  maxFireCells: 320
-  stewardSpeed: 3.5
+  maxFireCells: 400
+  patrolSpeed: 3.5
   policeSpeed: 4
   policeAnnounceInterval: 5
   crowd:
@@ -205,6 +352,8 @@ MonoBehaviour:
     fireSightRange: 25
     awarenessSpread: 1
     fleeDistance: 10
+    showStopsAfter: 15
+    showStoppedAwareness: 0.15
     closedDoorSight: 6
     doorCrowdWeight: 1
     panicContagion: 0.8
@@ -213,15 +362,32 @@ MonoBehaviour:
     panicAttackThreshold: 0.88
     panicAttackDelay: 2.5
     panicAttackDuration: {x: 6, y: 12}
+    smokeNoticeLevel: 0.2
+    smokeHarmLevel: 0.3
+    smokeDoseRate: 0.15
+    smokeRecovery: 0.02
+    intoxicatedDose: 0.15
+    gasHarmLevel: 0.2
+    gasDoseRate: 0.08
+    gasRecovery: 0.03
+    coughDose: 0.1
     crushThreshold: 8.5
     injuryRate: 0.08
     stewardRadius: 6
+    patrolRadius: 6
+    orderDistanceWeight: 0.01
+    drunkFraction: 0.02
+    drunkDrinksMultiplier: 3
+    drunkSpeed: 0.6
+    drunkPanicFactor: 0.5
     stewardCalming: 0.5
+    calmedPanic: 0.35
+    calmedMemory: 12
     stewardQueueSpacing: 0.52
     orderlyMemory: 4
     policeAnnounceRadius: 14
     policeInformChance: 0.8
-  settingsVersion: 3
+  settingsVersion: 6
 --- !u!4 &1362576001
 Transform:
   m_ObjectHideFlags: 0
@@ -315,9 +481,9 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.3
+  near clip plane: 0.05
   far clip plane: 600
-  field of view: 60
+  field of view: 70
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -343,12 +509,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1702553939}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.4848096, y: 0, z: 0, w: 0.8746197}
-  m_LocalPosition: {x: 52, y: 72.08409, z: -10.843136}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1.62, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 222953580}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1977363523
 GameObject:
@@ -481,6 +647,7 @@ Transform:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 1702553943}
   - {fileID: 1977363526}
   - {fileID: 1362576001}
+  - {fileID: 1234868533}
+  - {fileID: 222953580}
