@@ -141,8 +141,11 @@ namespace CrushHour
         readonly bool[] isSource = new bool[CellCount];
         float fireTimer;
 
-        public FestivalVenue()
+        public readonly VenueMap map;
+
+        public FestivalVenue(VenueMap map = VenueMap.SummerFestival)
         {
+            this.map = map;
             for (int y = 0; y < Height; y++)
             {
                 for (int x = 0; x < Width; x++)
@@ -157,6 +160,34 @@ namespace CrushHour
                 }
             }
 
+            switch (map)
+            {
+                case VenueMap.CityStadium: BuildStadium(); break;
+                case VenueMap.MetroConcourse: BuildMetro(); break;
+                default: BuildFestival(); break;
+            }
+
+            foreach (var door in doors)
+            {
+                door.field = new FlowField(CellCount);
+                foreach (var p in door.rect.allPositionsWithin)
+                {
+                    for (int k = 0; k < 4; k++)
+                    {
+                        int x = p.x + DX[k], y = p.y + DY[k];
+                        if (!InBounds(x, y) || door.rect.Contains(new Vector2Int(x, y))) continue;
+                        int n = Index(x, y);
+                        if (cells[n] == CellType.Outside) door.beyond.Add(n);
+                        else if (cells[n] == CellType.Open) door.approach.Add(n);
+                    }
+                }
+            }
+            UpdateDoorFields(doors.Count);
+        }
+
+        // Keep the original festival layout intact for existing simulation baselines.
+        void BuildFestival()
+        {
             // Entrances: always open, narrow like ticket lanes.
             AddEntrance("Main Entrance", new RectInt(50, 3, 4, 1));
             AddEntrance("West Entrance", new RectInt(3, 23, 1, 2));
@@ -210,23 +241,122 @@ namespace CrushHour
             crowdZones.Add((new RectInt(8, 6, 24, 18), 0.12f, false));  // food court
             crowdZones.Add((new RectInt(74, 24, 24, 18), 0.1f, false));  // bar
             crowdZones.Add((new RectInt(4, 4, 96, 68), 0.16f, false));   // anywhere
+        }
 
-            foreach (var door in doors)
+        void BuildStadium()
+        {
+            AddEntrance("Main Turnstiles", new RectInt(48, 3, 8, 1));
+            AddEntrance("West Turnstiles", new RectInt(3, 34, 1, 4));
+            AddGate("Northwest Exit", new RectInt(20, 72, 6, 1));
+            AddGate("Northeast Exit", new RectInt(78, 72, 6, 1));
+            AddGate("East Stand Exit", new RectInt(100, 36, 1, 6));
+            AddGate("West Stand Exit", new RectInt(3, 53, 1, 6));
+            AddGate("Southwest Exit", new RectInt(19, 3, 6, 1));
+            AddGate("Southeast Exit", new RectInt(79, 3, 6, 1));
+
+            // A fenced-off playing field, surrounded by four stands and a continuous concourse.
+            AddBlock("Playing Field", new RectInt(30, 26, 44, 24), new Color(0.2f, 0.48f, 0.27f), 0.18f, false);
+            var seats = new Color(0.24f, 0.39f, 0.68f);
+            foreach (int x in new[] { 22, 56 })
             {
-                door.field = new FlowField(CellCount);
-                foreach (var p in door.rect.allPositionsWithin)
-                {
-                    for (int k = 0; k < 4; k++)
-                    {
-                        int x = p.x + DX[k], y = p.y + DY[k];
-                        if (!InBounds(x, y) || door.rect.Contains(new Vector2Int(x, y))) continue;
-                        int n = Index(x, y);
-                        if (cells[n] == CellType.Outside) door.beyond.Add(n);
-                        else if (cells[n] == CellType.Open) door.approach.Add(n);
-                    }
-                }
+                AddBlock("North Stand", new RectInt(x, 58, 26, 3), seats, 2f, false);
+                AddBlock("North Stand", new RectInt(x, 64, 26, 3), seats * 0.88f, 3f, false);
+                AddBlock("South Stand", new RectInt(x, 15, 26, 3), seats, 2f, false);
+                AddBlock("South Stand", new RectInt(x, 9, 26, 3), seats * 0.88f, 3f, false);
             }
-            UpdateDoorFields(doors.Count);
+            foreach (int y in new[] { 24, 42 })
+            {
+                AddBlock("West Stand", new RectInt(16, y, 3, 10), seats, 2.5f, false);
+                AddBlock("West Stand", new RectInt(10, y, 3, 10), seats * 0.88f, 3.5f, false);
+                AddBlock("East Stand", new RectInt(85, y, 3, 10), seats, 2.5f, false);
+                AddBlock("East Stand", new RectInt(91, y, 3, 10), seats * 0.88f, 3.5f, false);
+            }
+            AddBlock("Food Court", new RectInt(7, 8, 9, 5), new Color(0.72f, 0.44f, 0.2f), 2f, true);
+            AddBlock("Club Bar", new RectInt(87, 59, 9, 6), new Color(0.2f, 0.52f, 0.58f), 2.5f, true);
+            AddBlock("Generator", new RectInt(8, 62, 4, 4), new Color(0.64f, 0.6f, 0.25f), 1.8f, true);
+            AddBlock("First Aid", new RectInt(88, 9, 7, 5), new Color(0.8f, 0.83f, 0.85f), 2.2f, false);
+            AddBlock("Light Tower", new RectInt(25, 52, 2, 2), new Color(0.2f, 0.22f, 0.26f), 7f, false);
+            AddBlock("Light Tower", new RectInt(78, 22, 2, 2), new Color(0.2f, 0.22f, 0.26f), 7f, false);
+            lightTowers.AddRange(landmarks.FindAll(l => l.name == "Light Tower"));
+
+            AddRegion("North Stand", new RectInt(20, 52, 64, 19), new Color(0.45f, 0.65f, 1f));
+            AddRegion("South Stand", new RectInt(20, 5, 64, 19), new Color(0.4f, 0.8f, 1f));
+            AddRegion("West Stand", new RectInt(5, 21, 24, 34), new Color(0.7f, 0.55f, 1f));
+            AddRegion("East Stand", new RectInt(75, 21, 24, 34), new Color(0.95f, 0.5f, 0.65f));
+            AddRegion("Concessions", new RectInt(5, 5, 15, 16), new Color(1f, 0.68f, 0.3f));
+            AddRegion("Drinks", new RectInt(84, 54, 15, 17), new Color(0.25f, 0.8f, 0.85f));
+            AddRegion("Power Compound", new RectInt(5, 55, 15, 16), new Color(0.8f, 0.8f, 0.4f));
+            AddRegion("Medical", new RectInt(84, 5, 15, 16), new Color(0.6f, 0.95f, 0.65f));
+            AddRegion("Main Turnstiles", new RectInt(40, 4, 24, 9), new Color(0.5f, 0.95f, 0.5f));
+            AssignRegions();
+
+            AddFireSite("the Food Court", new Vector2Int(16, 10));
+            AddFireSite("the Generator", new Vector2Int(12, 63));
+            AddFireSite("the Club Bar", new Vector2Int(86, 62));
+            AddFireSite("the North Stand", new Vector2Int(34, 57));
+            AddFireSite("the South Stand", new Vector2Int(69, 18));
+            AddFireSite("the East Stand", new Vector2Int(84, 46));
+
+            crowdZones.Add((new RectInt(21, 51, 63, 17), 0.26f, false));
+            crowdZones.Add((new RectInt(21, 8, 63, 17), 0.26f, false));
+            crowdZones.Add((new RectInt(7, 23, 22, 30), 0.2f, false));
+            crowdZones.Add((new RectInt(75, 23, 22, 30), 0.2f, false));
+            crowdZones.Add((new RectInt(4, 4, 96, 68), 0.08f, false));
+        }
+
+        void BuildMetro()
+        {
+            AddEntrance("Ticket Hall Exit", new RectInt(47, 3, 8, 1));
+            AddEntrance("West Street Exit", new RectInt(3, 18, 1, 4));
+            AddGate("North Stairs A", new RectInt(23, 72, 6, 1));
+            AddGate("North Stairs B", new RectInt(75, 72, 6, 1));
+            AddGate("East Platform Exit", new RectInt(100, 37, 1, 6));
+            AddGate("East Ticket Exit", new RectInt(100, 15, 1, 5));
+            AddGate("West Platform Exit", new RectInt(3, 52, 1, 6));
+            AddGate("South Service Exit", new RectInt(79, 3, 6, 1));
+
+            // Two trackbeds divide the station into long platforms. Three broad footbridges cross both tracks.
+            var trackColor = new Color(0.2f, 0.22f, 0.26f);
+            foreach (int y in new[] { 28, 44 })
+            {
+                foreach (var span in new[] { (x: 10, width: 18), (x: 34, width: 16), (x: 56, width: 20), (x: 82, width: 12) })
+                    AddBlock("Trackbed", new RectInt(span.x, y, span.width, 5), trackColor, 0.25f, false);
+            }
+            AddBlock("Metro Train", new RectInt(35, 29, 14, 3), new Color(0.65f, 0.7f, 0.76f), 2.7f, false);
+            AddBlock("Metro Train", new RectInt(57, 45, 18, 3), new Color(0.65f, 0.7f, 0.76f), 2.7f, false);
+            AddBlock("Ticket Machines", new RectInt(21, 11, 13, 2), new Color(0.25f, 0.5f, 0.72f), 1.7f, false);
+            AddBlock("Ticket Machines", new RectInt(66, 11, 13, 2), new Color(0.25f, 0.5f, 0.72f), 1.7f, false);
+            AddBlock("Food Court", new RectInt(10, 60, 12, 6), new Color(0.7f, 0.44f, 0.25f), 2.5f, true);
+            AddBlock("Station Cafe", new RectInt(82, 58, 12, 6), new Color(0.28f, 0.55f, 0.58f), 2.5f, true);
+            AddBlock("Control Room", new RectInt(41, 62, 14, 6), new Color(0.37f, 0.43f, 0.56f), 3f, true);
+            AddBlock("Generator", new RectInt(66, 63, 5, 5), new Color(0.62f, 0.57f, 0.25f), 2f, true);
+            AddBlock("Newsstand", new RectInt(85, 18, 8, 5), new Color(0.68f, 0.32f, 0.38f), 2.3f, true);
+            AddBlock("Light Tower", new RectInt(38, 38, 2, 2), new Color(0.26f, 0.28f, 0.32f), 5f, false);
+            AddBlock("Light Tower", new RectInt(65, 53, 2, 2), new Color(0.26f, 0.28f, 0.32f), 5f, false);
+            lightTowers.AddRange(landmarks.FindAll(l => l.name == "Light Tower"));
+
+            AddRegion("Ticket Hall", new RectInt(34, 4, 31, 22), new Color(0.5f, 0.8f, 1f));
+            AddRegion("West Concourse", new RectInt(4, 4, 30, 23), new Color(0.6f, 0.65f, 1f));
+            AddRegion("East Concourse", new RectInt(65, 4, 35, 23), new Color(0.95f, 0.6f, 0.5f));
+            AddRegion("Central Platform", new RectInt(10, 33, 84, 11), new Color(1f, 0.85f, 0.35f));
+            AddRegion("North Platform", new RectInt(25, 49, 55, 12), new Color(0.6f, 0.95f, 0.6f));
+            AddRegion("Food Hall", new RectInt(4, 49, 21, 22), new Color(1f, 0.65f, 0.3f));
+            AddRegion("Drinks", new RectInt(80, 49, 20, 22), new Color(0.25f, 0.8f, 0.85f));
+            AddRegion("Station Control", new RectInt(35, 61, 25, 10), new Color(0.75f, 0.55f, 1f));
+            AddRegion("Power Room", new RectInt(60, 61, 20, 10), new Color(0.8f, 0.8f, 0.4f));
+            AssignRegions();
+
+            AddFireSite("the Food Court", new Vector2Int(16, 59));
+            AddFireSite("the Generator", new Vector2Int(65, 65));
+            AddFireSite("the Station Cafe", new Vector2Int(81, 60));
+            AddFireSite("the Control Room", new Vector2Int(48, 61));
+            AddFireSite("the Newsstand", new Vector2Int(84, 20));
+            AddFireSite("the Ticket Hall", new Vector2Int(28, 13));
+
+            crowdZones.Add((new RectInt(10, 33, 84, 11), 0.38f, false));
+            crowdZones.Add((new RectInt(10, 49, 84, 10), 0.3f, false));
+            crowdZones.Add((new RectInt(16, 14, 68, 13), 0.24f, false));
+            crowdZones.Add((new RectInt(4, 4, 96, 68), 0.08f, false));
         }
 
         void AddEntrance(string name, RectInt rect)
