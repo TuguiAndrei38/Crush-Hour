@@ -165,7 +165,7 @@ namespace CrushHour
         int speedIndex, barriersUsed, lastInjured, lastSmokeInjured, lastAttacks, gatesOpened, selectedUnit = -1;
         float simAccumulator, groundTimer, warningTimer, attackWarningTime = -99f;
         float evacuationTime, lastProgressTime;
-        /// <summary>This round's disasters. Empty until the show starts, then (by default) one fire at a random site.</summary>
+        /// <summary>This round's disasters. Filled for the chosen difficulty when the round starts.</summary>
         IncidentSchedule schedule;
         /// <summary>Chosen in Planning (welcome card or F1/F2/F3), remembered in PlayerPrefs.</summary>
         Difficulty difficulty = Difficulty.Medium;
@@ -254,14 +254,17 @@ namespace CrushHour
             dragLine.enabled = false;
 
             difficulty = (Difficulty)Mathf.Clamp(PlayerPrefs.GetInt(DifficultyPref, (int)Difficulty.Medium), 0, 2);
+            LoadMenuPreferences();
             LoadPersonModels();
             NewGame();
-            // The start menu comes first, unless the menu just loaded this scene to play it.
-            if (skipMenuOnce) skipMenuOnce = false;
-            else OpenMenu();
+            OpenMenu();
         }
 
-        void OnDestroy() => crowdRenderer?.Dispose();
+        void OnDestroy()
+        {
+            crowdRenderer?.Dispose();
+            DisposeMenuAssets();
+        }
 
         void LoadPersonModels()
         {
@@ -293,7 +296,7 @@ namespace CrushHour
             if (groundTexture != null) Destroy(groundTexture);
             if (groundMaterial != null) Destroy(groundMaterial);
             crowdRenderer?.Dispose();
-            world = new GameObject("Festival (generated)").transform;
+            world = new GameObject($"{MapTitle} (generated)").transform;
             barrierViews.Clear();
             fireViews.Clear();
             gateViews.Clear();
@@ -314,15 +317,16 @@ namespace CrushHour
 
             seed = Environment.TickCount & int.MaxValue;
             rng = new System.Random(seed);
-            venue = new FestivalVenue();
+            venue = new FestivalVenue(selectedMap);
             difficultySettings = DifficultySettings.For(difficulty);
-            crowd.agentCount = crowdSizeOverride > 0 ? Mathf.Max(100, crowdSizeOverride) : difficultySettings.playerCount;
+            crowd.agentCount = !menuLaunchedGame && crowdSizeOverride > 0 ? Mathf.Max(100, crowdSizeOverride) : difficultySettings.playerCount;
             crowd.drunkFraction = difficultySettings.drunkFraction;
             sim = new CrowdSimulation(crowd, venue, rng);
             var bounds = new Bounds(new Vector3(W * 0.5f, 1f, H * 0.5f), new Vector3(W, 4f, H));
             crowdRenderer = new CrowdRenderer(sim, cubeMesh, agentRenderParams, personModels, bounds, rng) { ShowMarkers = stateMarkers };
 
             phase = Phase.Planning;
+            cameraRig.controlsEnabled = true;
             tool = Tool.Command;
             paused = incidentStarted = dragging = false;
             selectedUnit = -1;
@@ -339,7 +343,7 @@ namespace CrushHour
             regionOrderCooldown = new float[venue.regions.Count];
             cameraRig.Focus(new Vector3(W * 0.5f, 0f, H * 0.45f), 85f);
 
-            Log($"{sim.count} fans are enjoying the Summer Music Festival.");
+            Log($"{sim.count} people are at {MapTitle}.");
             Log("Get ready: place your team and barriers, then start the show.");
         }
 
@@ -422,7 +426,11 @@ namespace CrushHour
             for (int i = 0; i < megaphoneOfficers; i++)
             {
                 Vector2 post = i < MegaphonePosts.Length ? MegaphonePosts[i] : new Vector2(rng.Next(10, 94) + 0.5f, rng.Next(10, 60) + 0.5f);
-                if (!venue.IsWalkable(FestivalVenue.CellAt(post))) post = MegaphonePosts[0];
+                if (!venue.IsWalkable(FestivalVenue.CellAt(post)))
+                {
+                    var region = venue.regions[i % venue.regions.Count];
+                    post = new Vector2(region.post.x + 0.5f, region.post.y + 0.5f);
+                }
                 SpawnUnit(Role.Megaphone, i, post);
             }
         }
@@ -642,7 +650,7 @@ namespace CrushHour
             welcomeDismissed = true;
             // A random round for the chosen difficulty: disasters, blocked exits, chained tower collapses.
             if (schedule.incidents.Count == 0) RoundGenerator.Build(difficultySettings, venue, rng, schedule);
-            Log($"The headliner is on stage ({difficultySettings.Name}). Stay sharp...");
+            Log($"{MapTitle} is open ({difficultySettings.Name}). Stay sharp...");
         }
 
         /// <summary>An incident just began: the first one starts the evacuation clock; each gets a feed line, banner and camera jump.</summary>
@@ -1257,8 +1265,9 @@ namespace CrushHour
             if (safeRatio >= 0.9f) stars = 1;
             if (stars == 1 && finalInjured <= sim.count / 100) stars = 2;
             if (stars == 2 && finalInjured == 0 && finalTrapped == 0 && finalDrunkInside == 0 && evacuationTime <= evacuationTimeLimit * 0.5f) stars = 3;
+            MapProgress.Record(selectedMap, difficultySettings.difficulty, stars, finalScore);
 
-            resultTitle = finalTrapped == 0 ? "Festival evacuated" : evacuationTime >= evacuationTimeLimit ? "Time's up" : "Evacuation stalled";
+            resultTitle = finalTrapped == 0 ? "Venue evacuated" : evacuationTime >= evacuationTimeLimit ? "Time's up" : "Evacuation stalled";
             if (gatesOpened == 0)
                 resultTip = "No emergency gate was opened. People tried the gates, found them shut and all squeezed through the two narrow entrances.";
             else if (sim.InjuredByCollapse > 0 && sim.InjuredByCollapse >= sim.InjuredByCrush && sim.InjuredByCollapse >= sim.InjuredBySmoke)
@@ -1510,7 +1519,13 @@ namespace CrushHour
             var keyboard = Keyboard.current;
             // While a zone patrol is selected the arrow keys give orders, so they stop panning the camera.
             cameraRig.arrowKeysPan = SelectedPatrol() == null;
-            if (keyboard == null || phase == Phase.Menu) return;
+            cameraRig.controlsEnabled = phase != Phase.Menu;
+            if (keyboard == null) return;
+            if (phase == Phase.Menu)
+            {
+                if (keyboard.escapeKey.wasPressedThisFrame) MenuBack();
+                return;
+            }
             if (keyboard.rKey.wasPressedThisFrame)
             {
                 NewGame();
@@ -1684,7 +1699,7 @@ namespace CrushHour
                 groundPixels[i] = venue.cells[i] switch
                 {
                     CellType.Outside => Asphalt,
-                    CellType.Open => Color.Lerp(heatmap ? PressureColor(sim.pressure[i]) : Grass, SmokeShade, venue.smoke[i] * 0.6f),
+                    CellType.Open => Color.Lerp(heatmap ? PressureColor(sim.pressure[i]) : MapFloorColor(i), SmokeShade, venue.smoke[i] * 0.6f),
                     CellType.Fire => Scorched,
                     _ => Blocked,
                 };
@@ -1699,6 +1714,14 @@ namespace CrushHour
             if (showRegions) DrawRegionOutlines();
             groundTexture.SetPixels32(groundPixels);
             groundTexture.Apply(false);
+        }
+
+        Color MapFloorColor(int cell)
+        {
+            if (venue.map == VenueMap.CityStadium) return new Color(0.43f, 0.46f, 0.49f);
+            if (venue.map == VenueMap.MetroConcourse)
+                return ((cell % W / 4 + cell / W / 4) & 1) == 0 ? new Color(0.55f, 0.58f, 0.61f) : new Color(0.49f, 0.52f, 0.56f);
+            return Grass;
         }
 
         /// <summary>
@@ -1964,8 +1987,10 @@ namespace CrushHour
         void DrawTopBar()
         {
             var bar = Panel(new Rect(0, 0, vw, 64), BoxStyle(PanelColor, 0, 0));
-            GUI.Label(new Rect(16, 8, 220, 28), "CRUSH HOUR", titleStyle);
-            GUI.Label(new Rect(17, 36, 260, 20), $"Summer Music Festival \u00b7 {DifficultyLabel}", smallStyle);
+            GUI.Label(new Rect(16, 8, 156, 28), "CRUSH HOUR", titleStyle);
+            if (phase == Phase.Planning && GUI.Button(new Rect(180, 9, 90, 26), "Main menu", buttonStyle))
+                deferred.Add(OpenMenu);
+            GUI.Label(new Rect(17, 36, 260, 20), $"{MapTitle} \u00b7 {difficultySettings.Name}", smallStyle);
 
             // What's happening now.
             float x = 280;
@@ -1976,7 +2001,7 @@ namespace CrushHour
                     GUI.Label(new Rect(x, 38, 390, 20), "Place your team and barriers, then start. F1/F2/F3: difficulty.", smallStyle);
                     break;
                 case Phase.Live when !incidentStarted:
-                    Chip(new Rect(x, 12, 120, 22), "SHOW ON", GoodColor);
+                    Chip(new Rect(x, 12, 120, 22), "VENUE OPEN", GoodColor);
                     GUI.Label(new Rect(x, 38, 380, 20), "Everything's fine... for now.", smallStyle);
                     break;
                 case Phase.Live:
@@ -2031,8 +2056,8 @@ namespace CrushHour
 
             if (phase == Phase.Planning)
             {
-                if (GUILayout.Button("START THE SHOW", goodButtonStyle, GUILayout.Height(44))) deferred.Add(StartShow);
-                GUILayout.Label("Press Enter. A fire will break out somewhere soon after.", smallStyle);
+                if (GUILayout.Button("OPEN THE VENUE", goodButtonStyle, GUILayout.Height(44))) deferred.Add(StartShow);
+                GUILayout.Label("Press Enter. An emergency will happen soon after.", smallStyle);
                 GUILayout.Space(4);
             }
 
@@ -2333,13 +2358,13 @@ namespace CrushHour
             GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 22, rect.width - 56, rect.height - 44));
             GUILayout.Label("Welcome, safety commander", titleStyle);
             GUILayout.Space(4);
-            GUILayout.Label($"{sim.count} fans are at the Summer Music Festival. Soon something will go wrong: a fire, a falling light tower, a gas leak, a blocked exit... " +
+            GUILayout.Label($"{sim.count} people are at {MapTitle}. Soon something will go wrong: a fire, a falling light tower, a gas leak, a blocked exit... " +
                             "Every round is different. People head for the nearest gate; if it's shut, they try another, and the queues grow.", labelStyle);
             GUILayout.Space(4);
             GUILayout.Label($"Difficulty: <b>{DifficultyLabel}</b>. Esc (with nobody selected) goes back to the menu.", mutedStyle);
             GUILayout.Space(10);
             WelcomeStep("1", "Plan", $"Every zone has a patrol ({venue.regions.Count} in all), plus {megaphoneOfficers} megaphone police. Move them by clicking them, then the map. Draw barriers to steer the crowd.");
-            WelcomeStep("2", "React", "When the fire starts, open the emergency gates and send your team to the crowds. Select a patrol and press an arrow key to send its whole zone out that way. The megaphone police tell everyone in earshot where to go.");
+            WelcomeStep("2", "React", "When an emergency starts, open the gates and send your team to the crowds. Select a patrol and press an arrow key to send its whole zone out that way. The megaphone police tell everyone in earshot where to go.");
             WelcomeStep("3", "Keep them calm", "Panicked crowds push and crush, and too much panic causes panic attacks. Put patrols where queues form: they line people up with room to breathe.");
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();
@@ -2372,14 +2397,10 @@ namespace CrushHour
             GUILayout.Label(resultTitle, bigTitleStyle);
             GUILayout.Space(6);
 
-            // Star rating as three badges.
+            // Earned stars are saved separately for each map and difficulty.
             var starsRow = GUILayoutUtility.GetRect(10, 34, GUILayout.ExpandWidth(true));
-            for (int i = 0; i < 3; i++)
-            {
-                var badge = new Rect(starsRow.center.x - 75 + i * 52, starsRow.y, 46, 30);
-                GUI.Box(badge, GUIContent.none, BoxStyle(i < stars ? new Color(1f, 0.78f, 0.2f) : new Color(1f, 1f, 1f, 0.12f), 8, 0));
-            }
-            GUILayout.Label($"{stars} of 3 stars", TextStyle(12, MutedText, FontStyle.Normal, TextAnchor.UpperCenter));
+            DrawMenuStars(new Rect(starsRow.center.x - 57, starsRow.y, 114, 30), stars, 32);
+            GUILayout.Label($"{MapTitle} | {stars}/3 stars | Best: {MapProgress.GetStars(selectedMap, difficultySettings.difficulty)}/3", TextStyle(12, MutedText, FontStyle.Normal, TextAnchor.UpperCenter));
             GUILayout.Space(8);
 
             ResultRow("Safe", $"{finalSafe} / {sim.count}  ({finalSafe * 100f / sim.count:0}%)", GoodColor);

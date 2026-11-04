@@ -1,0 +1,13 @@
+Operations Desk menu fonts
+
+OperationsDeskDisplay.ttf: Barlow Condensed ExtraBold Italic
+Source: https://github.com/google/fonts/blob/main/ofl/barlowcondensed/BarlowCondensed-ExtraBoldItalic.ttf
+
+OperationsDeskBody.ttf: Barlow Medium
+Source: https://github.com/google/fonts/blob/main/ofl/barlow/Barlow-Medium.ttf
+
+Both fonts are Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow).
+Both are redistributed, unmodified, under the SIL Open Font License Version 1.1.
+The full copyright notice and license are included in Barlow-OFL.txt.
+
+The filenames are local resource names; the embedded font family names are unchanged.
