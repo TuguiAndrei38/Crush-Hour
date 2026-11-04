@@ -22,7 +22,7 @@ namespace CrushHour
         /// <summary>Map highlighted in the menu (kept across scene loads).</summary>
         static int menuMap;
         string menuError;
-        GUIStyle mapRowStyle, mapRowSelectedStyle;
+        GUIStyle mapRowStyle, mapRowSelectedStyle, menuTitleStyle, menuTaglineStyle;
 
         void OpenMenu()
         {
@@ -67,11 +67,18 @@ namespace CrushHour
                 mapRowStyle.wordWrap = mapRowSelectedStyle.wordWrap = true;
             }
 
-            var rect = Panel(new Rect(vw * 0.5f - 300, vh * 0.5f - 250, 600, 500), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
-            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 22, rect.width - 56, rect.height - 44));
-            GUILayout.Label("CRUSH HOUR", TextStyle(30, TextColor, FontStyle.Bold));
-            GUILayout.Label("Keep the crowd alive when things go wrong.", mutedStyle);
-            GUILayout.Space(14);
+            var rect = Panel(new Rect(vw * 0.5f - 310, vh * 0.5f - 290, 620, 580));
+            Tab(rect.x, rect.y, "02 — OPERATIONS DESK", Yellow, Ink, Ink);
+            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 34, rect.width - 56, rect.height - 52));
+            if (menuTitleStyle == null || menuTitleStyle.font != fontHeavy)
+            {
+                menuTitleStyle = Txt(fontHeavy, 64, Ink);
+                menuTaglineStyle = Txt(fontBoldItalic, 22, Ink);
+            }
+            GUILayout.Label($"CRUSH <color=#{Hex(Red)}>HOUR</color>", menuTitleStyle);
+            GUILayout.Label("Keep the crowd safe.", menuTaglineStyle);
+            Fill(GUILayoutUtility.GetRect(10, 2, GUILayout.ExpandWidth(true)), Ink);
+            GUILayout.Space(12);
 
             GUILayout.Label("SELECT MAP", headerStyle);
             string active = SceneManager.GetActiveScene().name;
@@ -105,7 +112,7 @@ namespace CrushHour
 
             GUILayout.FlexibleSpace();
             if (menuError != null) GUILayout.Label(menuError, TextStyle(12, WarningColor, FontStyle.Bold, TextAnchor.UpperLeft, true));
-            if (GUILayout.Button("PLAY", goodButtonStyle, GUILayout.Height(48))) deferred.Add(PlayFromMenu);
+            if (GUILayout.Button("01  |  START GAME", goodButtonStyle, GUILayout.Height(54))) deferred.Add(PlayFromMenu);
             GUILayout.EndArea();
         }
     }

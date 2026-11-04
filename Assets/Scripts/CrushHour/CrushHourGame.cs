@@ -219,7 +219,7 @@ namespace CrushHour
         int orderPanelUnit = -1;
         readonly List<Gate> changedGates = new();
         readonly List<(string text, Vector3 position)> labels = new();
-        readonly List<(string text, Severity severity, string time)> log = new();
+        readonly List<(string text, Severity severity, string time, float at)> log = new();
         readonly Dictionary<string, float> lastWarning = new();
         readonly List<Rect> guiRects = new();
         readonly List<Action> deferred = new();
@@ -1355,7 +1355,7 @@ namespace CrushHour
                 line.useWorldSpace = true;
                 line.positionCount = 5;
                 line.widthMultiplier = 0.55f;
-                line.sharedMaterial = Unlit(venue.regions[u.homeRegion].color);
+                line.sharedMaterial = Unlit(new Color(0.82f, 0.157f, 0.18f)); // red route arrow, like the menu art
                 line.shadowCastingMode = ShadowCastingMode.Off;
             }
             var c = venue.doors[u.orderDoor].Center;
@@ -1519,6 +1519,7 @@ namespace CrushHour
             if (keyboard.hKey.wasPressedThisFrame) heatmap = !heatmap;
             if (keyboard.mKey.wasPressedThisFrame) stateMarkers = !stateMarkers;
             if (keyboard.lKey.wasPressedThisFrame) showLegend = !showLegend;
+            if (keyboard.uKey.wasPressedThisFrame) hudHidden = !hudHidden;
             if (keyboard.gKey.wasPressedThisFrame) showRegions = !showRegions;
             if (phase == Phase.Results) return;
             if (keyboard.spaceKey.wasPressedThisFrame) paused = !paused;
@@ -1735,34 +1736,64 @@ namespace CrushHour
 
         void Log(string message, Severity severity = Severity.Info)
         {
-            log.Add((message, severity, incidentStarted ? FormatTime(evacuationTime) : ""));
+            log.Add((message, severity, incidentStarted ? FormatTime(evacuationTime) : "", feedClock));
             if (log.Count > 40) log.RemoveAt(0);
         }
 
         static string FormatTime(float seconds) => $"{(int)seconds / 60}:{(int)seconds % 60:00}";
 
         // ================================================================ UI
+        //
+        // "Operations desk" look, matching the menu art: cream paper panels with soft shadows, navy ink, red accents,
+        // yellow tabs ("01 — YOUR TEAM ///"), numbered rows with a red slanted slab for the active one, boxed
+        // "01 | LABEL" tags, green EXIT signs. Fonts are Barlow Condensed / Barlow from Resources/Fonts (OFL); without
+        // them it falls back to the default font. Textures are generated and cached (paper, frames, slabs, stripes,
+        // the EXIT runner).
 
         static bool welcomeDismissed;
-        bool showLegend = true;
-        float uiScale = 1f, vw, vh; // UI scale and the virtual screen size it works in
+        bool showLegend;                    // colour key (L), closed by default
+        bool showTeam = true, showGates = true; // fold the roster / exits panel to its title
+        bool hudHidden;                     // U: hide every panel except the top strip, the toolbar and the toggles
+        float feedClock;                    // game-time clock (stops while paused) that fades out old log lines
+        float viewTogglesTop;               // top of the view toggle stack, set each frame; the legend sits above it
+        float uiScale = 1f, vw, vh;         // UI scale and the virtual screen size it works in
         float bannerTime;
         string bannerTitle, bannerText;
         Severity bannerSeverity;
 
-        static readonly Color TextColor = new(0.95f, 0.96f, 0.98f);
-        static readonly Color MutedText = new(0.68f, 0.72f, 0.8f);
-        static readonly Color PanelColor = new(0.07f, 0.08f, 0.11f, 0.92f);
-        static readonly Color CardColor = new(0.13f, 0.15f, 0.2f, 1f);
-        static readonly Color ButtonColor = new(0.2f, 0.23f, 0.3f);
-        static readonly Color SelectedColor = new(0.22f, 0.45f, 0.9f);
-        static readonly Color GoodColor = new(0.2f, 0.66f, 0.38f);
-        static readonly Color WarningColor = new(0.95f, 0.62f, 0.15f);
-        static readonly Color DangerColor = new(0.9f, 0.27f, 0.2f);
+        // Palette (from the menu art).
+        static readonly Color Ink = new(0.106f, 0.137f, 0.251f);        // #1b2340 navy
+        static readonly Color InkSoft = new(0.294f, 0.329f, 0.439f);    // #4b5470
+        static readonly Color InkFaint = new(0.42f, 0.443f, 0.502f);    // #6b7180
+        static readonly Color Paper = new(0.937f, 0.906f, 0.839f);      // #efe7d6
+        static readonly Color PaperLight = new(0.969f, 0.949f, 0.902f); // #f7f2e6
+        static readonly Color Red = new(0.82f, 0.157f, 0.18f);          // #d1282e
+        static readonly Color Yellow = new(0.949f, 0.761f, 0.188f);     // #f2c230
+        static readonly Color ExitGreen = new(0.122f, 0.541f, 0.227f);  // #1f8a3a
+        static readonly Color Amber = new(0.604f, 0.42f, 0f);           // #9a6b00, yellow that reads on paper
+        static readonly Color PanicInk = new(0.69f, 0.157f, 0.478f);    // #b0287a
 
-        GUIStyle panelStyle, cardStyle, tooltipStyle, buttonStyle, selectedButtonStyle, goodButtonStyle, rowStyle, rowSelectedStyle;
-        GUIStyle labelStyle, mutedStyle, smallStyle, headerStyle, titleStyle, bigTitleStyle, numberStyle, statCaptionStyle, worldLabelStyle, chipStyle;
-        readonly Dictionary<string, Texture2D> roundedCache = new();
+        // Older names, still used by the menu and the results.
+        static readonly Color TextColor = Ink;
+        static readonly Color MutedText = InkSoft;
+        static readonly Color CardColor = PaperLight;
+        static readonly Color SelectedColor = Red;
+        static readonly Color GoodColor = ExitGreen;
+        static readonly Color WarningColor = new(0.878f, 0.478f, 0.063f); // #e07a10
+        static readonly Color DangerColor = Red;
+
+        const float TopBarHeight = 60f, ToolbarHeight = 50f;
+
+        Font fontHeavy, fontBoldItalic, fontBold, fontSemi, fontBody, fontBodyBold;
+        GUIStyle buttonStyle, selectedButtonStyle, goodButtonStyle, smallButtonStyle, smallGoodButtonStyle, navyButtonStyle, hoverStyle, tooltipStyle;
+        GUIStyle labelStyle, mutedStyle, smallStyle, headerStyle, titleStyle, bigTitleStyle, numberStyle;
+        GUIStyle logoStyle, tabStyle, timerStyle, timerTotalStyle, statValueStyle, captionStyle, speedStyle;
+        GUIStyle rowNumberStyle, rowNameStyle, rowStatusStyle, groupStyle, headerRightStyle, gateStatusStyle;
+        GUIStyle feedTimeStyle, feedStyle, orderTitleStyle, orderSubStyle, arrowStyle, toolNumberStyle, toolLabelStyle;
+        GUIStyle keyStyle, toggleLabelStyle, hintStyle, legendStyle, bannerTitleStyle, bannerTextStyle;
+        GUIStyle worldTagStyle, worldKeyStyle, signStyle, signNameStyle, landmarkStyle, crossStyle, stepTitleStyle, resultValueStyle, starsCaptionStyle;
+        readonly Dictionary<string, Texture2D> textureCache = new();
+        readonly Dictionary<string, GUIStyle> drawStyleCache = new();
 
         void OnGUI()
         {
@@ -1779,176 +1810,401 @@ namespace CrushHour
                 return;
             }
             if (Event.current.type == EventType.Layout) orderPanelUnit = SelectedPatrol() != null ? selectedUnit : -1;
+            if (Event.current.type == EventType.Repaint && !paused) feedClock += Time.unscaledDeltaTime * (phase == Phase.Live ? Speeds[speedIndex] : 1f);
 
             DrawWorldLabels();
             DrawTopBar();
-            DrawTeamPanel();
-            DrawControlPanel();
+            if (!hudHidden)
+            {
+                DrawTeamPanel();
+                DrawControlPanel();
+                DrawEventFeed();
+            }
+            DrawToolbar();
             DrawZoneOrderPanel();
-            DrawEventFeed();
-            DrawLegend();
+            DrawViewToggles();
+            if (!hudHidden) DrawLegend();
             DrawBanner();
             DrawHoverInfo();
             if (phase == Phase.Planning && !welcomeDismissed) DrawWelcome();
             if (phase == Phase.Results) DrawResults();
         }
 
-        // ---------------------------------------------------------------- Styles
+        // ---------------------------------------------------------------- Textures
 
-        Texture2D Rounded(Color fill, int radius)
+        Texture2D MakeTexture(string key, int width, int height, System.Func<int, int, Color> pixel, bool repeat = false, bool point = false)
         {
-            string key = $"{fill}{radius}";
-            if (roundedCache.TryGetValue(key, out var cached) && cached != null) return cached;
-            int size = radius * 2 + 2;
-            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            if (textureCache.TryGetValue(key, out var cached) && cached != null) return cached;
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
             {
-                wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear,
+                wrapMode = repeat ? TextureWrapMode.Repeat : TextureWrapMode.Clamp,
+                filterMode = point ? FilterMode.Point : FilterMode.Bilinear,
                 hideFlags = HideFlags.DontSave,
             };
-            var pixels = new Color[size * size];
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    var p = new Vector2(x + 0.5f, y + 0.5f);
-                    var inner = new Vector2(Mathf.Clamp(p.x, radius, size - radius), Mathf.Clamp(p.y, radius, size - radius));
-                    float alpha = Mathf.Clamp01(radius + 0.5f - Vector2.Distance(p, inner));
-                    pixels[y * size + x] = new Color(fill.r, fill.g, fill.b, fill.a * alpha);
-                }
-            }
+            var pixels = new Color[width * height];
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                    pixels[y * width + x] = pixel(x, y);
             texture.SetPixels(pixels);
             texture.Apply();
-            return roundedCache[key] = texture;
+            return textureCache[key] = texture;
+        }
+
+        Texture2D Solid(Color c) => MakeTexture($"solid{c}", 2, 2, (x, y) => c);
+
+        /// <summary>Box with a <paramref name="thickness"/>-pixel outline (9-sliced, so the line stays thin at any size).</summary>
+        Texture2D Framed(Color fill, Color line, int thickness = 2) =>
+            MakeTexture($"framed{fill}{line}{thickness}", 8, 8, (x, y) => x < thickness || y < thickness || x >= 8 - thickness || y >= 8 - thickness ? line : fill, point: true);
+
+        /// <summary>Slab whose right end slants in towards the bottom, like the menu's "START GAME" bar.</summary>
+        Texture2D Slab(Color fill, int slant)
+        {
+            int width = slant + 12, height = 32;
+            return MakeTexture($"slab{fill}{slant}", width, height, (x, y) =>
+            {
+                float edge = width - slant + slant * (y + 0.5f) / height; // y = 0 is the bottom row
+                float alpha = Mathf.Clamp01(edge - (x + 0.5f) + 0.5f);
+                return new Color(fill.r, fill.g, fill.b, fill.a * alpha);
+            });
+        }
+
+        Texture2D Stripes(Color c) => MakeTexture($"stripes{c}", 16, 16, (x, y) => ((x - y) % 8 + 8) % 8 < 4 ? c : Color.clear, repeat: true);
+
+        Texture2D PaperGrid => MakeTexture("paperGrid", 22, 22, (x, y) => x == 0 || y == 0 ? new Color(Ink.r, Ink.g, Ink.b, 0.06f) : Color.clear, repeat: true, point: true);
+
+        Texture2D ShadowTexture => MakeTexture("shadow", 48, 48, (x, y) =>
+        {
+            float dx = Mathf.Max(0f, Mathf.Max(16f - (x + 0.5f), (x + 0.5f) - 32f));
+            float dy = Mathf.Max(0f, Mathf.Max(16f - (y + 0.5f), (y + 0.5f) - 32f));
+            float a = 1f - Mathf.Clamp01(Mathf.Sqrt(dx * dx + dy * dy) / 16f);
+            return new Color(0f, 0f, 0f, 0.4f * a * a);
+        });
+
+        static readonly string[] RunnerPixels =
+        {
+            "................",
+            "..........###...",
+            "..........###...",
+            "..........###...",
+            "......######....",
+            ".....##.####....",
+            "....##..####.#..",
+            "........####..#.",
+            "........###.....",
+            ".......#####....",
+            "......##...##...",
+            ".....##.....##..",
+            "....##.......#..",
+            "...##.........#.",
+            "..##............",
+            "................",
+        };
+
+        /// <summary>The running man from an exit sign, white (tint it with GUI.color).</summary>
+        Texture2D Runner => MakeTexture("runner", 16, 16, (x, y) => RunnerPixels[15 - y][x] == '#' ? Color.white : Color.clear, point: true);
+
+        // Kept for the menu, which still asks for rounded boxes.
+        Texture2D Rounded(Color fill, int radius)
+        {
+            radius = Mathf.Max(1, radius);
+            int size = radius * 2 + 2;
+            return MakeTexture($"rounded{fill}{radius}", size, size, (x, y) =>
+            {
+                var p = new Vector2(x + 0.5f, y + 0.5f);
+                var inner = new Vector2(Mathf.Clamp(p.x, radius, size - radius), Mathf.Clamp(p.y, radius, size - radius));
+                float alpha = Mathf.Clamp01(radius + 0.5f - Vector2.Distance(p, inner));
+                return new Color(fill.r, fill.g, fill.b, fill.a * alpha);
+            });
+        }
+
+        // ---------------------------------------------------------------- Styles
+
+        GUIStyle DrawStyle(string key, Texture2D background, RectOffset border)
+        {
+            if (drawStyleCache.TryGetValue(key, out var s) && s.normal.background != null) return s;
+            return drawStyleCache[key] = new GUIStyle { normal = { background = background }, border = border };
         }
 
         GUIStyle BoxStyle(Color fill, int radius, int padding)
         {
             var style = new GUIStyle { border = new RectOffset(radius, radius, radius, radius), padding = new RectOffset(padding, padding, padding, padding) };
             style.normal.background = Rounded(fill, radius);
-            style.normal.textColor = TextColor;
+            style.normal.textColor = Ink;
             return style;
         }
 
-        GUIStyle ButtonStyle(Color fill, int fontSize = 13, TextAnchor alignment = TextAnchor.MiddleCenter)
+        /// <summary>Framed paper button (dark fills get light text). Kept for the menu's map rows.</summary>
+        GUIStyle ButtonStyle(Color fill, int fontSize = 15, TextAnchor alignment = TextAnchor.MiddleCenter)
         {
+            bool dark = fill.grayscale < 0.5f;
+            var text = dark ? Color.white : Ink;
+            var line = dark ? fill : Ink;
             var style = new GUIStyle(GUI.skin.button)
             {
+                font = fontBold,
                 fontSize = fontSize,
-                fontStyle = FontStyle.Bold,
+                fontStyle = FontStyle.Normal,
                 alignment = alignment,
-                border = new RectOffset(6, 6, 6, 6),
-                padding = new RectOffset(10, 10, 6, 6),
+                border = new RectOffset(3, 3, 3, 3),
+                padding = new RectOffset(10, 10, 4, 4),
                 margin = new RectOffset(0, 0, 3, 3),
                 richText = true,
             };
-            var normal = Rounded(fill, 6);
-            var hover = Rounded(Color.Lerp(fill, Color.white, 0.15f), 6);
-            var pressed = Rounded(Color.Lerp(fill, Color.black, 0.2f), 6);
-            style.normal.background = style.onNormal.background = style.focused.background = style.onFocused.background = normal;
-            style.hover.background = style.onHover.background = hover;
-            style.active.background = style.onActive.background = pressed;
+            style.normal.background = style.onNormal.background = style.focused.background = style.onFocused.background = Framed(fill, line);
+            style.hover.background = style.onHover.background = Framed(Color.Lerp(fill, Color.white, dark ? 0.15f : 0.5f), line);
+            style.active.background = style.onActive.background = Framed(Color.Lerp(fill, Ink, 0.15f), line);
             foreach (var state in new[] { style.normal, style.onNormal, style.hover, style.onHover, style.active, style.onActive, style.focused, style.onFocused })
-                state.textColor = TextColor;
+                state.textColor = text;
             return style;
         }
 
-        GUIStyle TextStyle(int size, Color color, FontStyle font = FontStyle.Normal, TextAnchor alignment = TextAnchor.UpperLeft, bool wrap = false)
+        GUIStyle SlabButtonStyle(Color fill, Color text, Font font, int fontSize)
         {
-            var style = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = font, alignment = alignment, wordWrap = wrap, richText = true };
-            style.normal.textColor = color;
+            var style = new GUIStyle(GUI.skin.button)
+            {
+                font = font,
+                fontSize = fontSize,
+                fontStyle = FontStyle.Normal,
+                alignment = TextAnchor.MiddleLeft,
+                border = new RectOffset(4, 22, 0, 0),
+                padding = new RectOffset(14, 26, 2, 2),
+                margin = new RectOffset(0, 0, 4, 4),
+                richText = true,
+            };
+            style.normal.background = style.onNormal.background = style.focused.background = style.onFocused.background = Slab(fill, 18);
+            style.hover.background = style.onHover.background = Slab(Color.Lerp(fill, Color.white, 0.15f), 18);
+            style.active.background = style.onActive.background = Slab(Color.Lerp(fill, Color.black, 0.15f), 18);
+            foreach (var state in new[] { style.normal, style.onNormal, style.hover, style.onHover, style.active, style.onActive, style.focused, style.onFocused })
+                state.textColor = text;
             return style;
         }
+
+        GUIStyle Txt(Font font, int size, Color color, TextAnchor anchor = TextAnchor.UpperLeft, bool wrap = false, bool clip = false)
+        {
+            var style = new GUIStyle(GUI.skin.label)
+            {
+                font = font,
+                fontSize = size,
+                fontStyle = FontStyle.Normal,
+                alignment = anchor,
+                wordWrap = wrap,
+                richText = true,
+                clipping = clip ? TextClipping.Clip : TextClipping.Overflow,
+            };
+            SetTextColor(style, color);
+            return style;
+        }
+
+        /// <summary>
+        /// Sets the text colour of every state. A style cloned from <c>GUI.skin.label</c> keeps the skin's own hover/active
+        /// colours, so text drawn over a hoverable row would change colour under the mouse (the fix from the Oli branch).
+        /// </summary>
+        static void SetTextColor(GUIStyle style, Color color)
+        {
+            style.normal.textColor = style.hover.textColor = style.active.textColor = style.focused.textColor = color;
+            style.onNormal.textColor = style.onHover.textColor = style.onActive.textColor = style.onFocused.textColor = color;
+        }
+
+        /// <summary>Old-style text helper (the menu uses it): Bold maps to Barlow Condensed Bold, the rest to Barlow.</summary>
+        GUIStyle TextStyle(int size, Color color, FontStyle font = FontStyle.Normal, TextAnchor alignment = TextAnchor.UpperLeft, bool wrap = false) =>
+            font == FontStyle.Normal ? Txt(fontBody, size, color, alignment, wrap) : Txt(fontBold, size + 2, color, alignment, wrap);
 
         void EnsureStyles()
         {
-            if (panelStyle != null && panelStyle.normal.background != null) return;
-            panelStyle = BoxStyle(PanelColor, 10, 12);
-            cardStyle = BoxStyle(CardColor, 8, 10);
-            tooltipStyle = BoxStyle(new Color(0.05f, 0.06f, 0.08f, 0.95f), 6, 8);
-            tooltipStyle.fontSize = 13;
-            tooltipStyle.wordWrap = true;
-            chipStyle = BoxStyle(Color.white, 8, 4);
-            chipStyle.alignment = TextAnchor.MiddleCenter;
-            chipStyle.fontSize = 11;
-            chipStyle.fontStyle = FontStyle.Bold;
+            if (buttonStyle != null && buttonStyle.normal.background != null) return;
+            fontHeavy = Resources.Load<Font>("Fonts/BarlowCondensed-ExtraBoldItalic");
+            fontBoldItalic = Resources.Load<Font>("Fonts/BarlowCondensed-BoldItalic");
+            fontBold = Resources.Load<Font>("Fonts/BarlowCondensed-Bold");
+            fontSemi = Resources.Load<Font>("Fonts/BarlowCondensed-SemiBold");
+            fontBody = Resources.Load<Font>("Fonts/Barlow-Medium");
+            fontBodyBold = Resources.Load<Font>("Fonts/Barlow-SemiBold");
 
-            buttonStyle = ButtonStyle(ButtonColor);
-            selectedButtonStyle = ButtonStyle(SelectedColor);
-            goodButtonStyle = ButtonStyle(GoodColor, 15);
-            rowStyle = ButtonStyle(CardColor, 13, TextAnchor.MiddleLeft);
-            rowStyle.padding = new RectOffset(30, 10, 6, 6);
-            rowStyle.fontStyle = FontStyle.Normal;
-            rowSelectedStyle = ButtonStyle(SelectedColor, 13, TextAnchor.MiddleLeft);
-            rowSelectedStyle.padding = rowStyle.padding;
-            rowSelectedStyle.fontStyle = FontStyle.Normal;
+            buttonStyle = ButtonStyle(PaperLight);
+            selectedButtonStyle = ButtonStyle(Red);
+            smallButtonStyle = ButtonStyle(PaperLight, 13);
+            smallGoodButtonStyle = ButtonStyle(ExitGreen, 13);
+            navyButtonStyle = ButtonStyle(Ink, 15);
+            foreach (var s in new[] { smallButtonStyle, smallGoodButtonStyle }) s.padding = new RectOffset(4, 4, 1, 1);
+            goodButtonStyle = SlabButtonStyle(Red, Color.white, fontHeavy, 24);
+            hoverStyle = new GUIStyle();
+            hoverStyle.hover.background = Solid(new Color(Ink.r, Ink.g, Ink.b, 0.08f));
 
-            labelStyle = TextStyle(13, TextColor, wrap: true);
-            mutedStyle = TextStyle(12, MutedText, wrap: true);
-            smallStyle = TextStyle(11, MutedText);
-            headerStyle = TextStyle(12, MutedText, FontStyle.Bold);
-            titleStyle = TextStyle(20, TextColor, FontStyle.Bold);
-            bigTitleStyle = TextStyle(26, TextColor, FontStyle.Bold, TextAnchor.UpperCenter);
-            numberStyle = TextStyle(20, TextColor, FontStyle.Bold, TextAnchor.MiddleCenter);
-            statCaptionStyle = TextStyle(10, MutedText, FontStyle.Bold, TextAnchor.MiddleCenter);
-            worldLabelStyle = TextStyle(11, TextColor, FontStyle.Bold, TextAnchor.MiddleCenter);
+            tooltipStyle = Txt(fontBody, 13, Ink, wrap: true);
+            tooltipStyle.normal.background = Framed(PaperLight, Ink);
+            tooltipStyle.border = new RectOffset(3, 3, 3, 3);
+            tooltipStyle.padding = new RectOffset(10, 10, 7, 7);
+
+            labelStyle = Txt(fontBody, 14, Ink, wrap: true);
+            mutedStyle = Txt(fontBody, 13, InkSoft, wrap: true);
+            smallStyle = Txt(fontBody, 12, InkFaint, clip: true);
+            stepTitleStyle = Txt(fontHeavy, 18, Ink);
+            resultValueStyle = Txt(fontBold, 17, Ink, TextAnchor.UpperRight);
+            starsCaptionStyle = Txt(fontBold, 14, InkSoft, TextAnchor.UpperCenter);
+            headerStyle = Txt(fontBold, 14, InkSoft);
+            titleStyle = Txt(fontHeavy, 30, Ink);
+            bigTitleStyle = Txt(fontHeavy, 36, Ink, TextAnchor.UpperCenter);
+            numberStyle = Txt(fontHeavy, 20, Color.white, TextAnchor.MiddleCenter);
+
+            logoStyle = Txt(fontHeavy, 32, Ink, TextAnchor.MiddleLeft);
+            tabStyle = Txt(fontHeavy, 15, Ink, TextAnchor.MiddleLeft);
+            timerStyle = Txt(fontHeavy, 30, Red, TextAnchor.MiddleLeft);
+            timerTotalStyle = Txt(fontSemi, 15, InkFaint, TextAnchor.MiddleLeft);
+            statValueStyle = Txt(fontHeavy, 24, Ink, TextAnchor.MiddleCenter);
+            captionStyle = Txt(fontBold, 13, Ink, TextAnchor.MiddleLeft);
+            speedStyle = Txt(fontHeavy, 16, Ink, TextAnchor.MiddleCenter);
+            rowNumberStyle = Txt(fontBoldItalic, 14, Ink, TextAnchor.MiddleLeft);
+            rowNameStyle = Txt(fontBold, 16, Ink, TextAnchor.MiddleLeft, clip: true);
+            rowStatusStyle = Txt(fontBold, 11, InkSoft, TextAnchor.MiddleRight);
+            groupStyle = Txt(fontBold, 12, InkSoft, TextAnchor.LowerLeft);
+            headerRightStyle = Txt(fontBold, 14, InkFaint, TextAnchor.MiddleRight);
+            gateStatusStyle = Txt(fontHeavy, 13, Ink, TextAnchor.MiddleRight);
+            feedTimeStyle = Txt(fontBoldItalic, 14, Ink, TextAnchor.MiddleLeft);
+            feedStyle = Txt(fontBodyBold, 13, Ink, TextAnchor.MiddleLeft, clip: true);
+            orderTitleStyle = Txt(fontHeavy, 17, Red, TextAnchor.MiddleCenter);
+            orderSubStyle = Txt(fontSemi, 13, Ink, TextAnchor.MiddleCenter);
+            arrowStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            SetTextColor(arrowStyle, Red);
+            toolNumberStyle = Txt(fontBoldItalic, 15, Ink, TextAnchor.MiddleLeft);
+            toolLabelStyle = Txt(fontHeavy, 24, Ink, TextAnchor.MiddleLeft);
+            keyStyle = Txt(fontBold, 14, Ink, TextAnchor.MiddleCenter);
+            toggleLabelStyle = Txt(fontBold, 14, Ink, TextAnchor.MiddleLeft);
+            hintStyle = Txt(fontBodyBold, 13, Ink, TextAnchor.MiddleCenter);
+            legendStyle = Txt(fontBody, 13, Ink);
+            bannerTitleStyle = Txt(fontHeavy, 30, Color.white, TextAnchor.MiddleLeft);
+            bannerTextStyle = Txt(fontBodyBold, 14, Color.white, TextAnchor.MiddleLeft);
+            worldTagStyle = Txt(fontBold, 14, Ink, TextAnchor.MiddleLeft);
+            worldKeyStyle = Txt(fontBold, 14, Ink, TextAnchor.MiddleCenter);
+            signStyle = Txt(fontHeavy, 17, ExitGreen, TextAnchor.MiddleLeft);
+            signNameStyle = Txt(fontBold, 12, Ink, TextAnchor.MiddleCenter);
+            landmarkStyle = Txt(fontBold, 14, Paper, TextAnchor.MiddleCenter);
+            crossStyle = Txt(fontHeavy, 18, Color.white, TextAnchor.MiddleCenter);
         }
 
         // ---------------------------------------------------------------- Widgets
 
+        static bool Repaint => Event.current.type == EventType.Repaint;
+
+        void Fill(Rect r, Color c)
+        {
+            if (Repaint) GUI.DrawTexture(r, Solid(c));
+        }
+
+        void Frame(Rect r, Color fill, Color line)
+        {
+            if (Repaint) DrawStyle($"frame{fill}{line}", Framed(fill, line), new RectOffset(3, 3, 3, 3)).Draw(r, false, false, false, false);
+        }
+
+        void DrawSlab(Rect r, Color fill, int slant = 12)
+        {
+            if (Repaint) DrawStyle($"slab{fill}{slant}", Slab(fill, slant), new RectOffset(4, slant + 4, 0, 0)).Draw(r, false, false, false, false);
+        }
+
+        void DrawStripes(Rect r, Color c)
+        {
+            if (Repaint) GUI.DrawTextureWithTexCoords(r, Stripes(c), new Rect(0f, 0f, r.width / 16f, r.height / 16f));
+        }
+
+        void DropShadow(Rect r)
+        {
+            if (Repaint) DrawStyle("shadow", ShadowTexture, new RectOffset(16, 16, 16, 16)).Draw(new Rect(r.x - 12, r.y - 7, r.width + 24, r.height + 22), false, false, false, false);
+        }
+
+        /// <summary>A paper panel with a soft shadow; the mouse doesn't click through it.</summary>
         Rect Panel(Rect rect, GUIStyle style = null)
         {
-            GUI.Box(rect, GUIContent.none, style ?? panelStyle);
+            if (style != null)
+            {
+                GUI.Box(rect, GUIContent.none, style);
+                guiRects.Add(rect);
+                return rect;
+            }
+            DropShadow(rect);
+            Fill(rect, Paper);
             guiRects.Add(rect);
             return rect;
         }
 
-        void Chip(Rect rect, string text, Color color)
+        void Label(Rect r, string text, GUIStyle style, Color color)
         {
-            var old = GUI.backgroundColor;
-            GUI.backgroundColor = new Color(color.r, color.g, color.b, 0.3f);
-            var oldText = chipStyle.normal.textColor;
-            chipStyle.normal.textColor = Color.Lerp(color, Color.white, 0.35f);
-            GUI.Box(rect, text, chipStyle);
-            chipStyle.normal.textColor = oldText;
-            GUI.backgroundColor = old;
+            var old = style.normal.textColor;
+            SetTextColor(style, color);
+            GUI.Label(r, text, style);
+            SetTextColor(style, old);
+        }
+
+        static bool Hovered(Rect rect) => GUI.enabled && rect.Contains(Event.current.mousePosition);
+
+        /// <summary>Hover colour for a filled shape: dark fills get a little lighter, light ones a little darker (like the menu).</summary>
+        static Color HoverShade(Color fill) => fill.grayscale < 0.5f ? Color.Lerp(fill, Color.white, 0.12f) : Color.Lerp(fill, Ink, 0.08f);
+
+        float TextWidth(string text, GUIStyle style) => style.CalcSize(new GUIContent(text)).x;
+
+        static string Hex(Color c) => ColorUtility.ToHtmlStringRGB(c);
+
+        /// <summary>Yellow (or other) tab with a slanted end: "TEXT  ///". Returns its rect.</summary>
+        Rect Tab(float x, float y, string text, Color fill, Color ink, Color slashes, float height = 24f)
+        {
+            string content = $"{text}  <color=#{Hex(slashes)}>///</color>";
+            var rect = new Rect(x, y, TextWidth(content, tabStyle) + 34f, height);
+            DrawSlab(rect, fill, 10);
+            Label(new Rect(rect.x + 10, rect.y, rect.width, height), content, tabStyle, ink);
+            return rect;
+        }
+
+        /// <summary>Panel title row: the tab on the left, <paramref name="extra"/> and "–"/"+" on the right; the row folds the panel.</summary>
+        bool SectionHeader(Rect panel, string title, string extra, bool open)
+        {
+            var row = new Rect(panel.x, panel.y, panel.width, 24);
+            bool clicked = GUI.Button(row, GUIContent.none, GUIStyle.none);
+            Tab(panel.x, panel.y, title, Yellow, Ink, Ink);
+            Label(new Rect(row.x, row.y, row.width - 10, 24), $"{extra}   {(open ? "–" : "+")}", headerRightStyle, InkFaint);
+            return clicked;
+        }
+
+        /// <summary>Boxed "key | label" tag like the map labels in the menu art.</summary>
+        void BoxedTag(Rect rect, string key, string label, bool inverted, float keyWidth = 26f, GUIStyle labelStyleOverride = null)
+        {
+            var fill = inverted ? Ink : PaperLight;
+            var ink = inverted ? Paper : Ink;
+            Frame(rect, fill, Ink);
+            Fill(new Rect(rect.x + keyWidth, rect.y + 2, 2, rect.height - 4), inverted ? Paper : Ink);
+            Label(new Rect(rect.x, rect.y, keyWidth, rect.height), key, keyStyle, ink);
+            Label(new Rect(rect.x + keyWidth + 9, rect.y, rect.width - keyWidth - 9, rect.height), label, labelStyleOverride ?? toggleLabelStyle, ink);
         }
 
         void Swatch(Rect rect, Color color)
         {
-            if (Event.current.type != EventType.Repaint) return;
-            var old = GUI.color;
-            GUI.color = color;
-            GUI.DrawTexture(rect, Rounded(Color.white, 3));
-            GUI.color = old;
+            Fill(rect, Ink);
+            Fill(new Rect(rect.x + 1.5f, rect.y + 1.5f, rect.width - 3f, rect.height - 3f), color);
         }
 
         void ProgressBar(Rect rect, float value, Color color)
         {
-            if (Event.current.type != EventType.Repaint) return;
-            var old = GUI.color;
-            GUI.color = new Color(1f, 1f, 1f, 0.12f);
-            GUI.DrawTexture(rect, Rounded(Color.white, 4));
-            GUI.color = color;
-            GUI.DrawTexture(new Rect(rect.x, rect.y, Mathf.Max(rect.height, rect.width * Mathf.Clamp01(value)), rect.height), Rounded(Color.white, 4));
-            GUI.color = old;
+            Frame(rect, PaperLight, Ink);
+            var inner = new Rect(rect.x + 2, rect.y + 2, (rect.width - 4) * Mathf.Clamp01(value), rect.height - 4);
+            Fill(inner, color);
+            DrawStripes(inner, new Color(0f, 0f, 0f, 0.15f));
         }
 
-        void ShadowLabel(Rect rect, string text, GUIStyle style)
+        void HaloLabel(Rect rect, string text, GUIStyle style, Color halo)
         {
             var color = style.normal.textColor;
-            style.normal.textColor = new Color(0f, 0f, 0f, 0.8f);
-            GUI.Label(new Rect(rect.x + 1, rect.y + 1, rect.width, rect.height), text, style);
-            style.normal.textColor = color;
+            SetTextColor(style, halo);
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                    if (dx != 0 || dy != 0) GUI.Label(new Rect(rect.x + dx, rect.y + dy, rect.width, rect.height), text, style);
+            SetTextColor(style, color);
             GUI.Label(rect, text, style);
         }
 
+        void ShadowLabel(Rect rect, string text, GUIStyle style) => HaloLabel(rect, text, style, new Color(0f, 0f, 0f, 0.75f));
+
         static Color SeverityColor(Severity severity) => severity switch
         {
-            Severity.Good => GoodColor,
+            Severity.Good => ExitGreen,
             Severity.Warning => WarningColor,
-            Severity.Danger => DangerColor,
-            _ => MutedText,
+            Severity.Danger => Red,
+            _ => InkSoft,
         };
 
         void ShowBanner(string title, string text, Severity severity)
@@ -1959,122 +2215,301 @@ namespace CrushHour
             bannerTime = 5f;
         }
 
-        // ---------------------------------------------------------------- Panels
+        // ---------------------------------------------------------------- Top strip
 
         void DrawTopBar()
         {
-            var bar = Panel(new Rect(0, 0, vw, 64), BoxStyle(PanelColor, 0, 0));
-            GUI.Label(new Rect(16, 8, 220, 28), "CRUSH HOUR", titleStyle);
-            GUI.Label(new Rect(17, 36, 260, 20), $"Summer Music Festival \u00b7 {DifficultyLabel}", smallStyle);
+            var bar = new Rect(0, 0, vw, TopBarHeight);
+            DropShadow(bar);
+            Fill(bar, Paper);
+            if (Repaint) GUI.DrawTextureWithTexCoords(bar, PaperGrid, new Rect(0f, 0f, vw / 22f, TopBarHeight / 22f));
+            Fill(new Rect(0, TopBarHeight - 2, vw, 2), Ink);
+            guiRects.Add(bar);
 
-            // What's happening now.
-            float x = 280;
-            switch (phase)
-            {
-                case Phase.Planning:
-                    Chip(new Rect(x, 12, 120, 22), "PLANNING", SelectedColor);
-                    GUI.Label(new Rect(x, 38, 390, 20), "Place your team and barriers, then start. F1/F2/F3: difficulty.", smallStyle);
-                    break;
-                case Phase.Live when !incidentStarted:
-                    Chip(new Rect(x, 12, 120, 22), "SHOW ON", GoodColor);
-                    GUI.Label(new Rect(x, 38, 380, 20), "Everything's fine... for now.", smallStyle);
-                    break;
-                case Phase.Live:
-                    Chip(new Rect(x, 12, 120, 22), "EVACUATION", DangerColor);
-                    GUI.Label(new Rect(x + 130, 12, 120, 22), $"{FormatTime(evacuationTime)} / {FormatTime(evacuationTimeLimit)}", labelStyle);
-                    ProgressBar(new Rect(x + 230, 17, 140, 10), evacuationTime / evacuationTimeLimit,
-                        Color.Lerp(GoodColor, DangerColor, evacuationTime / evacuationTimeLimit));
-                    GUI.Label(new Rect(x, 38, 380, 20), incidentAnnouncement, smallStyle);
-                    break;
-                default:
-                    Chip(new Rect(x, 12, 120, 22), "RESULTS", MutedText);
-                    break;
-            }
+            // Logo: CRUSH (navy) HOUR (red) and the red stripes.
+            float x = 16;
+            string logo = $"CRUSH <color=#{Hex(Red)}>HOUR</color>";
+            float logoWidth = TextWidth(logo, logoStyle);
+            GUI.Label(new Rect(x, 6, logoWidth + 4, 46), logo, logoStyle);
+            x += logoWidth + 8;
+            DrawStripes(new Rect(x, 19, 24, 22), Red);
+            x += 38;
+            Fill(new Rect(x, 13, 2, 34), Ink);
+            x += 16;
 
-            // Simulation speed.
-            float sx = x + 400;
-            if (GUI.Button(new Rect(sx, 14, 70, 34), paused ? "Play" : "Pause", paused ? selectedButtonStyle : buttonStyle)) paused = !paused;
+            // Headline numbers, from the right.
+            float right = vw - 14;
+            right = Stat(right, "PANIC\nATTACKS", sim.PanicAttackCount.ToString(), PanicInk);
+            right = Stat(right, "INJURED", sim.InjuredCount.ToString(), Red);
+            right = Stat(right, "OUT\nSAFELY", sim.SafeCount.ToString(), ExitGreen);
+            right = Stat(right, "PEOPLE\nINSIDE", sim.ActiveCount.ToString(), Ink);
+
+            // Speed, left of the numbers.
+            right -= 18;
+            float sx = right - (46 + 4 + Speeds.Length * 42);
+            if (SpeedButton(new Rect(sx, 14, 46, 32), paused ? "PLAY" : "II", paused)) paused = !paused;
             for (int i = 0; i < Speeds.Length; i++)
-                if (GUI.Button(new Rect(sx + 76 + i * 46, 14, 42, 34), $"{Speeds[i]:0}x", speedIndex == i && !paused ? selectedButtonStyle : buttonStyle))
+                if (SpeedButton(new Rect(sx + 50 + i * 42, 14, 38, 32), $"{Speeds[i]:0}×", speedIndex == i && !paused))
                 {
                     speedIndex = i;
                     paused = false;
                 }
+            right = sx - 18;
 
-            // Headline numbers.
-            float right = vw - 12;
-            right = Stat(right, "PANIC ATTACKS", sim.PanicAttackCount.ToString(), AgentColors[5]);
-            right = Stat(right, "INJURED", sim.InjuredCount.ToString(), DangerColor);
-            right = Stat(right, "SAFE", sim.SafeCount.ToString(), GoodColor);
-            Stat(right, "INSIDE", sim.ActiveCount.ToString(), TextColor);
-            _ = bar;
+            // Evacuation clock, left of the speed buttons.
+            if (phase == Phase.Live && incidentStarted)
+            {
+                float barWidth = Mathf.Clamp(right - x - 360, 60, 150);
+                float tx = right - barWidth;
+                float t = evacuationTime / evacuationTimeLimit;
+                ProgressBar(new Rect(tx, 25, barWidth, 11), t, Red);
+                string total = $"/ {ClockTime(evacuationTimeLimit)}";
+                float totalWidth = TextWidth(total, timerTotalStyle);
+                tx -= totalWidth + 10;
+                GUI.Label(new Rect(tx, 14, totalWidth + 4, 32), total, timerTotalStyle);
+                string now = ClockTime(evacuationTime);
+                float nowWidth = TextWidth(now, timerStyle);
+                tx -= nowWidth + 8;
+                GUI.Label(new Rect(tx, 12, nowWidth + 4, 36), now, timerStyle);
+                right = tx - 14;
+            }
+
+            // Phase tab and one line under it.
+            string tab, line;
+            switch (phase)
+            {
+                case Phase.Planning:
+                    tab = "PLANNING — SET UP YOUR TEAM";
+                    line = "Place patrols and barriers, then start the show. F1/F2/F3: difficulty.";
+                    break;
+                case Phase.Live when !incidentStarted:
+                    tab = "SHOW ON — ALL CALM";
+                    line = "Everything's fine... for now.";
+                    break;
+                case Phase.Live:
+                    tab = "LIVE — EVACUATION";
+                    line = incidentAnnouncement;
+                    break;
+                default:
+                    tab = "RESULTS";
+                    line = "";
+                    break;
+            }
+            Tab(x, 8, tab, Yellow, Ink, Ink, 22);
+            string sub = $"{line}{(line.Length > 0 ? "  ·  " : "")}Summer Festival · {difficultySettings.Name} ×{difficultySettings.scoreMultiplier:0.#}";
+            Label(new Rect(x, 33, Mathf.Max(60, right - x), 18), sub, smallStyle, InkSoft);
+        }
+
+        static string ClockTime(float seconds) => $"{(int)seconds / 60:00}:{(int)seconds % 60:00}";
+
+        bool SpeedButton(Rect rect, string label, bool on)
+        {
+            Frame(rect, on ? Red : PaperLight, on ? Red : Ink);
+            bool clicked = GUI.Button(rect, GUIContent.none, hoverStyle);
+            Label(rect, label, speedStyle, on ? Color.white : Ink);
+            return clicked;
         }
 
         float Stat(float right, string caption, string value, Color color)
         {
-            const float width = 104;
-            var rect = new Rect(right - width, 8, width - 6, 48);
-            GUI.Box(rect, GUIContent.none, cardStyle);
-            var old = numberStyle.normal.textColor;
-            numberStyle.normal.textColor = color;
-            GUI.Label(new Rect(rect.x, rect.y + 3, rect.width, 26), value, numberStyle);
-            numberStyle.normal.textColor = old;
-            GUI.Label(new Rect(rect.x, rect.y + 29, rect.width, 14), caption, statCaptionStyle);
-            return right - width;
+            float valueWidth = Mathf.Max(44, TextWidth(value, statValueStyle) + 18);
+            float captionWidth = TextWidth(caption, captionStyle) + 18;
+            var rect = new Rect(right - valueWidth - captionWidth, 10, valueWidth + captionWidth, 40);
+            Frame(rect, PaperLight, Ink);
+            Fill(new Rect(rect.x + valueWidth, rect.y + 2, 2, rect.height - 4), Ink);
+            Label(new Rect(rect.x, rect.y, valueWidth, rect.height), value, statValueStyle, color);
+            GUI.Label(new Rect(rect.x + valueWidth + 9, rect.y, captionWidth, rect.height), caption, captionStyle);
+            return rect.x - 6;
         }
+
+        // ---------------------------------------------------------------- 01 — Your team
+
+        string UnitStatus(Unit u) => u.escortPhase switch
+        {
+            EscortPhase.Fetching => "FETCHING",
+            EscortPhase.Escorting => "ESCORTING",
+            EscortPhase.Returning => "RETURNING",
+            _ => u.clearingDoor >= 0 ? "CLEARING EXIT"
+                : u.path.Count > 0 ? "MOVING"
+                : u.role == Role.Megaphone && incidentStarted ? "ANNOUNCING"
+                : null, // in position: nothing to say
+        };
 
         void DrawTeamPanel()
         {
-            float height = (phase == Phase.Planning ? 64 : 0) + 60 + units.Count * 34 + 2 * 24 + 130;
-            var rect = Panel(new Rect(12, 76, 280, height));
-            GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
+            const float width = 252, rowHeight = 27, groupHeight = 28;
+            float height = 24 + (showTeam ? 2 * groupHeight + units.Count * rowHeight + 8 : 6);
+            var rect = Panel(new Rect(14, TopBarHeight + 16, width, height));
+            if (SectionHeader(rect, "01 — YOUR TEAM", units.Count.ToString(), showTeam)) deferred.Add(() => showTeam = !showTeam);
+            if (!showTeam) return;
 
-            if (phase == Phase.Planning)
-            {
-                if (GUILayout.Button("START THE SHOW", goodButtonStyle, GUILayout.Height(44))) deferred.Add(StartShow);
-                GUILayout.Label("Press Enter. A fire will break out somewhere soon after.", smallStyle);
-                GUILayout.Space(4);
-            }
-
-            GUILayout.Label("YOUR TEAM", headerStyle);
-            GUILayout.Label("Click someone, then click the map to send them.", mutedStyle);
-            // Grouped: the zone patrols first (one per zone), then the police.
+            // Grouped: the zone patrols first (numbered by zone), then the police.
+            float y = rect.y + 24;
             foreach (var role in new[] { Role.Patrolman, Role.Megaphone })
             {
-                GUILayout.Label(role == Role.Patrolman ? "ZONE PATROLS" : "MEGAPHONE POLICE", smallStyle, GUILayout.Height(20));
+                var caption = new Rect(rect.x + 10, y + 8, width - 20, 17);
+                GUI.Label(caption, role == Role.Patrolman ? "ZONE PATROLS" : "MEGAPHONE POLICE", groupStyle);
+                Fill(new Rect(caption.x, caption.yMax + 1, caption.width, 2), Ink);
+                y += groupHeight;
                 for (int i = 0; i < units.Count; i++)
                 {
                     var u = units[i];
                     if (u.role != role) continue;
-                    string status = u.escortPhase switch
-                    {
-                        EscortPhase.Fetching => "fetching drunk",
-                        EscortPhase.Escorting => "escorting",
-                        EscortPhase.Returning => "returning",
-                        _ => u.path.Count > 0 ? "on the move" : u.role == Role.Megaphone && incidentStarted ? "announcing" : "in position",
-                    };
-                    if (GUILayout.Button(u.Name, i == selectedUnit ? rowSelectedStyle : rowStyle, GUILayout.Height(30))) SelectUnit(i, true);
-                    var row = GUILayoutUtility.GetLastRect();
-                    Swatch(new Rect(row.x + 10, row.y + 9, 12, 12), UnitColor(u));
-                    GUI.Label(new Rect(row.x, row.y + 8, row.width - 10, 16), status, TextStyle(11, MutedText, FontStyle.Normal, TextAnchor.UpperRight));
+                    var row = new Rect(rect.x + 4, y, width - 10, rowHeight);
+                    bool selected = i == selectedUnit;
+                    bool zone = u.homeRegion >= 0 && u.homeRegion < venue.regions.Count;
+                    if (selected) DrawSlab(row, Red, 12);
+                    if (GUI.Button(row, GUIContent.none, selected ? GUIStyle.none : hoverStyle)) SelectUnit(i, true);
+                    var ink = selected ? Color.white : Ink;
+                    string number = zone ? $"{u.homeRegion + 1:00}" : $"P{u.number}";
+                    Label(new Rect(row.x + 6, row.y, 24, rowHeight), number, rowNumberStyle, ink);
+                    Fill(new Rect(row.x + 30, row.y + 5, 2, rowHeight - 10), selected ? new Color(1f, 1f, 1f, 0.75f) : Ink);
+                    Swatch(new Rect(row.x + 39, row.y + 9, 9, 9), UnitColor(u));
+                    string status = UnitStatus(u);
+                    float statusWidth = status != null ? TextWidth(status, rowStatusStyle) + 6 : 0;
+                    Label(new Rect(row.x + 55, row.y, row.width - 55 - 22 - statusWidth, rowHeight), zone ? venue.regions[u.homeRegion].name : u.Name, rowNameStyle, ink);
+                    if (status != null)
+                        Label(new Rect(row.x, row.y, row.width - 22, rowHeight), status, rowStatusStyle,
+                            selected ? Color.white : status == "CLEARING EXIT" ? Red : InkSoft);
+                    y += rowHeight;
                 }
             }
-
-            GUILayout.Space(8);
-            GUILayout.Label("TOOLS", headerStyle);
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Command  [1]", tool == Tool.Command ? selectedButtonStyle : buttonStyle, GUILayout.Height(32))) SetTool(Tool.Command);
-            if (GUILayout.Button($"Barriers {barrierBudget - barriersUsed}  [2]", tool == Tool.Barrier ? selectedButtonStyle : buttonStyle, GUILayout.Height(32))) SetTool(Tool.Barrier);
-            GUILayout.EndHorizontal();
-            GUILayout.Label(tool == Tool.Command
-                ? "Click a gate on the map to open or close it. Right-click turns a selected patrol (or deselects police). Esc deselects."
-                : "Drag on the map to draw a barrier line. Right-click a barrier to pick it up.", mutedStyle);
-            GUILayout.EndArea();
         }
 
+        // ---------------------------------------------------------------- 02 — Exits
+
+        void DrawControlPanel()
+        {
+            const float width = 252, rowHeight = 32;
+            float height = 24 + (showGates ? 6 + venue.gates.Count * rowHeight + 52 : 6);
+            var rect = Panel(new Rect(vw - 14 - width, TopBarHeight + 16, width, height));
+            int open = 0;
+            foreach (var g in venue.gates)
+                if (g.open) open++;
+            if (SectionHeader(rect, "02 — EXITS", $"{open}/{venue.gates.Count} OPEN", showGates)) deferred.Add(() => showGates = !showGates);
+            if (!showGates) return;
+
+            float y = rect.y + 30;
+            foreach (var g in venue.gates)
+            {
+                var row = new Rect(rect.x + 10, y, width - 20, rowHeight);
+                var nameRect = new Rect(row.x, row.y, row.width - 56, rowHeight);
+                if (GUI.Button(nameRect, GUIContent.none, hoverStyle)) cameraRig.Focus(new Vector3(g.rect.center.x, 0f, g.rect.center.y));
+                ExitSign(new Rect(row.x + 2, row.y + 5, 22, 22), g);
+                GUI.Label(new Rect(row.x + 32, row.y, nameRect.width - 32, rowHeight), g.name, rowNameStyle);
+                Label(new Rect(nameRect.x, nameRect.y, nameRect.width - 6, rowHeight), GateWord(g), gateStatusStyle, GateInk(g));
+                if (GUI.Button(new Rect(row.xMax - 52, row.y + 5, 52, 22), g.open ? "CLOSE" : "OPEN", g.open ? smallButtonStyle : smallGoodButtonStyle)) ToggleGate(g);
+                Fill(new Rect(row.x, row.yMax - 1, row.width, 1), new Color(Ink.r, Ink.g, Ink.b, 0.25f));
+                y += rowHeight;
+            }
+            var all = new Rect(rect.x + 10, y + 10, width - 20, 32);
+            DrawSlab(all, Hovered(all) ? HoverShade(Ink) : Ink, 12);
+            if (GUI.Button(all, GUIContent.none, GUIStyle.none)) OpenAllGates();
+            Label(new Rect(all.x + 12, all.y, all.width, all.height), "OPEN ALL EXITS", tabStyle, Paper);
+        }
+
+        static string GateWord(Gate g) => g.Passable ? "OPEN" : g.open ? "OPENING" : "SHUT";
+
+        static Color GateInk(Gate g) => g.Passable ? ExitGreen : g.open ? Amber : Red;
+
+        /// <summary>Exit sign: green with the runner (open), yellow with a navy runner (opening), red with a cross (shut).</summary>
+        void ExitSign(Rect rect, Gate g)
+        {
+            if (g.Passable || g.open)
+            {
+                Fill(rect, g.Passable ? ExitGreen : Yellow);
+                if (!g.Passable) Frame(rect, Yellow, Ink);
+                if (Repaint)
+                {
+                    var old = GUI.color;
+                    GUI.color = g.Passable ? Color.white : Ink;
+                    GUI.DrawTexture(new Rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4), Runner);
+                    GUI.color = old;
+                }
+            }
+            else
+            {
+                Fill(rect, Red);
+                GUI.Label(rect, "×", crossStyle);
+            }
+        }
+
+        // ---------------------------------------------------------------- Toolbar and hint
+
+        /// <summary>Tools (and Start while planning) as menu-style slabs at the bottom centre, with a one-line hint above.</summary>
+        void DrawToolbar()
+        {
+            if (phase == Phase.Results) return;
+            bool planning = phase == Phase.Planning;
+            var items = new List<(string number, string label, string extra, int kind, System.Action action)>
+            {
+                ("1", "COMMAND", null, tool == Tool.Command ? 1 : 0, () => SetTool(Tool.Command)),
+                ("2", "BARRIERS", (barrierBudget - barriersUsed).ToString(), tool == Tool.Barrier ? 1 : 0, () => SetTool(Tool.Barrier)),
+            };
+            if (planning) items.Add(("ENTER", "START THE SHOW", null, 2, () => deferred.Add(StartShow)));
+
+            const float gap = 8;
+            var widths = new float[items.Count];
+            var numberWidths = new float[items.Count];
+            float total = -gap;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                numberWidths[i] = Mathf.Max(12, TextWidth(it.number, toolNumberStyle));
+                widths[i] = 12 + numberWidths[i] + 10 + 2 + 10 + TextWidth(it.label, toolLabelStyle) + (it.extra != null ? 8 + TextWidth(it.extra, toolLabelStyle) : 0) + 30;
+                total += widths[i] + gap;
+            }
+            float x = vw * 0.5f - total * 0.5f, y = vh - 14 - ToolbarHeight;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                var rect = new Rect(x, y, widths[i], ToolbarHeight);
+                guiRects.Add(rect);
+                Color fill = it.kind == 1 ? Red : it.kind == 2 ? Ink : Paper;
+                Color ink = it.kind == 1 ? Color.white : it.kind == 2 ? Yellow : Ink;
+                if (it.kind != 0) DropShadow(new Rect(rect.x + 6, rect.y + 6, rect.width - 24, rect.height - 12));
+                DrawSlab(rect, Hovered(rect) ? HoverShade(fill) : fill, 16);
+                if (GUI.Button(rect, GUIContent.none, GUIStyle.none)) it.action();
+                float tx = rect.x + 12;
+                Label(new Rect(tx, rect.y, numberWidths[i] + 4, rect.height), it.number, toolNumberStyle, ink);
+                tx += numberWidths[i] + 10;
+                Fill(new Rect(tx, rect.y + 12, 2, rect.height - 24), it.kind == 0 ? Ink : new Color(ink.r, ink.g, ink.b, 0.7f));
+                tx += 12;
+                float labelWidth = TextWidth(it.label, toolLabelStyle);
+                Label(new Rect(tx, rect.y, labelWidth + 4, rect.height), it.label, toolLabelStyle, ink);
+                if (it.extra != null) Label(new Rect(tx + labelWidth + 8, rect.y, 60, rect.height), it.extra, toolLabelStyle, it.kind == 1 ? Yellow : Red);
+                x += widths[i] + gap;
+            }
+
+            if (!hudHidden)
+            {
+                string hint = ToolHint();
+                float w = TextWidth(hint, hintStyle) + 24;
+                var hintRect = new Rect(vw * 0.5f - w * 0.5f, y - 30, w, 22);
+                Frame(hintRect, PaperLight, Ink);
+                GUI.Label(hintRect, hint, hintStyle);
+            }
+        }
+
+        string ToolHint()
+        {
+            if (tool == Tool.Barrier) return "Drag on the map to draw a barrier line. Right-click a barrier to pick it up.";
+            if (selectedUnit >= 0 && selectedUnit < units.Count)
+            {
+                var u = units[selectedUnit];
+                return u.role == Role.Patrolman
+                    ? "Click the map to move this patrol, or a drunk fan to walk them out. Right-click to turn it. Esc deselects."
+                    : $"Click the map to move {u.Name}, or a drunk fan to walk them out. Esc deselects.";
+            }
+            return "Click a team member, then the map to send them. Click a gate to open or close it.";
+        }
+
+        // ---------------------------------------------------------------- 03 — Evacuate zone
+
         /// <summary>
-        /// "EVACUATE REGION" panel for the selected patrol: Front/Back/Left/Right relative to where they face (arrow keys),
-        /// each showing the door it would pick. Plain GUI (no GUILayout), and the unit is fixed at the Layout event.
+        /// "03 — EVACUATE ZONE" panel for the selected patrol, just above the toolbar: Front/Back/Left/Right relative to
+        /// where they face (arrow keys), each showing the door it would pick, and Escort in the middle. Plain GUI, and the
+        /// unit is fixed at the Layout event.
         /// </summary>
         void DrawZoneOrderPanel()
         {
@@ -2083,188 +2518,241 @@ namespace CrushHour
             if (u.role != Role.Patrolman || u.homeRegion < 0) return;
             var region = venue.regions[u.homeRegion];
 
-            var rect = Panel(new Rect(vw * 0.5f - 170, vh - 304, 340, 292));
-            GUI.Label(new Rect(rect.x + 14, rect.y + 10, rect.width - 28, 20), "EVACUATE REGION", headerStyle);
-            Swatch(new Rect(rect.xMax - 26, rect.y + 14, 12, 12), region.color);
-            GUI.Label(new Rect(rect.x + 14, rect.y + 32, rect.width - 28, 18),
-                $"{region.name}: {sim.CountInRegion(u.homeRegion, venue)} people in the zone", labelStyle);
+            const float width = 372, height = 232, bh = 50, gap = 6;
+            var rect = Panel(new Rect(vw * 0.5f - width * 0.5f, vh - 14 - ToolbarHeight - 36 - height, width, height));
+            Tab(rect.x, rect.y, $"{u.homeRegion + 1:00} — EVACUATE {region.name.ToUpperInvariant()}", Yellow, Ink, Ink);
+            Label(new Rect(rect.x, rect.y, rect.width - 12, 24), $"{sim.CountInRegion(u.homeRegion, venue)} PEOPLE", headerRightStyle, Ink);
             float cooldown = regionOrderCooldown.Length > u.homeRegion ? regionOrderCooldown[u.homeRegion] : 0f;
-            string status = !incidentStarted ? "Available once the fire starts. Right-click the map to turn the patrol."
-                : cooldown > 0f ? $"Order given. Next one in {Mathf.CeilToInt(cooldown)}s."
-                : "Arrow keys or buttons, relative to where the patrol faces. Right-click to turn.";
-            GUI.Label(new Rect(rect.x + 14, rect.y + 50, rect.width - 28, 30), status, smallStyle);
+            string status = !incidentStarted ? "Orders unlock once a disaster starts."
+                : cooldown > 0f ? $"Order given. Next one in {Mathf.CeilToInt(cooldown)} s."
+                : "Send the whole zone out: arrow keys or the buttons. Right-click the map to turn the patrol.";
+            Label(new Rect(rect.x + 12, rect.y + 28, rect.width - 24, 18), status, smallStyle, InkSoft);
 
             bool ready = CanOrderZone(u);
-            float cx = rect.center.x, top = rect.y + 84;
-            const float bw = 150, bh = 46;
-            OrderButton(u, OrderSide.Front, new Rect(cx - bw * 0.5f, top, bw, bh), ready);
-            OrderButton(u, OrderSide.Left, new Rect(cx - bw - 4, top + bh + 4, bw, bh), ready);
-            OrderButton(u, OrderSide.Right, new Rect(cx + 4, top + bh + 4, bw, bh), ready);
-            OrderButton(u, OrderSide.Back, new Rect(cx - bw * 0.5f, top + 2 * (bh + 4), bw, bh), ready);
+            float cw = (width - 24 - 2 * gap) / 3f, top = rect.y + 52, left = rect.x + 12;
+            OrderButton(u, OrderSide.Front, new Rect(left + cw + gap, top, cw, bh), ready);
+            OrderButton(u, OrderSide.Left, new Rect(left, top + bh + gap, cw, bh), ready);
+            OrderButton(u, OrderSide.Right, new Rect(left + 2 * (cw + gap), top + bh + gap, cw, bh), ready);
+            OrderButton(u, OrderSide.Back, new Rect(left + cw + gap, top + 2 * (bh + gap), cw, bh), ready);
 
             // Escorting drunk people out: they ignore orders, so someone has to walk them to a door.
+            var escort = new Rect(left + cw + gap, top + bh + gap, cw, bh);
             int inZone = sim.UnescortedDrunksInRegion(u.homeRegion, venue);
             bool busy = u.escortPhase == EscortPhase.Escorting;
-            string label = busy ? "Escorting a drunk fan out..."
-                : u.escortPhase == EscortPhase.Fetching ? "Going to get a drunk fan..."
-                : sim.DrunkInsideCount == 0 ? "No drunk fans left inside"
-                : $"Escort nearest drunk [F]  ({inZone} here, {sim.DrunkInsideCount} in all)";
-            bool wasEnabled = GUI.enabled;
-            GUI.enabled = !busy && sim.DrunkInsideCount > 0;
+            string title = busy ? "ESCORTING" : u.escortPhase == EscortPhase.Fetching ? "FETCHING" : "ESCORT [F]";
+            string sub = busy || u.escortPhase == EscortPhase.Fetching ? "a drunk fan" : sim.DrunkInsideCount == 0 ? "no drunks left" : $"{inZone} here, {sim.DrunkInsideCount} in all";
+            bool enabled = !busy && sim.DrunkInsideCount > 0;
+            Fill(escort, enabled ? Ink : Color.Lerp(Ink, Paper, 0.5f));
             int unitIndex = orderPanelUnit;
-            if (GUI.Button(new Rect(rect.x + 14, rect.yMax - 54, rect.width - 28, 40), label, buttonStyle))
-                deferred.Add(() => EscortNearestDrunk(unitIndex));
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled = enabled;
+            if (GUI.Button(escort, GUIContent.none, hoverStyle)) deferred.Add(() => EscortNearestDrunk(unitIndex));
             GUI.enabled = wasEnabled;
+            Label(new Rect(escort.x, escort.y + 4, escort.width, 24), title, orderTitleStyle, Yellow);
+            Label(new Rect(escort.x, escort.y + 26, escort.width, 18), sub, orderSubStyle, Paper);
         }
 
         void OrderButton(Unit u, OrderSide side, Rect rect, bool ready)
         {
             int door = sim.PickOrderDoor(u.homeRegion, SideDirection(u, side), venue);
-            string key = side switch { OrderSide.Front => "Up", OrderSide.Back => "Down", OrderSide.Left => "Left", _ => "Right" };
+            string arrow = side switch { OrderSide.Front => "↑", OrderSide.Back => "↓", OrderSide.Left => "←", _ => "→" };
             string target = door >= 0 ? venue.doors[door].name : "no open exit";
+            var old = GUI.color;
+            if (!ready) GUI.color = new Color(1f, 1f, 1f, 0.55f);
+            Frame(rect, PaperLight, Ink);
             bool wasEnabled = GUI.enabled;
             GUI.enabled = ready;
-            if (GUI.Button(rect, $"{side} [{key}]\nto {target}", buttonStyle)) deferred.Add(() => OrderZone(u, side));
+            if (GUI.Button(rect, GUIContent.none, hoverStyle)) deferred.Add(() => OrderZone(u, side));
             GUI.enabled = wasEnabled;
+            string word = side.ToString().ToUpperInvariant();
+            float wordWidth = TextWidth(word, orderTitleStyle), arrowWidth = 14;
+            float start = rect.center.x - (wordWidth + arrowWidth + 4) * 0.5f;
+            GUI.Label(new Rect(start, rect.y + 4, arrowWidth, 24), arrow, arrowStyle);
+            GUI.Label(new Rect(start + arrowWidth + 4, rect.y + 4, wordWidth + 4, 24), word, orderTitleStyle);
+            GUI.Label(new Rect(rect.x, rect.y + 26, rect.width, 18), target, orderSubStyle);
+            GUI.color = old;
         }
 
-        void DrawControlPanel()
-        {
-            var rect = Panel(new Rect(vw - 312, 76, 300, 120 + venue.gates.Count * 34 + 114));
-            GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
+        // ---------------------------------------------------------------- Incident log
 
-            GUILayout.Label("EMERGENCY GATES", headerStyle);
-            GUILayout.Label("Wide exits, closed until you open them. People who find a gate shut look for another.", mutedStyle);
-            foreach (var g in venue.gates)
-            {
-                GUILayout.BeginHorizontal(GUILayout.Height(30));
-                if (GUILayout.Button(g.name, rowStyle, GUILayout.Height(30), GUILayout.Width(130)))
-                    cameraRig.Focus(new Vector3(g.rect.center.x, 0f, g.rect.center.y));
-                var chip = GUILayoutUtility.GetRect(70, 30, GUILayout.Width(70));
-                Chip(new Rect(chip.x + 4, chip.y + 6, chip.width - 8, 20), GateStatus(g), GateColor(g));
-                if (GUILayout.Button(g.open ? "Close" : "Open", g.open ? buttonStyle : goodButtonStyle, GUILayout.Height(30))) ToggleGate(g);
-                GUILayout.EndHorizontal();
-                Swatch(new Rect(GUILayoutUtility.GetLastRect().x + 10, GUILayoutUtility.GetLastRect().y + 10, 10, 10), GateColor(g));
-            }
-            if (GUILayout.Button("Open all gates", buttonStyle, GUILayout.Height(30))) OpenAllGates();
-
-            GUILayout.Space(6);
-            GUILayout.Label("VIEW", headerStyle);
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button($"Pressure map [H]", heatmap ? selectedButtonStyle : buttonStyle)) heatmap = !heatmap;
-            if (crowdRenderer.UsesModels && GUILayout.Button($"State tiles [M]", stateMarkers ? selectedButtonStyle : buttonStyle)) stateMarkers = !stateMarkers;
-            GUILayout.EndHorizontal();
-            if (GUILayout.Button("Zones [G]", showRegions ? selectedButtonStyle : buttonStyle)) showRegions = !showRegions;
-            GUILayout.EndArea();
-        }
-
+        /// <summary>The last few events, bottom left, as a log sheet. Lines fade 20 s (game time) after they were logged,
+        /// so the log is gone when nothing is happening.</summary>
         void DrawEventFeed()
         {
-            int lines = Mathf.Min(6, log.Count);
+            const int maxLines = 4;
+            const float lineHeight = 24, visibleFor = 20f, fadeTime = 3f;
+            int first = log.Count;
+            while (first > 0 && log.Count - first < maxLines && feedClock - log[first - 1].at < visibleFor) first--;
+            int lines = log.Count - first;
             if (lines == 0) return;
-            const float lineHeight = 22;
-            var rect = Panel(new Rect(12, vh - 24 - lines * lineHeight, 560, lines * lineHeight + 12));
+
+            float width = Mathf.Clamp(vw * 0.5f - 260f, 300f, 450f);
+            var rect = Panel(new Rect(14, vh - 14 - (22 + lines * lineHeight + 6), width, 22 + lines * lineHeight + 6));
+            Tab(rect.x, rect.y, "INCIDENT LOG", Ink, Paper, Yellow, 22);
+            var oldColor = GUI.color;
             for (int i = 0; i < lines; i++)
             {
-                var (text, severity, time) = log[log.Count - lines + i];
-                float y = rect.y + 6 + i * lineHeight;
-                Swatch(new Rect(rect.x + 12, y + 6, 8, 8), SeverityColor(severity));
-                GUI.Label(new Rect(rect.x + 26, y, 44, lineHeight), time, smallStyle);
-                var style = i == lines - 1 ? labelStyle : mutedStyle;
-                GUI.Label(new Rect(rect.x + (time.Length > 0 ? 66 : 28), y + 1, rect.width - 76, lineHeight), text, style);
+                var (text, severity, time, at) = log[first + i];
+                GUI.color = new Color(1f, 1f, 1f, Mathf.Clamp01((visibleFor - (feedClock - at)) / fadeTime) * (i == lines - 1 ? 1f : 0.55f + 0.15f * i));
+                var row = new Rect(rect.x + 10, rect.y + 22 + i * lineHeight, rect.width - 20, lineHeight);
+                Fill(new Rect(row.x, row.y + 8, 8, 8), SeverityColor(severity));
+                float tx = row.x + 16;
+                if (time.Length > 0)
+                {
+                    GUI.Label(new Rect(tx, row.y, 40, lineHeight), time, feedTimeStyle);
+                    tx += 36;
+                    Fill(new Rect(tx, row.y + 6, 2, lineHeight - 12), Ink);
+                    tx += 10;
+                }
+                Label(new Rect(tx, row.y, row.xMax - tx, lineHeight), text, feedStyle, severity == Severity.Danger ? Red : Ink);
+                if (i < lines - 1) Fill(new Rect(row.x, row.yMax - 1, row.width, 1), new Color(Ink.r, Ink.g, Ink.b, 0.2f));
             }
+            GUI.color = oldColor;
         }
 
+        // ---------------------------------------------------------------- View toggles and legend
+
+        /// <summary>View toggles stacked bottom right as boxed "key | label" tags (the bottom one hides or shows the panels).</summary>
+        void DrawViewToggles()
+        {
+            const float width = 132, height = 28, gap = 5;
+            float x = vw - 14 - width, y = vh - 14 - height;
+            if (ToggleButton(new Rect(x, y, width, height), "U", hudHidden ? "SHOW HUD" : "HIDE HUD", hudHidden))
+                deferred.Add(() => hudHidden = !hudHidden);
+            viewTogglesTop = y;
+            if (hudHidden) return;
+            y -= height + gap;
+            if (ToggleButton(new Rect(x, y, width, height), "L", "LEGEND", showLegend)) deferred.Add(() => showLegend = !showLegend);
+            y -= height + gap;
+            if (ToggleButton(new Rect(x, y, width, height), "G", "ZONES", showRegions)) showRegions = !showRegions;
+            if (crowdRenderer.UsesModels)
+            {
+                y -= height + gap;
+                if (ToggleButton(new Rect(x, y, width, height), "M", "STATE TILES", stateMarkers)) stateMarkers = !stateMarkers;
+            }
+            y -= height + gap;
+            if (ToggleButton(new Rect(x, y, width, height), "H", "PRESSURE", heatmap)) heatmap = !heatmap;
+            viewTogglesTop = y;
+        }
+
+        bool ToggleButton(Rect rect, string key, string label, bool on)
+        {
+            guiRects.Add(rect);
+            DropShadow(new Rect(rect.x + 4, rect.y + 4, rect.width - 8, rect.height - 8));
+            BoxedTag(rect, key, label, on);
+            return GUI.Button(rect, GUIContent.none, hoverStyle);
+        }
+
+        /// <summary>Colour key, opened with L or the Legend toggle; sits right above the view toggles.</summary>
         void DrawLegend()
         {
-            if (!showLegend)
-            {
-                var button = new Rect(vw - 132, vh - 48, 120, 34);
-                guiRects.Add(button);
-                if (GUI.Button(button, "Legend  [L]", buttonStyle)) deferred.Add(() => showLegend = true);
-                return;
-            }
-            var rect = Panel(new Rect(vw - 312, vh - 344, 300, 332));
-            GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, rect.width - 24, rect.height - 20));
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("LEGEND", headerStyle);
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Hide [L]", buttonStyle, GUILayout.Width(80))) deferred.Add(() => showLegend = false);
-            GUILayout.EndHorizontal();
+            if (!showLegend) return;
+            const float width = 300, height = 316;
+            var rect = Panel(new Rect(vw - 14 - width, viewTogglesTop - 10 - height, width, height));
+            Tab(rect.x, rect.y, "KEY", Yellow, Ink, Ink);
+            GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 32, rect.width - 24, rect.height - 40));
             LegendRow(AgentColors[0], "Calm: watching the show");
-            LegendRow(AgentColors[1], "Knows which gates are open");
+            LegendRow(AgentColors[1], "Knows which exits are open");
             LegendRow(AgentColors[2], "Alarmed");
-            LegendRow(AgentColors[3], "Panicking: runs, pushes");
+            LegendRow(AgentColors[3], "Panicking: runs and pushes");
             LegendRow(AgentColors[5], "Panic attack: frozen for a while");
-            LegendRow(AgentColors[6], "Choking on smoke: slowed, may collapse");
-            LegendRow(AgentColors[7], "Drunk: ignores orders, needs an escort out");
+            LegendRow(AgentColors[6], "Choking: slowed, may collapse");
+            LegendRow(AgentColors[7], "Drunk: needs an escort out");
             LegendRow(AgentColors[4], "Injured");
-            LegendRow(PatrolColor, "Zone patrol: calms people, then sends them out");
+            LegendRow(PatrolColor, "Zone patrol: calms, then sends out");
             LegendRow(MegaphoneColor, "Police with megaphone");
-            GUILayout.Space(4);
-            GUILayout.Label("Ground colour: green = room to move, orange = packed, red/purple = crush danger, dark = thick smoke. Coloured lines = zones [G].", mutedStyle);
+            GUILayout.Space(6);
+            GUILayout.Label("Ground: green = room to move, orange = packed, red/purple = crush danger, dark = smoke.", mutedStyle);
             GUILayout.EndArea();
         }
 
         void LegendRow(Color color, string text)
         {
             GUILayout.BeginHorizontal();
-            var swatch = GUILayoutUtility.GetRect(14, 18, GUILayout.Width(14));
-            Swatch(new Rect(swatch.x, swatch.y + 3, 12, 12), color);
-            GUILayout.Label(text, labelStyle);
+            var swatch = GUILayoutUtility.GetRect(14, 20, GUILayout.Width(14));
+            Swatch(new Rect(swatch.x, swatch.y + 4, 12, 12), color);
+            GUILayout.Space(4);
+            GUILayout.Label(text, legendStyle);
             GUILayout.EndHorizontal();
         }
+
+        // ---------------------------------------------------------------- Banner, map labels, tooltip
 
         void DrawBanner()
         {
             if (bannerTime <= 0f) return;
-            bannerTime -= Event.current.type == EventType.Repaint ? Time.unscaledDeltaTime : 0f;
+            bannerTime -= Repaint ? Time.unscaledDeltaTime : 0f;
             float alpha = Mathf.Clamp01(bannerTime);
             var old = GUI.color;
             GUI.color = new Color(1f, 1f, 1f, alpha);
-            var rect = new Rect(vw * 0.5f - 260, 78, 520, 70);
-            GUI.Box(rect, GUIContent.none, BoxStyle(SeverityColor(bannerSeverity), 10, 0));
-            GUI.Label(new Rect(rect.x, rect.y + 8, rect.width, 32), bannerTitle, bigTitleStyle);
-            GUI.Label(new Rect(rect.x, rect.y + 42, rect.width, 20), bannerText, TextStyle(13, TextColor, FontStyle.Normal, TextAnchor.UpperCenter));
+            Color fill = bannerSeverity switch { Severity.Danger => Red, Severity.Warning => Yellow, Severity.Good => ExitGreen, _ => Ink };
+            Color ink = bannerSeverity == Severity.Warning ? Ink : Color.white;
+            var rect = new Rect(vw * 0.5f - 290, TopBarHeight + 16, 580, 74);
+            DropShadow(rect);
+            DrawSlab(rect, fill, 22);
+            DrawStripes(new Rect(rect.x + 14, rect.y + 14, 28, rect.height - 28), new Color(ink.r, ink.g, ink.b, 0.45f));
+            Label(new Rect(rect.x + 56, rect.y + 6, rect.width - 90, 38), bannerTitle, bannerTitleStyle, ink);
+            Label(new Rect(rect.x + 56, rect.y + 42, rect.width - 90, 22), bannerText, bannerTextStyle, ink);
             GUI.color = old;
+        }
+
+        bool ScreenPoint(Vector3 world, out Vector2 p)
+        {
+            Vector3 sp = cam.WorldToScreenPoint(world);
+            p = new Vector2(sp.x, Screen.height - sp.y) / uiScale;
+            return sp.z >= 0f;
+        }
+
+        /// <summary>A boxed "key | label" tag centred on a point, with an optional colour bar under it.</summary>
+        void WorldTag(Vector2 center, string key, string label, Color? bar, bool redKey = false)
+        {
+            const float keyWidth = 26, height = 24;
+            float width = keyWidth + 18 + TextWidth(label, worldTagStyle);
+            var rect = new Rect(center.x - width * 0.5f, center.y - height * 0.5f, width, height);
+            Frame(rect, PaperLight, Ink);
+            if (redKey) Fill(new Rect(rect.x + 2, rect.y + 2, keyWidth - 2, height - 4), Red);
+            Fill(new Rect(rect.x + keyWidth, rect.y + 2, 2, height - 4), Ink);
+            Label(new Rect(rect.x, rect.y, keyWidth, height), key, worldKeyStyle, redKey ? Color.white : Ink);
+            GUI.Label(new Rect(rect.x + keyWidth + 9, rect.y, width - keyWidth - 9, height), label, worldTagStyle);
+            if (bar is Color c) Fill(new Rect(rect.x, rect.yMax, rect.width, 3), c);
         }
 
         void DrawWorldLabels()
         {
             if (showRegions)
-            {
-                foreach (var r in venue.regions)
+                for (int i = 0; i < venue.regions.Count; i++)
                 {
-                    var style = TextStyle(10, Color.Lerp(r.color, Color.white, 0.25f), FontStyle.Bold, TextAnchor.MiddleCenter);
-                    WorldLabel(new Vector3(r.post.x + 0.5f, 0.1f, r.post.y + 0.5f), $"{r.name.ToUpperInvariant()} ZONE", style);
+                    var r = venue.regions[i];
+                    if (ScreenPoint(new Vector3(r.post.x + 0.5f, 0.1f, r.post.y + 0.5f), out var p))
+                        WorldTag(p + new Vector2(0, 26), $"{i + 1:00}", r.name.ToUpperInvariant(), r.color);
                 }
-            }
-            foreach (var (text, position) in labels) WorldLabel(position, text, worldLabelStyle);
+            foreach (var (text, position) in labels)
+                if (ScreenPoint(position, out var p))
+                    ShadowLabel(new Rect(p.x - 90f, p.y - 14f, 180f, 28f), text, landmarkStyle);
             foreach (var door in venue.doors)
             {
                 if (door.gate == null && !door.blocked) continue; // entrances already have their landmark label
-                var color = door.blocked ? WarningColor : GateColor(door.gate);
-                var style = TextStyle(11, Color.Lerp(color, Color.white, 0.4f), FontStyle.Bold, TextAnchor.MiddleCenter);
-                string status = door.blocked ? $"BLOCKED: {door.blockReason.ToUpperInvariant()}" : GateStatus(door.gate);
                 var position = new Vector3(door.Center.x, door.blocked ? 3.4f : 2f, door.Center.y);
-                WorldLabel(position, $"{door.name.ToUpperInvariant()}\n{status}", style);
-                if (door.blocked && door.clearProgress > 0f)
+                if (!ScreenPoint(position, out var p)) continue;
+                if (door.blocked)
                 {
-                    // Clearing progress bar just under the label.
-                    Vector3 sp = cam.WorldToScreenPoint(position);
-                    if (sp.z < 0f) continue;
-                    var p = new Vector2(sp.x, Screen.height - sp.y) / uiScale;
-                    ProgressBar(new Rect(p.x - 40f, p.y + 18f, 80f, 7f), door.clearProgress, GoodColor);
+                    WorldTag(p, "!", $"{door.name.ToUpperInvariant()} BLOCKED: {door.blockReason.ToUpperInvariant()}", null, true);
+                    if (door.clearProgress > 0f) ProgressBar(new Rect(p.x - 45f, p.y + 16f, 90f, 9f), door.clearProgress, ExitGreen);
+                    continue;
                 }
+                // Gate: an exit sign with its state, and the name under it.
+                var g = door.gate;
+                string word = g.Passable ? "EXIT" : GateWord(g);
+                float w = 26 + 5 + TextWidth(word, signStyle);
+                var sign = new Rect(p.x - w * 0.5f, p.y - 13, 26, 26);
+                Fill(new Rect(sign.x - 2, sign.y - 2, sign.width + 4, sign.height + 4), Paper);
+                ExitSign(sign, g);
+                var oldColor = signStyle.normal.textColor;
+                SetTextColor(signStyle, GateInk(g));
+                HaloLabel(new Rect(sign.xMax + 5, sign.y - 4, w, 34), word, signStyle, Paper);
+                SetTextColor(signStyle, oldColor);
+                HaloLabel(new Rect(p.x - 80f, sign.yMax + 2, 160f, 16f), door.name.ToUpperInvariant(), signNameStyle, Paper);
             }
-        }
-
-        void WorldLabel(Vector3 position, string text, GUIStyle style)
-        {
-            Vector3 sp = cam.WorldToScreenPoint(position);
-            if (sp.z < 0f) return;
-            var p = new Vector2(sp.x, Screen.height - sp.y) / uiScale;
-            ShadowLabel(new Rect(p.x - 80f, p.y - 16f, 160f, 32f), text, style);
         }
 
         void DrawHoverInfo()
@@ -2289,8 +2777,8 @@ namespace CrushHour
             {
                 int by = sim.escortedBy[drunkPerson];
                 text = by >= 0 && by < units.Count ? $"<b>Drunk</b>: being walked out by {units[by].Name}."
-                    : selectedUnit >= 0 ? $"<b>Drunk \u2013 needs escort</b>\nClick to have {units[selectedUnit].Name} walk them out."
-                    : "<b>Drunk \u2013 needs escort</b>\nSelect a patrol or police officer, then click them.";
+                    : selectedUnit >= 0 ? $"<b>Drunk – needs escort</b>\nClick to have {units[selectedUnit].Name} walk them out."
+                    : "<b>Drunk – needs escort</b>\nSelect a patrol or police officer, then click them.";
             }
             else if (venue.DoorNear(cell) is Door blockedDoor && blockedDoor.blocked)
             {
@@ -2305,16 +2793,16 @@ namespace CrushHour
                 text = venue.cells[cell] switch
                 {
                     CellType.Open => $"{sim.density[cell]:0.0} people per m²   pressure {sim.pressure[cell]:0.0}" +
-                                     (sim.pressure[cell] > crowd.crushThreshold * 0.8f ? "  <b>CRUSH RISK</b>" : "") +
-                                     (venue.smoke[cell] > 0.1f ? $"\nSmoke {venue.smoke[cell] * 100f:0}%" + (venue.smoke[cell] > crowd.smokeHarmLevel ? " <b>TOXIC</b>" : "") : "") +
-                                     (gasVisible && venue.gas[cell] > GasLeakIncident.DetectLevel ? $"\nGas {venue.gas[cell] * 100f:0}%" + (venue.gas[cell] > crowd.gasHarmLevel ? " <b>POISONOUS</b>" : "") : ""),
+                                     (sim.pressure[cell] > crowd.crushThreshold * 0.8f ? $"  <color=#{Hex(Red)}><b>CRUSH RISK</b></color>" : "") +
+                                     (venue.smoke[cell] > 0.1f ? $"\nSmoke {venue.smoke[cell] * 100f:0}%" + (venue.smoke[cell] > crowd.smokeHarmLevel ? $" <color=#{Hex(Red)}><b>TOXIC</b></color>" : "") : "") +
+                                     (gasVisible && venue.gas[cell] > GasLeakIncident.DetectLevel ? $"\nGas {venue.gas[cell] * 100f:0}%" + (venue.gas[cell] > crowd.gasHarmLevel ? $" <color=#{Hex(Red)}><b>POISONOUS</b></color>" : "") : ""),
                     CellType.Fire => "Fire",
                     CellType.Barrier => "Barrier (right-click with the Barrier tool to remove)",
                     CellType.Outside => "Outside: safe",
                     _ => venue.DescribeLocation(cell),
                 };
                 var region = venue.RegionAt(cell);
-                if (region != null) text += $"\n<color=#{ColorUtility.ToHtmlStringRGB(region.color)}>Zone: {region.name}</color>";
+                if (region != null) text += $"\n<color=#{Hex(Color.Lerp(region.color, Ink, 0.4f))}><b>Zone: {region.name}</b></color>";
                 if (selectedUnit >= 0 && tool == Tool.Command && venue.cells[cell] == CellType.Open)
                     text += $"\nClick to send {units[selectedUnit].Name} here.";
             }
@@ -2324,28 +2812,32 @@ namespace CrushHour
             float height = tooltipStyle.CalcHeight(content, width);
             var p = new Vector2(screen.x, Screen.height - screen.y) / uiScale;
             var rect = new Rect(Mathf.Min(p.x + 18, vw - width - 8), Mathf.Min(p.y + 14, vh - height - 8), width, height);
+            DropShadow(rect);
             GUI.Box(rect, content, tooltipStyle);
         }
 
+        // ---------------------------------------------------------------- Briefing and results cards
+
         void DrawWelcome()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 280, vh * 0.5f - 230, 560, 460), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
-            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 22, rect.width - 56, rect.height - 44));
-            GUILayout.Label("Welcome, safety commander", titleStyle);
-            GUILayout.Space(4);
+            var rect = Panel(new Rect(vw * 0.5f - 300, vh * 0.5f - 250, 600, 500));
+            Tab(rect.x, rect.y, "00 — BRIEFING", Yellow, Ink, Ink);
+            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 38, rect.width - 56, rect.height - 56));
+            GUILayout.Label("WELCOME, SAFETY COMMANDER", titleStyle);
+            GUILayout.Space(2);
             GUILayout.Label($"{sim.count} fans are at the Summer Music Festival. Soon something will go wrong: a fire, a falling light tower, a gas leak, a blocked exit... " +
                             "Every round is different. People head for the nearest gate; if it's shut, they try another, and the queues grow.", labelStyle);
             GUILayout.Space(4);
             GUILayout.Label($"Difficulty: <b>{DifficultyLabel}</b>. Esc (with nobody selected) goes back to the menu.", mutedStyle);
             GUILayout.Space(10);
-            WelcomeStep("1", "Plan", $"Every zone has a patrol ({venue.regions.Count} in all), plus {megaphoneOfficers} megaphone police. Move them by clicking them, then the map. Draw barriers to steer the crowd.");
-            WelcomeStep("2", "React", "When the fire starts, open the emergency gates and send your team to the crowds. Select a patrol and press an arrow key to send its whole zone out that way. The megaphone police tell everyone in earshot where to go.");
-            WelcomeStep("3", "Keep them calm", "Panicked crowds push and crush, and too much panic causes panic attacks. Put patrols where queues form: they line people up with room to breathe.");
+            WelcomeStep("1", "PLAN", $"Every zone has a patrol ({venue.regions.Count} in all), plus {megaphoneOfficers} megaphone police. Move them by clicking them, then the map. Draw barriers to steer the crowd.");
+            WelcomeStep("2", "REACT", "When disaster hits, open the emergency exits and send your team to the crowds. Select a patrol and press an arrow key to send its whole zone out that way. The megaphone police tell everyone in earshot where to go.");
+            WelcomeStep("3", "KEEP THEM CALM", "Panicked crowds push and crush, and too much panic causes panic attacks. Put patrols where queues form: they line people up with room to breathe.");
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Camera: WASD, scroll to zoom, Q/E to rotate.", smallStyle);
+            GUILayout.Label("Camera: WASD, scroll to zoom, Q/E to rotate. U hides the HUD.", smallStyle);
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Let's go", goodButtonStyle, GUILayout.Width(140), GUILayout.Height(40))) deferred.Add(() => welcomeDismissed = true);
+            if (GUILayout.Button("LET'S GO", goodButtonStyle, GUILayout.Width(170), GUILayout.Height(46))) deferred.Add(() => welcomeDismissed = true);
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
         }
@@ -2353,12 +2845,12 @@ namespace CrushHour
         void WelcomeStep(string number, string title, string text)
         {
             GUILayout.BeginHorizontal();
-            var badge = GUILayoutUtility.GetRect(30, 30, GUILayout.Width(30), GUILayout.Height(30));
-            GUI.Box(badge, number, BoxStyle(SelectedColor, 15, 0));
+            var badge = GUILayoutUtility.GetRect(32, 32, GUILayout.Width(32), GUILayout.Height(32));
+            Fill(badge, Red);
             GUI.Label(badge, number, numberStyle);
-            GUILayout.Space(10);
+            GUILayout.Space(12);
             GUILayout.BeginVertical();
-            GUILayout.Label($"<b>{title}</b>", labelStyle);
+            GUILayout.Label(title, stepTitleStyle);
             GUILayout.Label(text, mutedStyle);
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();
@@ -2367,35 +2859,37 @@ namespace CrushHour
 
         void DrawResults()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 250, vh * 0.5f - 236, 500, 472), BoxStyle(new Color(0.09f, 0.1f, 0.14f, 0.97f), 12, 0));
-            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 22, rect.width - 56, rect.height - 44));
-            GUILayout.Label(resultTitle, bigTitleStyle);
-            GUILayout.Space(6);
+            var rect = Panel(new Rect(vw * 0.5f - 260, vh * 0.5f - 256, 520, 512));
+            Tab(rect.x, rect.y, "RESULTS — DEBRIEF", Yellow, Ink, Ink);
+            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 36, rect.width - 56, rect.height - 54));
+            GUILayout.Label(resultTitle.ToUpperInvariant(), bigTitleStyle);
+            GUILayout.Space(4);
 
             // Star rating as three badges.
             var starsRow = GUILayoutUtility.GetRect(10, 34, GUILayout.ExpandWidth(true));
             for (int i = 0; i < 3; i++)
             {
-                var badge = new Rect(starsRow.center.x - 75 + i * 52, starsRow.y, 46, 30);
-                GUI.Box(badge, GUIContent.none, BoxStyle(i < stars ? new Color(1f, 0.78f, 0.2f) : new Color(1f, 1f, 1f, 0.12f), 8, 0));
+                var badge = new Rect(starsRow.center.x - 78 + i * 54, starsRow.y, 48, 30);
+                Frame(badge, i < stars ? Yellow : PaperLight, Ink);
+                if (i < stars) DrawStripes(new Rect(badge.x + 4, badge.y + 4, badge.width - 8, badge.height - 8), new Color(Ink.r, Ink.g, Ink.b, 0.25f));
             }
-            GUILayout.Label($"{stars} of 3 stars", TextStyle(12, MutedText, FontStyle.Normal, TextAnchor.UpperCenter));
+            GUILayout.Label($"{stars} OF 3 STARS", starsCaptionStyle);
             GUILayout.Space(8);
 
-            ResultRow("Safe", $"{finalSafe} / {sim.count}  ({finalSafe * 100f / sim.count:0}%)", GoodColor);
-            ResultRow("Injured", finalInjured == 0 ? "0" : $"{finalInjured}  ({sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke, {sim.InjuredByGas} gas)", finalInjured > 0 ? DangerColor : TextColor);
-            if (sim.InjuredByCollapse > 0) ResultRow("Crushed by collapse", sim.InjuredByCollapse.ToString(), DangerColor);
-            ResultRow("Panic attacks", finalAttacks.ToString(), finalAttacks > 0 ? AgentColors[5] : TextColor);
-            ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : TextColor);
-            ResultRow("Drunk left inside", finalDrunkInside == 0 ? "0" : $"{finalDrunkInside}  (-{finalDrunkInside * 50} points)", finalDrunkInside > 0 ? AgentColors[7] : TextColor);
-            ResultRow("Evacuation time", FormatTime(evacuationTime), TextColor);
-            ResultRow("Difficulty", DifficultyLabel, TextColor);
-            ResultRow("Score", finalScore.ToString(), TextColor);
+            ResultRow("Safe", $"{finalSafe} / {sim.count}  ({finalSafe * 100f / sim.count:0}%)", ExitGreen);
+            ResultRow("Injured", finalInjured == 0 ? "0" : $"{finalInjured}  ({sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke, {sim.InjuredByGas} gas)", finalInjured > 0 ? Red : Ink);
+            if (sim.InjuredByCollapse > 0) ResultRow("Crushed by collapse", sim.InjuredByCollapse.ToString(), Red);
+            ResultRow("Panic attacks", finalAttacks.ToString(), finalAttacks > 0 ? PanicInk : Ink);
+            ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : Ink);
+            ResultRow("Drunk left inside", finalDrunkInside == 0 ? "0" : $"{finalDrunkInside}  (-{finalDrunkInside * 50} points)", finalDrunkInside > 0 ? PanicInk : Ink);
+            ResultRow("Evacuation time", FormatTime(evacuationTime), Ink);
+            ResultRow("Difficulty", DifficultyLabel, Ink);
+            ResultRow("Score", finalScore.ToString(), Red);
             GUILayout.Space(8);
             GUILayout.Label(resultTip, mutedStyle);
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Play again: new crowd, new round  [R]", goodButtonStyle, GUILayout.Height(42))) deferred.Add(NewGame);
-            if (GUILayout.Button("Main menu", buttonStyle, GUILayout.Height(34)))
+            if (GUILayout.Button("PLAY AGAIN  [R]", goodButtonStyle, GUILayout.Height(46))) deferred.Add(NewGame);
+            if (GUILayout.Button("MAIN MENU", buttonStyle, GUILayout.Height(34)))
                 deferred.Add(() =>
                 {
                     NewGame();
@@ -2407,10 +2901,12 @@ namespace CrushHour
         void ResultRow(string caption, string value, Color color)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(caption, labelStyle, GUILayout.Width(180));
+            GUILayout.Label(caption, labelStyle, GUILayout.Width(170));
             GUILayout.FlexibleSpace();
-            GUILayout.Label($"<b>{value}</b>", TextStyle(14, color, FontStyle.Normal, TextAnchor.UpperRight));
+            SetTextColor(resultValueStyle, color);
+            GUILayout.Label(value, resultValueStyle);
             GUILayout.EndHorizontal();
+            Fill(GUILayoutUtility.GetRect(10, 1, GUILayout.ExpandWidth(true)), new Color(Ink.r, Ink.g, Ink.b, 0.15f));
         }
     }
 }
