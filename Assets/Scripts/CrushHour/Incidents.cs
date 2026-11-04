@@ -44,6 +44,18 @@ namespace CrushHour
         /// </summary>
         public virtual bool Silent => false;
 
+        /// <summary>Seconds before it starts that its early warning sign shows (see <see cref="WarningText"/>).</summary>
+        public const float WarningLead = 12f;
+        /// <summary>
+        /// Early warning sign shown <see cref="WarningLead"/> seconds before it starts ("Smoke seen at the Food Court"),
+        /// or null for none (gas is silent; blocked exits and chained collapses just happen). Rewards players who watch.
+        /// </summary>
+        public virtual string WarningText => null;
+        /// <summary>Where the warning sign is (for the map marker), or null.</summary>
+        public virtual Vector2Int? WarningCell(FestivalVenue venue) => null;
+        /// <summary>Seconds until it starts once its countdown runs; infinity while its trigger isn't met yet; 0 once started.</summary>
+        public float TimeToStart => Started ? 0f : timerArmed ? timer : float.PositiveInfinity;
+
         /// <summary>The schedule it's in (set by <see cref="IncidentSchedule.Add"/> / <see cref="IncidentSchedule.StartNow"/>).</summary>
         internal IncidentSchedule owner;
 
@@ -137,6 +149,9 @@ namespace CrushHour
         public override string LogText => $"FIRE at {SiteName}! People nearby are running from it.";
         public override string Advice => "Open the gates and send your team to the crowds.";
         public override string Announcement => $"Fire at {SiteName}!";
+        public override string WarningText => !fixedCell && siteIndex >= 0 && siteName != null ? $"Smoke seen at {siteName}. Something is smouldering there." : null;
+        public override Vector2Int? WarningCell(FestivalVenue venue) =>
+            !fixedCell && siteIndex >= 0 && siteIndex < venue.fireSites.Count ? venue.fireSites[siteIndex].cell : null;
 
         protected override void Start(FestivalVenue venue, CrowdSimulation sim)
         {
@@ -242,6 +257,10 @@ namespace CrushHour
             region = venue.regionOf[FestivalVenue.CellAt(tower.rect.center)];
             regionName = region >= 0 ? venue.regions[region].name : "the stage";
         }
+
+        public override string WarningText => trigger == null ? $"The {side} light tower near {regionName} is creaking. Its rigging looks loose." : null;
+        public override Vector2Int? WarningCell(FestivalVenue venue) =>
+            new Vector2Int(Mathf.FloorToInt(tower.rect.center.x), Mathf.FloorToInt(tower.rect.center.y));
 
         /// <summary>Falls in a random direction (picked now, with <paramref name="rng"/>).</summary>
         public static TowerCollapseIncident RandomDirection(FestivalVenue venue, int towerIndex, System.Random rng) =>

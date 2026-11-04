@@ -29,8 +29,13 @@ namespace CrushHour
         {
             public Role role;
             public int number;
-            /// <summary>Patrolmen: the zone (index into venue.regions) they look after. -1 for police.</summary>
+            /// <summary>
+            /// Patrolmen: the zone (index into venue.regions) they look after: the one they're standing in (kept while
+            /// they cross fences or the outside). -1 for police.
+            /// </summary>
             public int homeRegion = -1;
+            /// <summary>Patrolmen: the cap, recoloured with the zone they're in.</summary>
+            public Renderer cap;
             /// <summary>Patrolmen: the way they're looking, in grid coordinates (x, y), unit length. Drawn as an arrow on the ground.</summary>
             public Vector2 facing = Vector2.up;
             /// <summary>Display name when set (patrolmen: "Food Court – Patrol").</summary>
@@ -45,8 +50,10 @@ namespace CrushHour
             /// <summary>Where the unit started (its post); it walks back here after an escort.</summary>
             public Vector2 home;
             public EscortPhase escortPhase;
-            /// <summary>Drunk person being fetched or escorted (-1 none), and the door they're being taken to.</summary>
+            /// <summary>Drunk person being fetched (-1 none), and the door the group is being taken to.</summary>
             public int escortee = -1, escortDoor = -1;
+            /// <summary>Drunk people being walked out together (the fetched one plus every other drunk fan in the ring).</summary>
+            public readonly List<int> group = new();
             public float repathTimer;
             public Vector2 heading = Vector2.up;
             public Transform wave;          // megaphone announcement ripple
@@ -94,7 +101,7 @@ namespace CrushHour
         /// </summary>
         // Version 5: one patrolman per zone replaces the 4 stewards (crowd.patrolRadius is new).
         // Version 6: drunk people (crowd.drunkFraction 0.02 and friends).
-        const int CurrentSettingsVersion = 6;
+        const int CurrentSettingsVersion = 7; // 7: faster crush damage (injuryRate 0.12)
         [SerializeField, HideInInspector] int settingsVersion;
 
         void OnValidate() => UpgradeSettings();
@@ -164,7 +171,17 @@ namespace CrushHour
         bool paused, heatmap = true, incidentStarted, showRegions = true;
         int speedIndex, barriersUsed, lastInjured, lastSmokeInjured, lastAttacks, gatesOpened, selectedUnit = -1;
         float simAccumulator, groundTimer, warningTimer, attackWarningTime = -99f;
-        float evacuationTime, lastProgressTime;
+        float evacuationTime;
+        /// <summary>Stall detection: exits, or the closest sober person getting nearer to an open exit.</summary>
+        readonly EvacuationProgress evacuationProgress = new();
+        /// <summary>Exit throughput: once a second a snapshot of sim.exitsByDoor (the last ThroughputWindow + 1 kept), and people per minute per door.</summary>
+        readonly Queue<int[]> exitSnapshots = new();
+        float[] exitRate = Array.Empty<float>();
+        float exitSampleTimer;
+        const int ThroughputWindow = 10;
+        /// <summary>Incidents whose early warning sign has been shown, and where (map marker until the incident starts).</summary>
+        readonly HashSet<Incident> warnedIncidents = new();
+        readonly List<(Incident incident, Vector2Int cell)> warningMarkers = new();
         /// <summary>This round's disasters. Filled for the chosen difficulty when the round starts.</summary>
         IncidentSchedule schedule;
         /// <summary>Chosen in Planning (welcome card or F1/F2/F3), remembered in PlayerPrefs.</summary>
@@ -172,7 +189,6 @@ namespace CrushHour
         DifficultySettings difficultySettings = DifficultySettings.For(Difficulty.Medium);
         const string DifficultyPref = "CrushHour.Difficulty";
         readonly List<Incident> startedIncidents = new();
-        int lastSafe;
         /// <summary>What the first evacuation incident is, as the police shout it ("Fire at the Food Court!").</summary>
         string incidentAnnouncement;
 
@@ -330,8 +346,13 @@ namespace CrushHour
             tool = Tool.Command;
             paused = incidentStarted = dragging = false;
             selectedUnit = -1;
-            barriersUsed = lastInjured = lastSmokeInjured = lastAttacks = gatesOpened = lastSafe = 0;
-            simAccumulator = evacuationTime = warningTimer = lastProgressTime = 0f;
+            barriersUsed = lastInjured = lastSmokeInjured = lastAttacks = gatesOpened = 0;
+            simAccumulator = evacuationTime = warningTimer = 0f;
+            evacuationProgress.Reset(0f);
+            exitSnapshots.Clear();
+            exitSampleTimer = 0f;
+            warnedIncidents.Clear();
+            warningMarkers.Clear();
             attackWarningTime = -99f;
             bannerTime = 0f;
             incidentAnnouncement = null;
@@ -409,14 +430,24 @@ namespace CrushHour
 
         void SpawnUnits()
         {
-            // One patrolman per zone, standing at the zone's post.
-            for (int r = 0; r < venue.regions.Count; r++)
+            // The difficulty's patrols (fewer than zones) start at the posts of the busiest zones; the other zones are
+            // uncovered until the player moves someone there. A patrol looks after whichever zone it stands in.
+            var zones = new List<int>();
+            for (int r = 0; r < venue.regions.Count; r++) zones.Add(r);
+            var people = new int[venue.regions.Count];
+            for (int r = 0; r < people.Length; r++) people[r] = sim.CountInRegion(r, venue);
+            zones.Sort((a, b) => people[b] != people[a] ? people[b].CompareTo(people[a]) : a.CompareTo(b));
+            int patrols = Mathf.Clamp(difficultySettings.patrolCount, 1, venue.regions.Count);
+            zones.RemoveRange(patrols, zones.Count - patrols);
+            zones.Sort();
+            for (int n = 0; n < zones.Count; n++)
             {
+                int r = zones[n];
                 var region = venue.regions[r];
                 var post = new Vector2(region.post.x + 0.5f, region.post.y + 0.5f);
-                var unit = SpawnUnit(Role.Patrolman, r, post);
+                var unit = SpawnUnit(Role.Patrolman, n, post, r);
                 unit.homeRegion = r;
-                unit.label = $"{region.name} \u2013 Patrol";
+                unit.label = $"Patrol {n + 1}";
                 unit.root.name = unit.label;
                 // Face the middle of the zone; if the post already is the middle, face the middle of the grounds.
                 Vector2 look = region.Center - post;
@@ -435,7 +466,7 @@ namespace CrushHour
             }
         }
 
-        Unit SpawnUnit(Role role, int index, Vector2 post)
+        Unit SpawnUnit(Role role, int index, Vector2 post, int zone = -1)
         {
             var unit = new Unit { role = role, number = index + 1, position = post, home = post };
             var root = unit.root = new GameObject(unit.Name).transform;
@@ -443,9 +474,9 @@ namespace CrushHour
             root.position = new Vector3(post.x, 0f, post.y);
             if (role == Role.Patrolman)
             {
-                var zoneColor = venue.regions[index].color;
+                var zoneColor = zone >= 0 ? venue.regions[zone].color : PatrolColor;
                 AddPart(root, new Vector3(0f, 0.9f, 0f), new Vector3(0.6f, 1.8f, 0.6f), PatrolColor);
-                AddPart(root, new Vector3(0f, 1.9f, 0f), new Vector3(0.7f, 0.2f, 0.7f), zoneColor); // cap in the zone's colour
+                unit.cap = AddPart(root, new Vector3(0f, 1.9f, 0f), new Vector3(0.7f, 0.2f, 0.7f), zoneColor).GetComponent<Renderer>(); // cap in the zone's colour
                 var arrowObject = new GameObject("Facing");
                 arrowObject.transform.SetParent(root, false);
                 var arrow = unit.arrow = arrowObject.AddComponent<LineRenderer>();
@@ -602,6 +633,7 @@ namespace CrushHour
                 foreach (var incident in schedule.incidents)
                     if (incident is TowerCollapseIncident tower && tower.Collapsed && !tower.collapseShown) OnTowerCollapsed(tower);
                 CheckGas();
+                CheckWarningSigns();
                 if (fireChanged) OnFireChanged();
             }
 
@@ -611,6 +643,7 @@ namespace CrushHour
             UpdateDoorClearing(dt);
             sim.Step(dt, venue, incidentStarted);
             sim.ApplyStewards(patrolPositions, dt, incidentStarted, crowd.patrolRadius);
+            UpdateThroughput(dt);
             if (!incidentStarted) return;
 
             UpdateMegaphones(dt);
@@ -620,16 +653,49 @@ namespace CrushHour
             CheckWarnings(dt);
             if (wasPlaying && sim.ShowStopped)
                 Log("The band has stopped playing. Everyone is starting to realise something is wrong.", Severity.Warning);
-            if (sim.SafeCount != lastSafe)
-            {
-                lastSafe = sim.SafeCount;
-                lastProgressTime = evacuationTime;
-            }
-            // Everyone left is trying to get out but nobody has made it for a while: they're trapped.
-            // Drunk people never leave on their own, so the round ends on the sober ones.
-            bool stalled = sim.EvacuatingCount == sim.SoberActiveCount && evacuationTime - lastProgressTime > 20f;
+            // Everyone left is trying to get out but nobody has made it, or even got closer to an exit, for a while:
+            // they're trapped. Drunk people never leave on their own, so the round ends on the sober ones.
+            evacuationProgress.Update(evacuationTime, dt, sim, venue);
+            bool stalled = evacuationProgress.Stalled(evacuationTime, sim);
             if (sim.SoberActiveCount == 0 || stalled || evacuationTime >= evacuationTimeLimit) EndGame();
         }
+
+        /// <summary>
+        /// Early warning signs: <see cref="Incident.WarningLead"/> seconds before an incident with a sign starts (smoke before
+        /// a fire, creaking before a tower sways), a feed line, a banner and a map marker. Attentive players get a head
+        /// start: open gates and move patrols before the alarm.
+        /// </summary>
+        void CheckWarningSigns()
+        {
+            foreach (var incident in schedule.incidents)
+            {
+                if (incident.Started || incident.WarningText == null || warnedIncidents.Contains(incident)) continue;
+                if (incident.TimeToStart > Incident.WarningLead) continue;
+                warnedIncidents.Add(incident);
+                Log(incident.WarningText, Severity.Warning);
+                ShowBanner(incident is FireIncident ? "SMOKE SEEN" : "SOMETHING'S WRONG", incident.WarningText, Severity.Warning);
+                if (incident.WarningCell(venue) is Vector2Int cell) warningMarkers.Add((incident, cell));
+            }
+            warningMarkers.RemoveAll(m => m.incident.Started);
+        }
+
+        /// <summary>Once a second: people per minute through each door over the last <see cref="ThroughputWindow"/> seconds.</summary>
+        void UpdateThroughput(float dt)
+        {
+            if (exitRate.Length != venue.doors.Count) exitRate = new float[venue.doors.Count];
+            exitSampleTimer -= dt;
+            if (exitSampleTimer > 0f) return;
+            exitSampleTimer = 1f;
+            exitSnapshots.Enqueue((int[])sim.exitsByDoor.Clone());
+            while (exitSnapshots.Count > ThroughputWindow + 1) exitSnapshots.Dequeue();
+            var oldest = exitSnapshots.Peek();
+            int seconds = exitSnapshots.Count - 1;
+            for (int d = 0; d < exitRate.Length; d++)
+                exitRate[d] = seconds > 0 ? (sim.exitsByDoor[d] - oldest[d]) * 60f / seconds : 0f;
+        }
+
+        /// <summary>People per minute through <paramref name="door"/> (index into venue.doors) lately.</summary>
+        float ExitRate(int door) => door >= 0 && door < exitRate.Length ? exitRate[door] : 0f;
 
         /// <summary>Planning only: switches difficulty (saved) and starts a new game with its crowd.</summary>
         void SetDifficulty(Difficulty d)
@@ -928,10 +994,27 @@ namespace CrushHour
                         budget = 0f;
                     }
                 }
+                if (u.role == Role.Patrolman)
+                {
+                    int zone = venue.regionOf[FestivalVenue.CellAt(u.position)];
+                    if (zone >= 0 && zone != u.homeRegion) SetPatrolZone(u, zone);
+                }
                 u.clearingDoor = ClearingDoorFor(u);
                 // While walking someone out or clearing a door, the unit isn't calming anyone.
                 if (u.role == Role.Patrolman && u.escortPhase != EscortPhase.Escorting && u.clearingDoor < 0) patrolPositions.Add(u.position);
             }
+        }
+
+        /// <summary>A patrol walked into another zone: it now looks after that one (orders, escorts, cap and arrow colour).</summary>
+        void SetPatrolZone(Unit u, int zone)
+        {
+            u.homeRegion = zone;
+            var color = venue.regions[zone].color;
+            if (u.cap != null) u.cap.sharedMaterial = Lit(color);
+            if (u.arrow != null) u.arrow.sharedMaterial = Unlit(color);
+            // The last order was for the old zone: drop its arrow.
+            u.orderDoor = -1;
+            if (u.orderArrow != null) u.orderArrow.enabled = false;
         }
 
         float UnitSpeed(Unit u) =>
@@ -1041,7 +1124,9 @@ namespace CrushHour
             blockerViews[door] = root.gameObject;
         }
 
-        const float EscortPickupRange = 3f, EscortSpeedFactor = 0.7f, EscortFollowGap = 1f;
+        const float EscortPickupRange = 3f, EscortSpeedFactor = 0.7f, EscortFollowGap = 1f, EscortLineGap = 0.8f, EscortDoorWait = 6f;
+        /// <summary>Most drunk fans one unit walks out at once (the one it fetched plus the others inside its ring).</summary>
+        const int MaxEscortGroup = 6;
 
         /// <summary>
         /// "Escort nearest drunk" (button / F): the nearest drunk person nobody is escorting, in the patrol's own zone
@@ -1068,7 +1153,7 @@ namespace CrushHour
             var u = units[unitIndex];
             CancelEscort(u);
             for (int k = 0; k < units.Count; k++)
-                if (units[k].escortee == person) CancelEscort(units[k]); // someone else was on it
+                if (units[k].escortee == person || units[k].group.Contains(person)) CancelEscort(units[k]); // someone else was on it
             u.escortee = person;
             if ((sim.position[person] - u.position).sqrMagnitude <= EscortPickupRange * EscortPickupRange) BeginWalkOut(unitIndex);
             else
@@ -1079,20 +1164,32 @@ namespace CrushHour
             }
         }
 
-        /// <summary>Takes the person by the arm and heads for the nearest open door (by walking distance).</summary>
+        /// <summary>
+        /// Takes the person by the arm, rounds up every other unescorted drunk fan inside the patrol's ring (up to
+        /// <see cref="MaxEscortGroup"/> in all) and heads for the nearest open door (by walking distance).
+        /// </summary>
         void BeginWalkOut(int unitIndex)
         {
             var u = units[unitIndex];
-            int person = u.escortee;
-            sim.SetEscort(person, unitIndex);
+            u.group.Clear();
+            u.group.Add(u.escortee);
+            float ring = RoleRadius(u.role);
+            for (int i = 0; i < sim.count && u.group.Count < MaxEscortGroup; i++)
+            {
+                if (i == u.escortee || !sim.drunk[i] || sim.state[i] != AgentState.Active || sim.escortedBy[i] >= 0) continue;
+                if ((sim.position[i] - u.position).sqrMagnitude <= ring * ring) u.group.Add(i);
+            }
+            foreach (int person in u.group) sim.SetEscort(person, unitIndex);
             u.escortPhase = EscortPhase.Escorting;
+            u.repathTimer = 0f; // counts the wait at the door
             if (!RouteToNearestDoor(u))
             {
                 Log($"{u.Name} can't find an open exit to take them to. Open a gate.", Severity.Warning);
                 CancelEscort(u);
                 return;
             }
-            Log($"{u.Name} is walking a drunk fan out via {venue.doors[u.escortDoor].name}.", Severity.Good);
+            string who = u.group.Count == 1 ? "a drunk fan" : $"{u.group.Count} drunk fans";
+            Log($"{u.Name} is walking {who} out via {venue.doors[u.escortDoor].name}.", Severity.Good);
         }
 
         /// <summary>Paths the unit to the open door it can reach by the shortest walk (to a cell just inside it).</summary>
@@ -1130,6 +1227,9 @@ namespace CrushHour
         void CancelEscort(Unit u)
         {
             if (u.escortee >= 0 && sim.escortedBy[u.escortee] >= 0) sim.SetEscort(u.escortee, -1);
+            foreach (int person in u.group)
+                if (sim.escortedBy[person] >= 0) sim.SetEscort(person, -1);
+            u.group.Clear();
             u.escortee = -1;
             u.escortDoor = -1;
             if (u.escortPhase != EscortPhase.Returning) u.escortPhase = EscortPhase.None;
@@ -1137,6 +1237,7 @@ namespace CrushHour
 
         void ReturnToPost(Unit u)
         {
+            u.group.Clear();
             u.escortee = -1;
             u.escortDoor = -1;
             u.escortPhase = EscortPhase.Returning;
@@ -1156,7 +1257,8 @@ namespace CrushHour
                     case EscortPhase.Fetching:
                     {
                         int person = u.escortee;
-                        if (person < 0 || sim.state[person] != AgentState.Active) { CancelEscort(u); break; }
+                        // Gone, or another patrol already took them in its group.
+                        if (person < 0 || sim.state[person] != AgentState.Active || sim.escortedBy[person] >= 0) { CancelEscort(u); break; }
                         if ((sim.position[person] - u.position).sqrMagnitude <= EscortPickupRange * EscortPickupRange)
                         {
                             BeginWalkOut(k);
@@ -1174,10 +1276,11 @@ namespace CrushHour
                     }
                     case EscortPhase.Escorting:
                     {
-                        int person = u.escortee;
-                        if (person < 0 || sim.state[person] != AgentState.Active)
+                        // Drop anyone hurt on the way (or taken over); with nobody left, go back.
+                        int self = k;
+                        u.group.RemoveAll(p => sim.state[p] != AgentState.Active || sim.escortedBy[p] != self);
+                        if (u.group.Count == 0)
                         {
-                            // Hurt on the way (or already out): go back.
                             CancelEscort(u);
                             ReturnToPost(u);
                             break;
@@ -1186,17 +1289,32 @@ namespace CrushHour
                         {
                             if (!RouteToNearestDoor(u)) { CancelEscort(u); ReturnToPost(u); break; }
                         }
+                        // The group follows in a line behind the unit.
                         float speed = UnitSpeed(u);
-                        sim.SetEscortTarget(person, u.position - u.heading * EscortFollowGap, speed);
-                        bool arrived = u.path.Count == 0;
-                        bool together = (sim.position[person] - u.position).sqrMagnitude <= EscortPickupRange * EscortPickupRange;
-                        if (arrived && together)
+                        for (int g = 0; g < u.group.Count; g++)
+                            sim.SetEscortTarget(u.group[g], u.position - u.heading * (EscortFollowGap + g * EscortLineGap), speed);
+                        if (u.path.Count > 0) break;
+                        // At the door: wait until the line has caught up (at most a few seconds), then take them out.
+                        u.repathTimer += dt;
+                        bool together = true;
+                        for (int g = 0; g < u.group.Count && together; g++)
                         {
-                            string door = venue.doors[u.escortDoor].name;
-                            sim.EscortOut(person, u.escortDoor);
-                            Log($"{u.Name} got a drunk fan out via {door}. ({sim.DrunkInsideCount} drunk still inside)", Severity.Good);
-                            ReturnToPost(u);
+                            float reach = EscortPickupRange + g * EscortLineGap;
+                            together = (sim.position[u.group[g]] - u.position).sqrMagnitude <= reach * reach;
                         }
+                        if (!together && u.repathTimer < EscortDoorWait) break;
+                        string door = venue.doors[u.escortDoor].name;
+                        int out_ = 0;
+                        for (int g = 0; g < u.group.Count; g++)
+                        {
+                            float reach = EscortPickupRange + g * EscortLineGap;
+                            if ((sim.position[u.group[g]] - u.position).sqrMagnitude > reach * reach) continue;
+                            sim.EscortOut(u.group[g], u.escortDoor);
+                            out_++;
+                        }
+                        CancelEscort(u); // anyone left behind goes back to wandering
+                        Log($"{u.Name} got {(out_ == 1 ? "a drunk fan" : $"{out_} drunk fans")} out via {door}. ({sim.DrunkInsideCount} drunk still inside)", Severity.Good);
+                        ReturnToPost(u);
                         break;
                     }
                     case EscortPhase.Returning:
@@ -1260,11 +1378,10 @@ namespace CrushHour
             finalAttacks = sim.PanicAttacksTotal;
             finalScore = difficultySettings.Score(finalSafe, finalInjured, finalTrapped, finalDrunkInside, finalAttacks, evacuationTime, evacuationTimeLimit);
 
-            float safeRatio = finalSafe / (float)sim.count;
-            stars = 0;
-            if (safeRatio >= 0.9f) stars = 1;
-            if (stars == 1 && finalInjured <= sim.count / 100) stars = 2;
-            if (stars == 2 && finalInjured == 0 && finalTrapped == 0 && finalDrunkInside == 0 && evacuationTime <= evacuationTimeLimit * 0.5f) stars = 3;
+            int drunkTotal = 0;
+            for (int i = 0; i < sim.count; i++)
+                if (sim.drunk[i]) drunkTotal++;
+            stars = DifficultySettings.Stars(sim.count, finalSafe, finalInjured, finalTrapped, finalDrunkInside, drunkTotal, evacuationTime, evacuationTimeLimit);
             MapProgress.Record(selectedMap, difficultySettings.difficulty, stars, finalScore);
 
             resultTitle = finalTrapped == 0 ? "Venue evacuated" : evacuationTime >= evacuationTimeLimit ? "Time's up" : "Evacuation stalled";
@@ -1298,17 +1415,32 @@ namespace CrushHour
             if (tool == Tool.Barrier) selectedUnit = -1;
         }
 
-        void ToggleGate(Gate gate)
+        /// <summary>Gate crews busy: one per emergency gate that is open or opening.</summary>
+        int GateCrewsInUse
         {
-            gate.open = !gate.open;
-            if (gate.open) gatesOpened++;
-            Log(gate.open ? $"Opening {gate.name}..." : $"Closing {gate.name}...");
+            get
+            {
+                int n = 0;
+                foreach (var g in venue.gates)
+                    if (g.open) n++;
+                return n;
+            }
         }
 
-        void OpenAllGates()
+        int FreeGateCrews => Mathf.Max(0, difficultySettings.gateCrews - GateCrewsInUse);
+
+        /// <summary>Opens or closes a gate. Opening needs a free gate crew (the difficulty has only a few), so the player has to choose.</summary>
+        void ToggleGate(Gate gate)
         {
-            foreach (var g in venue.gates)
-                if (!g.open) ToggleGate(g);
+            if (!gate.open && FreeGateCrews <= 0)
+            {
+                Log($"No free gate crew for {gate.name}. All {difficultySettings.gateCrews} crews are on other gates: close one first.", Severity.Warning);
+                ShowBanner("NO FREE GATE CREW", $"You have {difficultySettings.gateCrews} gate crews. Close a gate to free one.", Severity.Warning);
+                return;
+            }
+            gate.open = !gate.open;
+            if (gate.open) gatesOpened++;
+            Log(gate.open ? $"Opening {gate.name}... ({FreeGateCrews} gate crew{(FreeGateCrews == 1 ? "" : "s")} free)" : $"Closing {gate.name}...");
         }
 
         Unit SelectedPatrol() =>
@@ -2389,7 +2521,7 @@ namespace CrushHour
                     if (selected) DrawSlab(row, Red, 12);
                     if (GUI.Button(row, GUIContent.none, selected ? GUIStyle.none : hoverStyle)) SelectUnit(i, true);
                     var ink = selected ? Color.white : Ink;
-                    string number = zone ? $"{u.homeRegion + 1:00}" : $"P{u.number}";
+                    string number = u.role == Role.Patrolman ? $"P{u.number}" : $"M{u.number}";
                     Label(new Rect(row.x + 6, row.y, 24, rowHeight), number, rowNumberStyle, ink);
                     Fill(new Rect(row.x + 30, row.y + 5, 2, rowHeight - 10), selected ? new Color(1f, 1f, 1f, 0.75f) : Ink);
                     Swatch(new Rect(row.x + 39, row.y + 9, 9, 9), UnitColor(u));
@@ -2406,39 +2538,84 @@ namespace CrushHour
 
         // ---------------------------------------------------------------- 02 — Exits
 
+        /// <summary>
+        /// "02 — EXITS": every exit (entrances and emergency gates) with its sign, people per minute going through it lately,
+        /// and Open/Close for gates. The header shows the free gate crews: only that many gates can be open at once.
+        /// </summary>
         void DrawControlPanel()
         {
-            const float width = 252, rowHeight = 32;
-            float height = 24 + (showGates ? 6 + venue.gates.Count * rowHeight + 52 : 6);
+            const float width = 268, rowHeight = 32;
+            int doors = venue.doors.Count;
+            float height = 24 + (showGates ? 6 + doors * rowHeight + 28 : 6);
             var rect = Panel(new Rect(vw - 14 - width, TopBarHeight + 16, width, height));
-            int open = 0;
-            foreach (var g in venue.gates)
-                if (g.open) open++;
-            if (SectionHeader(rect, "02 — EXITS", $"{open}/{venue.gates.Count} OPEN", showGates)) deferred.Add(() => showGates = !showGates);
+            int free = FreeGateCrews;
+            if (SectionHeader(rect, "02 — EXITS", $"{free}/{difficultySettings.gateCrews} CREWS FREE", showGates)) deferred.Add(() => showGates = !showGates);
             if (!showGates) return;
 
+            // Entrances first (always open unless blocked), then the gates.
             float y = rect.y + 30;
-            foreach (var g in venue.gates)
-            {
-                var row = new Rect(rect.x + 10, y, width - 20, rowHeight);
-                var nameRect = new Rect(row.x, row.y, row.width - 56, rowHeight);
-                if (GUI.Button(nameRect, GUIContent.none, hoverStyle)) cameraRig.Focus(new Vector3(g.rect.center.x, 0f, g.rect.center.y));
-                ExitSign(new Rect(row.x + 2, row.y + 5, 22, 22), g);
-                GUI.Label(new Rect(row.x + 32, row.y, nameRect.width - 32, rowHeight), g.name, rowNameStyle);
-                Label(new Rect(nameRect.x, nameRect.y, nameRect.width - 6, rowHeight), GateWord(g), gateStatusStyle, GateInk(g));
-                if (GUI.Button(new Rect(row.xMax - 52, row.y + 5, 52, 22), g.open ? "CLOSE" : "OPEN", g.open ? smallButtonStyle : smallGoodButtonStyle)) ToggleGate(g);
-                Fill(new Rect(row.x, row.yMax - 1, row.width, 1), new Color(Ink.r, Ink.g, Ink.b, 0.25f));
-                y += rowHeight;
-            }
-            var all = new Rect(rect.x + 10, y + 10, width - 20, 32);
-            DrawSlab(all, Hovered(all) ? HoverShade(Ink) : Ink, 12);
-            if (GUI.Button(all, GUIContent.none, GUIStyle.none)) OpenAllGates();
-            Label(new Rect(all.x + 12, all.y, all.width, all.height), "OPEN ALL EXITS", tabStyle, Paper);
+            for (int pass = 0; pass < 2; pass++)
+                for (int d = 0; d < doors; d++)
+                {
+                    var door = venue.doors[d];
+                    if ((door.gate == null) != (pass == 0)) continue;
+                    var row = new Rect(rect.x + 10, y, width - 20, rowHeight);
+                    var nameRect = new Rect(row.x, row.y, row.width - 56, rowHeight);
+                    if (GUI.Button(nameRect, GUIContent.none, hoverStyle)) cameraRig.Focus(new Vector3(door.Center.x, 0f, door.Center.y));
+                    DoorSign(new Rect(row.x + 2, row.y + 5, 22, 22), door);
+                    float rate = ExitRate(d);
+                    string flow = rate >= 0.5f ? $"{rate:0}/min" : incidentStarted && door.IsOpen ? "0/min" : "";
+                    float flowWidth = flow.Length > 0 ? TextWidth(flow, gateStatusStyle) + 8 : 0;
+                    Label(new Rect(row.x + 32, row.y, nameRect.width - 32 - flowWidth, rowHeight), door.name, rowNameStyle, Ink);
+                    if (flow.Length > 0) Label(new Rect(nameRect.x, nameRect.y, nameRect.width - 4, rowHeight), flow, gateStatusStyle, rate >= 0.5f ? ExitGreen : InkFaint);
+                    var buttonRect = new Rect(row.xMax - 52, row.y + 5, 52, 22);
+                    if (door.blocked) Label(buttonRect, "BLOCKED", gateStatusStyle, Red);
+                    else if (door.gate == null) Label(buttonRect, "ENTRY", gateStatusStyle, InkFaint);
+                    else
+                    {
+                        var g = door.gate;
+                        bool canOpen = g.open || free > 0;
+                        bool wasEnabled = GUI.enabled;
+                        GUI.enabled = canOpen;
+                        if (GUI.Button(buttonRect, g.open ? "CLOSE" : free > 0 ? "OPEN" : "NO CREW", g.open ? smallButtonStyle : smallGoodButtonStyle)) ToggleGate(g);
+                        GUI.enabled = wasEnabled;
+                    }
+                    Fill(new Rect(row.x, row.yMax - 1, row.width, 1), new Color(Ink.r, Ink.g, Ink.b, 0.25f));
+                    y += rowHeight;
+                }
+            string crews = free == 0 ? $"All {difficultySettings.gateCrews} gate crews busy: close a gate to open another."
+                : $"{free} of {difficultySettings.gateCrews} gate crews free. Choose your gates.";
+            Label(new Rect(rect.x + 10, y + 4, width - 20, 20), crews, smallStyle, free == 0 ? Red : InkSoft);
         }
 
         static string GateWord(Gate g) => g.Passable ? "OPEN" : g.open ? "OPENING" : "SHUT";
 
         static Color GateInk(Gate g) => g.Passable ? ExitGreen : g.open ? Amber : Red;
+
+        /// <summary>Sign for any exit: a blocked one is red with "!", an entrance green, a gate as <see cref="ExitSign"/>.</summary>
+        void DoorSign(Rect rect, Door door)
+        {
+            if (door.blocked)
+            {
+                Fill(rect, Red);
+                GUI.Label(rect, "!", crossStyle);
+            }
+            else if (door.gate != null) ExitSign(rect, door.gate);
+            else
+            {
+                Fill(rect, ExitGreen);
+                DrawRunner(rect, Color.white);
+            }
+        }
+
+        void DrawRunner(Rect rect, Color color)
+        {
+            if (!Repaint) return;
+            var old = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(new Rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4), Runner);
+            GUI.color = old;
+        }
 
         /// <summary>Exit sign: green with the runner (open), yellow with a navy runner (opening), red with a cross (shut).</summary>
         void ExitSign(Rect rect, Gate g)
@@ -2447,13 +2624,7 @@ namespace CrushHour
             {
                 Fill(rect, g.Passable ? ExitGreen : Yellow);
                 if (!g.Passable) Frame(rect, Yellow, Ink);
-                if (Repaint)
-                {
-                    var old = GUI.color;
-                    GUI.color = g.Passable ? Color.white : Ink;
-                    GUI.DrawTexture(new Rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4), Runner);
-                    GUI.color = old;
-                }
+                DrawRunner(rect, g.Passable ? Color.white : Ink);
             }
             else
             {
@@ -2568,7 +2739,7 @@ namespace CrushHour
             int inZone = sim.UnescortedDrunksInRegion(u.homeRegion, venue);
             bool busy = u.escortPhase == EscortPhase.Escorting;
             string title = busy ? "ESCORTING" : u.escortPhase == EscortPhase.Fetching ? "FETCHING" : "ESCORT [F]";
-            string sub = busy || u.escortPhase == EscortPhase.Fetching ? "a drunk fan" : sim.DrunkInsideCount == 0 ? "no drunks left" : $"{inZone} here, {sim.DrunkInsideCount} in all";
+            string sub = busy ? (u.group.Count == 1 ? "a drunk fan" : $"{u.group.Count} drunk fans") : u.escortPhase == EscortPhase.Fetching ? "a drunk fan" : sim.DrunkInsideCount == 0 ? "no drunks left" : $"{inZone} here, {sim.DrunkInsideCount} in all";
             bool enabled = !busy && sim.DrunkInsideCount > 0;
             Fill(escort, enabled ? Ink : Color.Lerp(Ink, Paper, 0.5f));
             int unitIndex = orderPanelUnit;
@@ -2757,9 +2928,25 @@ namespace CrushHour
             foreach (var (text, position) in labels)
                 if (ScreenPoint(position, out var p))
                     ShadowLabel(new Rect(p.x - 90f, p.y - 14f, 180f, 28f), text, landmarkStyle);
-            foreach (var door in venue.doors)
+            foreach (var (incident, cell) in warningMarkers)
             {
-                if (door.gate == null && !door.blocked) continue; // entrances already have their landmark label
+                if (!ScreenPoint(new Vector3(cell.x + 0.5f, 1.5f, cell.y + 0.5f), out var p)) continue;
+                var old = GUI.color;
+                GUI.color = new Color(1f, 1f, 1f, 0.65f + 0.35f * Mathf.Sin(Time.unscaledTime * 6f));
+                WorldTag(p, "!", incident is FireIncident ? "SMOKE SEEN" : "TOWER CREAKING", null, true);
+                GUI.color = old;
+            }
+            for (int d = 0; d < venue.doors.Count; d++)
+            {
+                var door = venue.doors[d];
+                float rate = ExitRate(d);
+                if (door.gate == null && !door.blocked)
+                {
+                    // Entrances already have their landmark label: just the flow under it.
+                    if (incidentStarted && ScreenPoint(new Vector3(door.Center.x, 0.5f, door.Center.y), out var ep))
+                        HaloLabel(new Rect(ep.x - 60f, ep.y + 12f, 120f, 16f), $"{rate:0}/MIN", signNameStyle, Paper);
+                    continue;
+                }
                 var position = new Vector3(door.Center.x, door.blocked ? 3.4f : 2f, door.Center.y);
                 if (!ScreenPoint(position, out var p)) continue;
                 if (door.blocked)
@@ -2779,7 +2966,8 @@ namespace CrushHour
                 SetTextColor(signStyle, GateInk(g));
                 HaloLabel(new Rect(sign.xMax + 5, sign.y - 4, w, 34), word, signStyle, Paper);
                 SetTextColor(signStyle, oldColor);
-                HaloLabel(new Rect(p.x - 80f, sign.yMax + 2, 160f, 16f), door.name.ToUpperInvariant(), signNameStyle, Paper);
+                string name = door.name.ToUpperInvariant() + (incidentStarted && g.open ? $"  ·  {rate:0}/MIN" : "");
+                HaloLabel(new Rect(p.x - 90f, sign.yMax + 2, 180f, 16f), name, signNameStyle, Paper);
             }
         }
 
@@ -2858,8 +3046,8 @@ namespace CrushHour
             GUILayout.Space(4);
             GUILayout.Label($"Difficulty: <b>{DifficultyLabel}</b>. Esc (with nobody selected) goes back to the menu.", mutedStyle);
             GUILayout.Space(10);
-            WelcomeStep("1", "PLAN", $"Every zone has a patrol ({venue.regions.Count} in all), plus {megaphoneOfficers} megaphone police. Move them by clicking them, then the map. Draw barriers to steer the crowd.");
-            WelcomeStep("2", "REACT", "When disaster hits, open the emergency exits and send your team to the crowds. Select a patrol and press an arrow key to send its whole zone out that way. The megaphone police tell everyone in earshot where to go.");
+            WelcomeStep("1", "PLAN", $"You have {units.FindAll(x => x.role == Role.Patrolman).Count} patrols for {venue.regions.Count} zones, plus {megaphoneOfficers} megaphone police. They start at the busiest zones: move them by clicking them, then the map. A patrol looks after the zone it stands in. Draw barriers to steer the crowd.");
+            WelcomeStep("2", "REACT", $"Watch for warning signs (smoke, a creaking tower). You have {difficultySettings.gateCrews} gate crews, so only {difficultySettings.gateCrews} emergency gates can be open at once: pick them, and watch the people per minute at each exit. Select a patrol and press an arrow key to send its zone out that way.");
             WelcomeStep("3", "KEEP THEM CALM", "Panicked crowds push and crush, and too much panic causes panic attacks. Put patrols where queues form: they line people up with room to breathe.");
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();

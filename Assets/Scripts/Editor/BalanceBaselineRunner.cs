@@ -86,8 +86,9 @@ namespace CrushHour
         static void Simulate(Scenario s, Func<bool> cancelled, Action<float> beforeStep = null, Func<bool> live = null)
         {
             var changed = new List<Gate>();
-            float announce = 0f, lastProgress = 0f;
-            int lastSafe = 0;
+            float announce = 0f;
+            var progress = new EvacuationProgress();
+            progress.Reset(0f);
             var watch = Stopwatch.StartNew();
             var sim = s.sim;
             while (!cancelled())
@@ -111,13 +112,11 @@ namespace CrushHour
                 }
                 s.time += Dt;
                 s.steps++;
-                if (sim.SafeCount != lastSafe)
-                {
-                    lastSafe = sim.SafeCount;
-                    lastProgress = s.time;
-                }
-                // Like the game: drunk people never leave on their own, so the run ends on the sober ones.
-                bool stalled = sim.EvacuatingCount == sim.SoberActiveCount && s.time - Math.Max(lastProgress, s.clockStart) > 20f;
+                // Like the game: progress is an exit or the closest sober person getting nearer to an open exit, and
+                // drunk people never leave on their own, so the run ends on the sober ones.
+                progress.Update(s.time, Dt, sim, s.venue);
+                bool stalled = sim.SoberActiveCount > 0 && sim.EvacuatingCount == sim.SoberActiveCount &&
+                               s.time - Math.Max(progress.LastProgress, s.clockStart) > EvacuationProgress.StallTime;
                 if (sim.SoberActiveCount == 0 || stalled || s.time - s.clockStart >= TimeLimit) break;
             }
             s.milliseconds = watch.Elapsed.TotalMilliseconds;
@@ -371,17 +370,18 @@ namespace CrushHour
 
         /// <summary>
         /// One random round (<see cref="RoundGenerator"/>) per difficulty and seed, like the game: the alarm and the
-        /// evacuation clock start at the first fire or collapse, or when a gas leak is noticed; staff stand at their
-        /// posts; every gate is opened at that moment. Reports the incidents (and when they started), blocked doors,
+        /// evacuation clock start at the first fire or collapse, or when a gas leak is noticed; the difficulty's patrols
+        /// stand at the posts of the busiest zones (as the game's SpawnUnits); at that moment the difficulty's gate crews
+        /// open the gates farthest from the disaster. Reports the incidents (and when they started), blocked doors,
         /// injuries by cause, drunk people left inside, evacuation time and score. Returns a Markdown table (null when cancelled).
         /// </summary>
         public static string RunDifficultyTest(int[] seeds, Action<string> log, Func<bool> cancelled)
         {
             var md = new StringBuilder();
-            md.AppendLine($"Random rounds (RoundGenerator), staff at their posts, all gates opened when the alarm goes up (first fire/collapse, or gas noticed). Time is from that moment. Seeds {string.Join(", ", seeds)}.");
+            md.AppendLine($"Random rounds (RoundGenerator), the difficulty's patrols at the busiest zones, its gate crews opening the gates farthest from the disaster when the alarm goes up (first fire/collapse, or gas noticed). Time is from that moment. Seeds {string.Join(", ", seeds)}.");
             md.AppendLine();
-            md.AppendLine("| Difficulty | Seed | People | Incidents (start time) | Blocked doors | Injured (crush / fire / smoke / gas / collapse) | Panic attacks | Safe | Still inside | Drunk left inside | Time | Score |");
-            md.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|");
+            md.AppendLine("| Difficulty | Seed | People | Incidents (start time) | Blocked doors | Injured (crush / fire / smoke / gas / collapse) | Panic attacks | Safe | Still inside | Drunk left inside | Time | Score | Stars |");
+            md.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
             foreach (var difficulty in Difficulties)
             {
                 var ds = DifficultySettings.For(difficulty);
@@ -393,6 +393,12 @@ namespace CrushHour
                     var venue = s.venue;
                     var sim = s.sim;
                     RoundGenerator.Build(ds, venue, s.rng, s.schedule);
+                    // The difficulty's patrols at the posts of the busiest zones; the other zones are uncovered.
+                    var busiest = Enumerable.Range(0, venue.regions.Count).OrderByDescending(r => sim.CountInRegion(r, venue)).ThenBy(r => r)
+                        .Take(ds.patrolCount).OrderBy(r => r).ToList();
+                    s.patrols.Clear();
+                    foreach (int r in busiest) s.patrols.Add(new Vector2(venue.regions[r].post.x + 0.5f, venue.regions[r].post.y + 0.5f));
+                    int drunkTotal = Enumerable.Range(0, sim.count).Count(i => sim.drunk[i]);
 
                     var startedAt = new Dictionary<Incident, float>();
                     bool alarm = false;
@@ -407,7 +413,10 @@ namespace CrushHour
                         alarm = s.schedule.incidents.Any(i => i.Started && (i.StartsEvacuation || (i is GasLeakIncident g && g.Detected)));
                         if (!alarm) return;
                         s.clockStart = time;
-                        foreach (var gate in venue.gates) gate.open = true;
+                        // Gate crews: only that many gates, the ones farthest from what has started.
+                        var danger = s.schedule.incidents.Where(i => i.Started).Select(i => new Vector2(i.FocusCell.x + 0.5f, i.FocusCell.y + 0.5f)).ToList();
+                        foreach (var gate in venue.gates.OrderByDescending(g => danger.Count == 0 ? 0f : danger.Min(c => (g.rect.center - c).magnitude)).Take(ds.gateCrews))
+                            gate.open = true;
                     }, () => alarm);
 
                     var parts = new List<string>();
@@ -421,7 +430,7 @@ namespace CrushHour
                     int blocked = s.schedule.incidents.Count(i => i is BlockDoorIncident);
                     float evacuation = alarm ? s.time - s.clockStart : 0f;
                     int score = ds.Score(sim.SafeCount, sim.InjuredCount, sim.SoberActiveCount, sim.DrunkInsideCount, sim.PanicAttacksTotal, evacuation, TimeLimit);
-                    string line = $"| {ds.Name} | {seed} | {sim.count} | {string.Join("; ", parts)} | {blocked} | {sim.InjuredCount} ({sim.InjuredByCrush} / {sim.InjuredByFire} / {sim.InjuredBySmoke} / {sim.InjuredByGas} / {sim.InjuredByCollapse}) | {sim.PanicAttacksTotal} | {sim.SafeCount} | {sim.SoberActiveCount} | {sim.DrunkInsideCount} | {evacuation:0}s | {score} |";
+                    string line = $"| {ds.Name} | {seed} | {sim.count} | {string.Join("; ", parts)} | {blocked} | {sim.InjuredCount} ({sim.InjuredByCrush} / {sim.InjuredByFire} / {sim.InjuredBySmoke} / {sim.InjuredByGas} / {sim.InjuredByCollapse}) | {sim.PanicAttacksTotal} | {sim.SafeCount} | {sim.SoberActiveCount} | {sim.DrunkInsideCount} | {evacuation:0}s | {score} | {DifficultySettings.Stars(sim.count, sim.SafeCount, sim.InjuredCount, sim.SoberActiveCount, sim.DrunkInsideCount, drunkTotal, evacuation, TimeLimit)} |";
                     md.AppendLine(line);
                     log?.Invoke(line);
                 }

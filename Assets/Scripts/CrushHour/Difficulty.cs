@@ -18,15 +18,43 @@ namespace CrushHour
         /// <summary>Main disasters per round (fires, tower collapses, gas leaks); blocked doors and chained collapses come on top.</summary>
         public int disasterCount;
         public float scoreMultiplier;
+        /// <summary>Zone patrols the player gets (they start at the posts of the busiest zones; the rest is uncovered).</summary>
+        public int patrolCount;
+        /// <summary>Gate crews: how many emergency gates can be open (or opening) at once.</summary>
+        public int gateCrews;
 
         public string Name => difficulty.ToString();
 
         public static DifficultySettings For(Difficulty d) => d switch
         {
-            Difficulty.Easy => new DifficultySettings { difficulty = d, playerCount = 400, drunkFraction = 0.01f, maxBlockedDoors = 1, disasterCount = 1, scoreMultiplier = 1f },
-            Difficulty.Medium => new DifficultySettings { difficulty = d, playerCount = 800, drunkFraction = 0.02f, maxBlockedDoors = 2, disasterCount = 2, scoreMultiplier = 1.5f },
-            _ => new DifficultySettings { difficulty = Difficulty.Hard, playerCount = 1200, drunkFraction = 0.04f, maxBlockedDoors = 3, disasterCount = 3, scoreMultiplier = 2f },
+            Difficulty.Easy => new DifficultySettings { difficulty = d, playerCount = 600, drunkFraction = 0.01f, maxBlockedDoors = 1, disasterCount = 1, scoreMultiplier = 1f, patrolCount = 6, gateCrews = 4 },
+            Difficulty.Medium => new DifficultySettings { difficulty = d, playerCount = 1400, drunkFraction = 0.02f, maxBlockedDoors = 2, disasterCount = 2, scoreMultiplier = 1.5f, patrolCount = 5, gateCrews = 3 },
+            _ => new DifficultySettings { difficulty = Difficulty.Hard, playerCount = 2000, drunkFraction = 0.02f, maxBlockedDoors = 3, disasterCount = 3, scoreMultiplier = 2f, patrolCount = 4, gateCrews = 3 },
         };
+
+        // Star thresholds (shared by the game, the menu text and the headless tests).
+        public const float OneStarSafe = 0.95f, TwoStarInjured = 0.01f, TwoStarTime = 0.5f;
+        public const float ThreeStarInjured = 0.0025f, ThreeStarDrunkLeft = 0.34f, ThreeStarTime = 0.4f;
+
+        /// <summary>The star rules in two short lines (menu difficulty page).</summary>
+        public static string StarSummary =>
+            $"1 star: {OneStarSafe * 100f:0}% safe.  2 stars: injuries at most {TwoStarInjured * 100f:0}%, out within {TwoStarTime * 240f:0} s.\n" +
+            $"3 stars: nobody sober left, injuries at most {ThreeStarInjured * 100f:0.##}%, {(1f - ThreeStarDrunkLeft) * 100f:0}% of drunk fans out, within {ThreeStarTime * 240f:0} s.";
+
+        /// <summary>
+        /// Stars for a finished round: 1 = <see cref="OneStarSafe"/> of the crowd safe; 2 = also injuries ≤ 1% and done
+        /// within half the time limit; 3 = also nobody sober left inside, injuries ≤ 0.25%, at most a third of the drunk
+        /// fans left behind, and done within 40% of the time limit. Times count from the alarm.
+        /// </summary>
+        public static int Stars(int count, int safe, int injured, int soberInside, int drunkLeft, int drunkTotal, float evacuationTime, float timeLimit)
+        {
+            int stars = 0;
+            if (safe >= count * OneStarSafe) stars = 1;
+            if (stars == 1 && injured <= count * TwoStarInjured && evacuationTime <= timeLimit * TwoStarTime) stars = 2;
+            if (stars == 2 && soberInside == 0 && injured <= count * ThreeStarInjured && drunkLeft <= drunkTotal * ThreeStarDrunkLeft &&
+                evacuationTime <= timeLimit * ThreeStarTime) stars = 3;
+            return stars;
+        }
 
         /// <summary>
         /// Round score (shared by the game and the headless tests): +10 per person safe, -100 per injured, -25 per
@@ -45,7 +73,7 @@ namespace CrushHour
     /// Builds a random round for a difficulty (a new one every game; the game passes its freshly seeded rng):
     /// <list type="bullet">
     /// <item><see cref="DifficultySettings.disasterCount"/> main disasters, each a random type (fire, tower collapse, gas
-    /// leak) at a random place, never two of the same type at the same place. The first starts 4-12 s into the show,
+    /// leak) at a random place, never two of the same type at the same place. The first starts 20-40 s into the show,
     /// each next one 20-40 s after the one before.</item>
     /// <item>0 to <see cref="DifficultySettings.maxBlockedDoors"/> blocked doors (random door and reason), each at a random
     /// moment in the first 60 s. Never both entrances, and at least 3 doors always stay unblocked.</item>
@@ -56,6 +84,7 @@ namespace CrushHour
     public static class RoundGenerator
     {
         const int MinUnblockedDoors = 3;
+        public const float FirstDisasterMin = 20f, FirstDisasterSpread = 20f;
         enum Kind { Fire, Tower, Gas }
 
         public static void Build(Difficulty difficulty, FestivalVenue venue, System.Random rng, IncidentSchedule schedule) =>
@@ -72,7 +101,9 @@ namespace CrushHour
             };
             var towersUsed = new HashSet<int>();
             bool fireRisk = false;
-            float time = 4f + (float)rng.NextDouble() * 8f;
+            // The first disaster comes 20-40 s in (was 4-12 s), so there is a calm spell to set up, and early warning
+            // signs (smoke, a creaking tower) have time to show. Same rng calls as before, so seeds build the same rounds.
+            float time = FirstDisasterMin + (float)rng.NextDouble() * FirstDisasterSpread;
             for (int n = 0; n < settings.disasterCount; n++)
             {
                 var kinds = new List<Kind>();
