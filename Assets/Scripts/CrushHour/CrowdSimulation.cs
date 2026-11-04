@@ -55,6 +55,16 @@ namespace CrushHour
         [Tooltip("Dose from which people are visibly intoxicated (coughing, slowed down).")]
         public float intoxicatedDose = 0.15f;
 
+        [Header("Gas")]
+        [Tooltip("Gas concentration (0-1) above which breathing it in poisons people. Gas can't be seen or smelt by the crowd: it doesn't scare anyone.")]
+        public float gasHarmLevel = 0.2f;
+        [Tooltip("Gas dose per second at full concentration. A dose of 1 means collapsing (injured).")]
+        public float gasDoseRate = 0.08f;
+        [Tooltip("How fast the gas dose wears off in clean air, per second.")]
+        public float gasRecovery = 0.03f;
+        [Tooltip("Gas dose from which people cough (the first cough gives the leak away).")]
+        public float coughDose = 0.1f;
+
         [Header("Crush")]
         [Tooltip("Crowd pressure (density x panic factor) above which people get hurt.")]
         public float crushThreshold = 8.5f;
@@ -62,6 +72,20 @@ namespace CrushHour
 
         [Header("Staff")]
         public float stewardRadius = 6f;
+        [Tooltip("Radius (m) of a zone patrolman's ring. Patrolmen calm and queue people exactly like stewards do.")]
+        public float patrolRadius = 6f;
+        [Tooltip("Zone evacuation orders: how much each metre of walking to a door lowers its score. The score starts as the cosine between the ordered direction and the way to the door.")]
+        public float orderDistanceWeight = 0.01f;
+
+        [Header("Drunk people")]
+        [Tooltip("Share of the crowd that is drunk (3x as likely in the Drinks zone). They ignore staff, police and zone orders and won't leave on their own: they have to be escorted out.")]
+        [Range(0f, 0.5f)] public float drunkFraction = 0.02f;
+        [Tooltip("How much more likely someone in the Drinks zone is to be drunk.")]
+        public float drunkDrinksMultiplier = 3f;
+        [Tooltip("Drunk walking speed as a share of normal.")]
+        [Range(0.1f, 1f)] public float drunkSpeed = 0.6f;
+        [Tooltip("Drunk people's panic is scaled by this (they don't take it seriously).")]
+        [Range(0f, 1f)] public float drunkPanicFactor = 0.5f;
         [Tooltip("How fast a steward talks panic down (per second) for the people in their ring.")]
         public float stewardCalming = 0.5f;
         [Tooltip("Panicked people in a steward's ring stop and listen until their panic is down to this; then they're told the way out and let go.")]
@@ -105,6 +129,28 @@ namespace CrushHour
         /// <summary>Door being headed for (-1 none), doors found shut (bit mask), time until reconsidering.</summary>
         public readonly int[] targetDoor, doorsFoundShut;
         readonly float[] retargetTime;
+        /// <summary>
+        /// Door a zone evacuation order sent this person to (-1 none). <see cref="ChooseDoor"/> follows it unless the
+        /// door is shut, found shut or cut off, or the person is panicking (above 0.8: tunnel vision).
+        /// </summary>
+        public readonly int[] orderedDoor;
+        /// <summary>
+        /// Drunk: ignores stewards/patrols, police and zone orders (never informed, never evacuating), walks at
+        /// <see cref="CrowdSettings.drunkSpeed"/> with a zig-zag, panics at half strength, runs from flames that are close
+        /// and otherwise wanders. They don't leave on their own.
+        /// </summary>
+        public readonly bool[] drunk;
+        /// <summary>
+        /// Unit escorting this (drunk) person out (-1 none; the index is the game's). While escorted they walk to
+        /// <see cref="SetEscortTarget"/>'s point instead of wandering, and <see cref="EscortOut"/> takes them out at the door.
+        /// </summary>
+        public readonly int[] escortedBy;
+        readonly Vector2[] escortPoint;
+        readonly float[] escortSpeed;
+        /// <summary>Door each person left through (-1 while inside, or injured).</summary>
+        public readonly int[] exitDoor;
+        /// <summary>How many people have left through each door (index into venue.doors).</summary>
+        public readonly int[] exitsByDoor;
         /// <summary>Seconds left of a panic attack (0 = none), and build-up towards one.</summary>
         public readonly float[] attackTime, attackBuildUp;
         /// <summary>Seconds left of queueing in order because a steward is organising them (spaced out, no pushing).</summary>
@@ -113,6 +159,15 @@ namespace CrushHour
         public readonly float[] smokeDose;
         /// <summary>Seconds left standing still listening to a steward (refreshed while still panicked), and of staying reassured afterwards.</summary>
         public readonly float[] listeningTime, reassuredTime;
+        /// <summary>
+        /// Fright from a sudden shock (a light tower crashing down nearby): a floor under the fear they feel, starting at
+        /// <see cref="ShockFear"/> and fading to 0 over <see cref="ShockDuration"/> s. 0 for everyone unless <see cref="Shock"/> is called.
+        /// </summary>
+        public readonly float[] shock;
+        /// <summary>Gas breathed in (0-1); collapse at 1. Separate from smokeDose: gas doesn't scare anyone by itself.</summary>
+        public readonly float[] gasDose;
+        /// <summary>Fear right after a shock: as much as standing 2 m from the flames.</summary>
+        public const float ShockFear = 0.85f, ShockDuration = 10f;
         readonly List<int> nearby = new();
         readonly System.Random rng;
         float[] doorCrowd = Array.Empty<float>();
@@ -145,7 +200,17 @@ namespace CrushHour
         public int InjuredByCrush { get; private set; }
         public int InjuredByFire { get; private set; }
         public int InjuredBySmoke { get; private set; }
+        /// <summary>Crushed under a collapsing structure (light tower).</summary>
+        public int InjuredByCollapse { get; private set; }
+        public int InjuredByGas { get; private set; }
+        /// <summary>People inside with a gas dose of at least coughDose.</summary>
+        public int CoughingCount { get; private set; }
         public int IntoxicatedCount { get; private set; }
+        /// <summary>Drunk people still inside (active).</summary>
+        public int DrunkInsideCount { get; private set; }
+        /// <summary>Active people who aren't drunk: the ones who can get out on their own.</summary>
+        public int SoberActiveCount => ActiveCount - DrunkInsideCount;
+        float simTime;
 
         public CrowdSimulation(CrowdSettings settings, FestivalVenue venue, System.Random rng)
         {
@@ -173,10 +238,23 @@ namespace CrushHour
             smokeDose = new float[count];
             listeningTime = new float[count];
             reassuredTime = new float[count];
+            shock = new float[count];
+            gasDose = new float[count];
             agentCell = new int[count];
             sorted = new int[count];
+            orderedDoor = new int[count];
+            drunk = new bool[count];
+            escortedBy = new int[count];
+            escortPoint = new Vector2[count];
+            escortSpeed = new float[count];
+            Array.Fill(escortedBy, -1);
+            exitDoor = new int[count];
+            exitsByDoor = new int[venue.doors.Count];
             Array.Fill(targetDoor, -1);
+            Array.Fill(orderedDoor, -1);
+            Array.Fill(exitDoor, -1);
             Spawn(venue);
+            AssignDrunks(venue);
             UpdateCounts();
         }
 
@@ -212,6 +290,18 @@ namespace CrushHour
                 }
                 position[i] = anchor[i] = p;
                 personalSpeed[i] = 0.8f + 0.4f * (float)rng.NextDouble();
+            }
+        }
+
+        /// <summary>Each person is drunk with chance drunkFraction, times drunkDrinksMultiplier in the Drinks zone.</summary>
+        void AssignDrunks(FestivalVenue venue)
+        {
+            int drinks = venue.regions.FindIndex(r => r.name == "Drinks");
+            for (int i = 0; i < count; i++)
+            {
+                float chance = settings.drunkFraction;
+                if (drinks >= 0 && venue.regionOf[CellOf(position[i])] == drinks) chance *= settings.drunkDrinksMultiplier;
+                drunk[i] = rng.NextDouble() < chance;
             }
         }
 
@@ -317,6 +407,7 @@ namespace CrushHour
         {
             BuildSpatialHash();
             openDoorMask = venue.OpenDoorMask;
+            simTime += dt;
             if (incident)
             {
                 UpdateAlarm(venue, dt);
@@ -390,6 +481,21 @@ namespace CrushHour
                 bool inAttack = attackTime[i] > 0f;
 
                 float smokeHere = venue.smoke[c];
+                // Gas works whether or not anyone knows about it yet; nobody notices it by itself (no fear, no fleeing).
+                float gasHere = venue.gas[c];
+                if (gasHere > 0f || gasDose[i] > 0f)
+                {
+                    if (gasHere > settings.gasHarmLevel)
+                        gasDose[i] += (gasHere - settings.gasHarmLevel) / (1f - settings.gasHarmLevel) * settings.gasDoseRate * dt;
+                    else
+                        gasDose[i] = Mathf.Max(0f, gasDose[i] - settings.gasRecovery * dt);
+                    if (gasDose[i] >= 1f)
+                    {
+                        Injure(i);
+                        InjuredByGas++;
+                        continue;
+                    }
+                }
                 if (incident)
                 {
                     // Breathing smoke: a dose builds up the thicker it is and the longer you stay; it wears off in clean air.
@@ -408,7 +514,9 @@ namespace CrushHour
                 if (incident && !inAttack)
                 {
                     // Becoming aware: seeing the fire or its smoke, hearing people shout, or seeing a gate open nearby with people streaming out.
-                    if (fd < sight || smokeHere > settings.smokeNoticeLevel || venue.seesOpenGate[c]) evacuating[i] = true;
+                    // (Drunk people never decide to leave: they have to be escorted out.)
+                    if (drunk[i]) { }
+                    else if (fd < sight || smokeHere > settings.smokeNoticeLevel || venue.seesOpenGate[c]) evacuating[i] = true;
                     else if (!evacuating[i] && alarm[c] > 0.3f && rng.NextDouble() < settings.awarenessSpread * dt) evacuating[i] = true;
                     else if (!evacuating[i] && ShowStopped && rng.NextDouble() < settings.showStoppedAwareness * dt) evacuating[i] = true; // the music has stopped...
 
@@ -416,6 +524,12 @@ namespace CrushHour
                     // Touching distance of the flames is terrifying; further away it is frightening but bearable. So is choking smoke.
                     float fear = fd <= 1 ? 1f : fd < sight ? 0.85f * Mathf.Clamp01(1f - (fd - 2f) / sight) : 0f;
                     fear = Mathf.Max(fear, smokeHere * 0.6f);
+                    if (shock[i] > 0f)
+                    {
+                        // Still shaken by something that just crashed down next to them.
+                        fear = Mathf.Max(fear, shock[i]);
+                        shock[i] = Mathf.Max(0f, shock[i] - ShockFear / ShockDuration * dt);
+                    }
                     // Being squeezed, and being stuck in a jam for a long time, wears people down.
                     float crush = Mathf.Clamp01((localDensity - 3f) / 4f) + Mathf.Clamp01((stuckTime[i] - 1f) / 6f) * 0.8f;
                     float social = neighbours > 0 ? panicSum / neighbours * settings.contagionFalloff : 0f;
@@ -424,8 +538,9 @@ namespace CrushHour
                     if (reassured && fd > 1) target = Mathf.Min(target, settings.calmedPanic + 0.1f);
                     // While a steward is talking to them, the panic around them doesn't get through.
                     if (listening && !InDanger(venue, c)) target = 0f;
+                    if (drunk[i]) target *= settings.drunkPanicFactor;
                     pv = target > pv ? pv + (target - pv) * settings.panicContagion * dt : Mathf.Max(target, pv - settings.panicDecay * dt);
-                    if (pv > 0.3f) evacuating[i] = true;
+                    if (pv > 0.3f && !drunk[i]) evacuating[i] = true;
                     if (venue.seesOpenGate[c]) doorsFoundShut[i] &= ~openDoorMask; // "that gate's open now!"
                     else doorsFoundShut[i] |= heardShut & ~openDoorMask;
 
@@ -462,6 +577,10 @@ namespace CrushHour
                 {
                     // Standing still while a steward calms them down; they'll be sent on their way once calm.
                     desired = Vector2.zero;
+                }
+                else if (drunk[i])
+                {
+                    desired = DrunkVelocity(i, c, p, venue, incident, fd, localDensity);
                 }
                 else if (!evacuating[i])
                 {
@@ -530,6 +649,9 @@ namespace CrushHour
                 {
                     state[i] = AgentState.Safe;
                     attackTime[i] = 0f;
+                    int exit = NearestDoor(venue, next);
+                    exitDoor[i] = exit;
+                    if (exit >= 0) exitsByDoor[exit]++;
                     continue;
                 }
                 if (type == CellType.Fire)
@@ -588,6 +710,11 @@ namespace CrushHour
         int ChooseDoor(int i, int c, FestivalVenue venue)
         {
             var doors = venue.doors;
+            // A zone order wins while the door is open and reachable, and they're calm enough to listen.
+            int ordered = orderedDoor[i];
+            if (ordered >= 0 && panic[i] <= 0.8f && doors[ordered].IsOpen && doors[ordered].field.Reachable(c) &&
+                (doorsFoundShut[i] & (1 << ordered)) == 0)
+                return ordered;
             bool knowsDoors = informed[i];
             for (int pass = 0; pass < 2; pass++)
             {
@@ -644,7 +771,7 @@ namespace CrushHour
 
         void UpdateCounts()
         {
-            int active = 0, safe = 0, injured = 0, panicked = 0, leaving = 0, attacks = 0, intoxicated = 0;
+            int active = 0, safe = 0, injured = 0, panicked = 0, leaving = 0, attacks = 0, intoxicated = 0, drunkInside = 0, coughing = 0;
             for (int i = 0; i < count; i++)
             {
                 switch (state[i])
@@ -655,6 +782,8 @@ namespace CrushHour
                         if (evacuating[i]) leaving++;
                         if (attackTime[i] > 0f) attacks++;
                         if (smokeDose[i] >= settings.intoxicatedDose) intoxicated++;
+                        if (gasDose[i] >= settings.coughDose) coughing++;
+                        if (drunk[i]) drunkInside++;
                         break;
                     case AgentState.Safe: safe++; break;
                     default: injured++; break;
@@ -667,20 +796,62 @@ namespace CrushHour
             EvacuatingCount = leaving;
             PanicAttackCount = attacks;
             IntoxicatedCount = intoxicated;
+            CoughingCount = coughing;
+            DrunkInsideCount = drunkInside;
+        }
+
+        /// <summary>
+        /// Drunk movement: run from flames that are close (within fleeDistance), otherwise wander around their spot at an
+        /// amble. Always at drunkSpeed with a zig-zag on top. Deterministic noise (no rng), so it doesn't shift other runs.
+        /// </summary>
+        Vector2 DrunkVelocity(int i, int c, Vector2 p, FestivalVenue venue, bool incident, int fd, float localDensity)
+        {
+            if (escortedBy[i] >= 0)
+            {
+                // Being walked out: keep up with the escort (a little faster when falling behind, still when close).
+                Vector2 to = escortPoint[i] - p;
+                float gap = to.magnitude;
+                if (gap < 0.3f) return Vector2.zero;
+                return to / gap * (escortSpeed[i] * (gap > 1.5f ? 1.3f : 1f));
+            }
+            Vector2 dir;
+            float pace;
+            if (incident && fd < settings.fleeDistance && venue.fleeDirection[c] != Vector2.zero)
+            {
+                dir = (FestivalVenue.CellCenter(c) + venue.fleeDirection[c] - p).normalized;
+                pace = 1f;
+            }
+            else
+            {
+                // Stagger about, drifting back when more than 6 m from where they started.
+                float heading = Mathf.PerlinNoise(i * 0.731f, simTime * 0.08f) * Mathf.PI * 4f;
+                dir = new Vector2(Mathf.Cos(heading), Mathf.Sin(heading));
+                Vector2 home = anchor[i] - p;
+                if (home.sqrMagnitude > 36f) dir = Vector2.Lerp(dir, home.normalized, 0.7f).normalized;
+                pace = 0.5f;
+            }
+            // Zig-zag: the direction swings ±35° a couple of times a second.
+            float swing = 0.6f * Mathf.Sin(simTime * 2.3f + i * 1.7f);
+            float cos = Mathf.Cos(swing), sin = Mathf.Sin(swing);
+            dir = new Vector2(dir.x * cos - dir.y * sin, dir.x * sin + dir.y * cos);
+            float slow = Mathf.Clamp(1.1f - 0.17f * localDensity, 0.12f, 1f);
+            return dir * (settings.walkSpeed * personalSpeed[i] * settings.drunkSpeed * pace * slow);
         }
 
         /// <summary>
         /// Once there's an incident, stewards calm the people in their ring: panicked people stop and listen until they're
         /// calm, then get told which gates are open and leave in orderly, spaced-out queues, staying reassured for a while.
-        /// Stewards also help people through panic attacks.
+        /// Stewards also help people through panic attacks. Zone patrolmen use the same effect with
+        /// <paramref name="radius"/> = <see cref="CrowdSettings.patrolRadius"/>; without it, <see cref="CrowdSettings.stewardRadius"/> is used.
         /// </summary>
-        public void ApplyStewards(List<Vector2> stewards, float dt, bool incident)
+        public void ApplyStewards(List<Vector2> stewards, float dt, bool incident, float radius = -1f)
         {
+            float ringRadius = radius > 0f ? radius : settings.stewardRadius;
             foreach (var s in stewards)
             {
-                foreach (int i in ActiveWithin(s, settings.stewardRadius))
+                foreach (int i in ActiveWithin(s, ringRadius))
                 {
-                    if (!incident) continue;
+                    if (!incident || drunk[i]) continue; // drunk people don't listen
                     orderlyTime[i] = settings.orderlyMemory;
                     if (attackTime[i] > 0f)
                     {
@@ -710,6 +881,7 @@ namespace CrushHour
             int newlyInformed = 0;
             foreach (int i in ActiveWithin(officer, settings.policeAnnounceRadius))
             {
+                if (drunk[i]) continue; // drunk people don't listen
                 evacuating[i] = true;
                 if (!informed[i] && panic[i] < 0.8f && attackTime[i] <= 0f && rng.NextDouble() < settings.policeInformChance)
                 {
@@ -721,8 +893,155 @@ namespace CrushHour
             return newlyInformed;
         }
 
+        /// <summary>
+        /// A zone patrolman orders everyone in <paramref name="region"/> out through the open door that best matches
+        /// <paramref name="direction"/> (grid x, y = world x, z): score = cos(angle between the direction and the way from
+        /// the region's post to the door) − walking distance × <see cref="CrowdSettings.orderDistanceWeight"/>.
+        /// Everyone active in the region starts evacuating, is informed, and gets <see cref="orderedDoor"/> set.
+        /// Returns the chosen door (index into venue.doors), or -1 when no open door can be reached (people are still
+        /// informed and sent off, without a door order).
+        /// </summary>
+        public int OrderRegionEvacuation(int region, Vector2 direction, FestivalVenue venue)
+        {
+            int best = PickOrderDoor(region, direction, venue);
+            for (int i = 0; i < count; i++)
+            {
+                if (state[i] != AgentState.Active || drunk[i] || venue.regionOf[CellOf(position[i])] != region) continue;
+                Inform(i);
+                orderedDoor[i] = best;
+            }
+            return best;
+        }
+
+        /// <summary>The door <see cref="OrderRegionEvacuation"/> would pick for this direction, without ordering anyone (for previews).</summary>
+        public int PickOrderDoor(int region, Vector2 direction, FestivalVenue venue)
+        {
+            var post = venue.regions[region].post;
+            int postCell = FestivalVenue.Index(post.x, post.y);
+            Vector2 from = new Vector2(post.x + 0.5f, post.y + 0.5f);
+            Vector2 dir = direction.sqrMagnitude > 1e-6f ? direction.normalized : Vector2.zero;
+            int best = -1;
+            float bestScore = float.NegativeInfinity;
+            for (int d = 0; d < venue.doors.Count; d++)
+            {
+                var door = venue.doors[d];
+                if (!door.IsOpen || !door.field.Reachable(postCell)) continue;
+                Vector2 way = door.Center - from;
+                float alignment = way.sqrMagnitude > 1e-6f ? Vector2.Dot(way.normalized, dir) : 1f;
+                float score = alignment - door.field.distance[postCell] * settings.orderDistanceWeight;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = d;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>Active people currently standing in <paramref name="region"/>.</summary>
+        public int CountInRegion(int region, FestivalVenue venue)
+        {
+            int n = 0;
+            for (int i = 0; i < count; i++)
+                if (state[i] == AgentState.Active && venue.regionOf[CellOf(position[i])] == region) n++;
+            return n;
+        }
+
+        // ---------------------------------------------------------------- Escorts (driven by the game)
+
+        /// <summary>Starts (unit ≥ 0) or ends (-1) an escort of drunk person <paramref name="i"/>.</summary>
+        public void SetEscort(int i, int unit)
+        {
+            escortedBy[i] = unit;
+            if (unit >= 0) escortPoint[i] = position[i];
+        }
+
+        /// <summary>Where the escorted person should walk to this step (1 m behind the unit), and how fast.</summary>
+        public void SetEscortTarget(int i, Vector2 point, float speed)
+        {
+            escortPoint[i] = point;
+            escortSpeed[i] = speed;
+        }
+
+        /// <summary>The escort reached <paramref name="door"/>: the person is taken out and is safe.</summary>
+        public void EscortOut(int i, int door)
+        {
+            if (state[i] != AgentState.Active) return;
+            state[i] = AgentState.Safe;
+            attackTime[i] = 0f;
+            escortedBy[i] = -1;
+            exitDoor[i] = door;
+            if (door >= 0) exitsByDoor[door]++;
+            UpdateCounts();
+        }
+
+        /// <summary>The active drunk person nearest <paramref name="p"/> within <paramref name="maxDistance"/>, or -1.</summary>
+        public int NearestDrunk(Vector2 p, float maxDistance)
+        {
+            int best = -1;
+            float bestSq = maxDistance * maxDistance;
+            for (int i = 0; i < count; i++)
+            {
+                if (!drunk[i] || state[i] != AgentState.Active) continue;
+                float sq = (position[i] - p).sqrMagnitude;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// The nearest active drunk person nobody is escorting yet, standing in <paramref name="region"/> (-1 = anywhere), or -1.
+        /// </summary>
+        public int NearestUnescortedDrunk(Vector2 p, int region, FestivalVenue venue)
+        {
+            int best = -1;
+            float bestSq = float.MaxValue;
+            for (int i = 0; i < count; i++)
+            {
+                if (!drunk[i] || state[i] != AgentState.Active || escortedBy[i] >= 0) continue;
+                if (region >= 0 && venue.regionOf[CellOf(position[i])] != region) continue;
+                float sq = (position[i] - p).sqrMagnitude;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>Active drunk people standing in <paramref name="region"/> that nobody is escorting yet.</summary>
+        public int UnescortedDrunksInRegion(int region, FestivalVenue venue)
+        {
+            int n = 0;
+            for (int i = 0; i < count; i++)
+                if (drunk[i] && state[i] == AgentState.Active && escortedBy[i] < 0 && venue.regionOf[CellOf(position[i])] == region) n++;
+            return n;
+        }
+
+        static int NearestDoor(FestivalVenue venue, Vector2 p)
+        {
+            int best = -1;
+            float bestSq = float.MaxValue;
+            for (int d = 0; d < venue.doors.Count; d++)
+            {
+                float sq = (venue.doors[d].Center - p).sqrMagnitude;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = d;
+                }
+            }
+            return best;
+        }
+
         void Inform(int i)
         {
+            if (drunk[i]) return;
             informed[i] = true;
             evacuating[i] = true;
             doorsFoundShut[i] &= ~openDoorMask; // they're told which doors are open now
@@ -751,6 +1070,40 @@ namespace CrushHour
             return nearby;
         }
 
+        /// <summary>Injures everyone (still inside and not hurt yet) standing in one of <paramref name="cells"/>. Returns how many.</summary>
+        public int CrushUnder(ICollection<int> cells)
+        {
+            int crushed = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (state[i] != AgentState.Active || !cells.Contains(CellOf(position[i]))) continue;
+                Injure(i);
+                InjuredByCollapse++;
+                crushed++;
+            }
+            UpdateCounts();
+            return crushed;
+        }
+
+        /// <summary>
+        /// A crash nearby: everyone within <paramref name="radius"/> of <paramref name="center"/> gets a fright of
+        /// <see cref="ShockFear"/> (fading over <see cref="ShockDuration"/> s) and starts heading out (drunk people
+        /// only get the fright). Returns how many were shaken.
+        /// </summary>
+        public int Shock(Vector2 center, float radius)
+        {
+            int shaken = 0;
+            float radiusSq = radius * radius;
+            for (int i = 0; i < count; i++)
+            {
+                if (state[i] != AgentState.Active || (position[i] - center).sqrMagnitude > radiusSq) continue;
+                shock[i] = Mathf.Max(shock[i], ShockFear);
+                if (!drunk[i]) evacuating[i] = true;
+                shaken++;
+            }
+            return shaken;
+        }
+
         /// <summary>Moves everybody standing in <paramref name="cell"/> to a free neighbouring cell (a barrier or gate closed on them).</summary>
         public void Evict(int cell, FestivalVenue venue)
         {
@@ -768,13 +1121,14 @@ namespace CrushHour
             }
         }
 
-        /// <summary>Display bucket: 0 calm, 1 informed, 2 alarmed, 3 panicking, 4 injured, 5 panic attack, 6 intoxicated by smoke, -1 safe (not shown).</summary>
+        /// <summary>Display bucket: 0 calm, 1 informed, 2 alarmed, 3 panicking, 4 injured, 5 panic attack, 6 intoxicated by smoke or gas, -1 safe (not shown).</summary>
         public int DisplayState(int i)
         {
             if (state[i] == AgentState.Safe) return -1;
             if (state[i] == AgentState.Injured) return 4;
             if (attackTime[i] > 0f) return 5;
-            if (smokeDose[i] >= settings.intoxicatedDose) return 6;
+            if (smokeDose[i] >= settings.intoxicatedDose || gasDose[i] >= settings.intoxicatedDose) return 6;
+            if (drunk[i]) return 7;
             float pv = panic[i];
             return pv > 0.7f ? 3 : pv > 0.3f ? 2 : informed[i] && evacuating[i] ? 1 : 0;
         }

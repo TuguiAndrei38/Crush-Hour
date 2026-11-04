@@ -312,7 +312,7 @@ namespace CrushHour
     public class CrowdRenderer : System.IDisposable
     {
         const int Batch = 1023;
-        const int StateCount = 7;
+        const int StateCount = 8; // CrowdSimulation.DisplayState: 0-6, 7 = drunk
         const float WalkStride = 1.4f, RunStride = 2.6f; // metres per animation cycle
 
         [StructLayout(LayoutKind.Sequential)]

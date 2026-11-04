@@ -1,0 +1,168 @@
+CRUSH HOUR - CE E NOU SI CUM SE JOACA
+(branch Sapt-4, scena CrushHourFestival_Dev, 30.10.2026)
+
+Pe branch-ul Sapt-4 jocul are acum zone cu patrule, oameni beti, patru tipuri
+de dezastre, trei dificultati cu runde aleatorii si un meniu de start.
+
+
+=====================================================================
+1. CE S-A ADAUGAT
+=====================================================================
+
+Saptamana 5
+- Meniu de start: alegi harta (scena) si dificultatea, apoi PLAY. Nicio blocare.
+- Dificultati Easy / Medium / Hard:
+    oameni ............ 400 / 800 / 1.200
+    oameni beti ....... 1% / 2% / 4%
+    usi blocate (max) . 1 / 2 / 3
+    dezastre .......... 1 / 2 / 3
+    scor .............. x1 / x1,5 / x2
+- Runde aleatorii: fiecare runda alege alte dezastre, alte locuri si alte momente.
+- Scurgere de gaz (Generator sau Food Court): gazul e invizibil pana tuseste
+  cineva sau il simte o patrula; atunci apare un strat galben-verzui pe sol.
+  Nimeni nu fuge singur de el; oamenii cad daca stau in el. Poate lua foc daca
+  ajunge la o flacara.
+- Prabusirea unui turn de lumini: turnul se clatina 6 s, apoi cade pe 8 x 2 m.
+  Cei de sub el sunt raniti, cei pe 12 m in jur se sperie si fug. Cade si
+  singur daca focul ajunge la 4 m de el.
+- Iesiri blocate: un camion sau o schela cazuta blocheaza o usa. O patrula sau
+  un politist o curata in 8 s (doi oameni in 4 s).
+- Sistem de incidente: dezastrele pornesc la momente diferite si unul il poate
+  declansa pe altul (foc -> turn, gaz -> foc).
+
+Saptamana 4
+- 9 zone, cu cate o patrula pe zona: Food Court, Drinks, Toilets, Merch,
+  Dance Tent, Main Stage, Backstage, Main Entrance, West Entrance.
+- Ordine de evacuare pe zona: selectezi patrula si trimiti toata zona intr-o
+  directie (fata / spate / stanga / dreapta).
+- Oameni beti: ignora ordinele, merg in zig-zag, se sperie mai greu si nu
+  pleaca singuri.
+- Escorta: o patrula sau un politist ii duce pe cei beti afara.
+
+
+=====================================================================
+2. CUM PORNESTI JOCUL
+=====================================================================
+
+1. Treci pe branch-ul Sapt-4 si deschide proiectul in Unity 6000.6.6f1.
+2. Deschide scena Assets/Scenes/CrushHourFestival_Dev.unity si apasa Play.
+3. In meniul de start alegi harta (deocamdata doar Summer Music Festival)
+   si dificultatea, apoi apesi PLAY.
+4. Citeste cardul de Welcome si apasa "Let's go".
+
+Nota: scena Dev are crowdSizeOverride = 400, deci are 400 de oameni pe orice
+dificultate. Pune-l pe 0 in Inspector (obiectul cu CrushHourGame) ca sa vezi
+400 / 800 / 1.200.
+
+
+=====================================================================
+3. CUM SE JOACA
+=====================================================================
+
+Esti seful de siguranta al festivalului: cand ceva merge prost, scoti oamenii
+afara fara raniti si cat mai repede.
+
+1. Planning. Fiecare zona are o patrula (sapca in culoarea zonei) si mai ai
+   2 politisti cu megafon. Muta-i unde crezi ca vor fi cozi si deseneaza
+   bariere (tasta 2) ca sa ghidezi multimea. Ai 60 de bucati de bariera.
+2. Start. Enter porneste concertul. Dezastrele vin dupa cateva secunde,
+   la momente aleatorii.
+3. Reactie. Deschide portile de urgenta (panoul din dreapta sau click pe
+   poarta), trimite echipa spre cozi si da ordine de evacuare pe zona:
+   selectezi patrula si apesi o sageata.
+4. Final. Runda se termina cand au iesit toti cei treji, cand evacuarea s-a
+   blocat sau dupa 4 minute. Urmeaza scorul si stelele.
+
+Ce faci la fiecare dezastru:
+
+FOC
+  Cum il recunosti: flacari si fum care merge spre est (vantul).
+  Ce faci: deschide portile departe de fum si scoate zonele din jur in
+  directia opusa.
+
+TURN DE LUMINI
+  Cum il recunosti: bannerul "LIGHT TOWER IS SWAYING!", turnul se clatina.
+  Ce faci: ai 6 s - selecteaza patrula zonei si scoate zona de sub turn.
+
+SCURGERE DE GAZ
+  Cum o recunosti: nu se vede la inceput. Apare mesajul "... patrol smells
+  gas!" sau tusesc oamenii, apoi stratul galben-verzui pe sol.
+  Ce faci: scoate zonele din jurul scurgerii si tine gazul departe de foc.
+
+IESIRE BLOCATA
+  Cum o recunosti: camion sau schela in fata usii, "BLOCKED" deasupra ei.
+  Ce faci: selecteaza o patrula sau un politist si da click pe usa. O curata
+  in 8 s (doi oameni in 4 s). Cat lucreaza, cercul lui e oprit.
+
+OAMENI BETI
+  Cum ii recunosti: culoarea lor pe harta (vezi legenda, tasta L).
+  Ce faci: selecteaza o patrula si da click pe ei (sau F pentru cel mai
+  apropiat) - ii duce afara.
+
+Multimea panicata impinge si se striveste la stramtori. Patrulele calmeaza
+oamenii din cercul lor si ii aseaza in cozi aerisite, asa ca pune-le acolo
+unde se aglomereaza.
+
+
+=====================================================================
+4. CONTROALE
+=====================================================================
+
+Click pe un om din echipa ......... il selectezi (si din lista din stanga)
+Click pe harta .................... trimiti omul selectat acolo
+Click pe o poarta ................. o deschizi / o inchizi
+Click pe o usa blocata ............ trimiti omul selectat s-o curete
+Click pe un om beat (cu cineva
+  selectat) ....................... il escorteaza afara
+Sageti (patrula selectata) ........ ordin de evacuare pe zona
+                                    (fata / spate / stanga / dreapta)
+Click dreapta (patrula selectata) . intorci patrula spre acel punct
+                                    (schimba ce inseamna fata / spate)
+F (patrula selectata) ............. escorteaza cel mai apropiat om beat
+1 / 2 ............................. unealta: comenzi / bariere
+                                    (drag = desenezi, click dreapta = stergi)
+Enter ............................. porneste concertul
+Space / Tab ....................... pauza / viteza 1x-2x
+WASD, scroll, Q/E, click mijloc ... camera: miscare, zoom, rotatie, tragere
+H / M / L / G ..................... harta de presiune / starile oamenilor /
+                                    legenda / zonele
+F1 / F2 / F3 (in Planning) ........ Easy / Medium / Hard
+Esc ............................... deselectezi; in Planning, fara nimic
+                                    selectat, te intorci la meniu
+R ................................. joc nou
+
+
+=====================================================================
+5. SCOR SI STELE
+=====================================================================
+
+Scor:
+  +10 pentru fiecare om salvat
+  -100 pentru fiecare ranit
+  -25 pentru fiecare om ramas inauntru
+  -50 pentru fiecare om beat ramas inauntru
+  -10 pentru fiecare atac de panica
+  +10 pentru fiecare secunda ramasa din cele 4 minute
+  totul inmultit cu multiplicatorul dificultatii (x1 / x1,5 / x2)
+
+Stele:
+  1 stea:  cel putin 90% salvati
+  2 stele: plus cel mult 1% raniti
+  3 stele: plus 0 raniti, 0 ramasi inauntru, 0 beti ramasi si evacuare
+           in cel mult 2 minute
+
+
+=====================================================================
+6. STARE SI TESTE
+=====================================================================
+
+- Saptamana 5 (pasii 2-6: iesiri blocate, turn, gaz, dificultati, meniu)
+  nu a fost inca compilata sau jucata. Inainte de commit:
+    powershell -ExecutionPolicy Bypass -File "Tools~\Verify\verify.ps1" -SkipBaseline
+  (din folderul proiectului)
+- Teste fara grafica, in Unity: Tools > Crush Hour >
+    Run Balance Baseline, Run Zone Order Test, Run Incident Refactor Check,
+    Run Blocked Exit Test, Run Tower Collapse Test, Run Gas Leak Test,
+    Run Difficulty Test
+  Rezultatele se salveaza in Tools~/Verify/*.md.
+- Detaliile tehnice sunt in AGENTS.md.
