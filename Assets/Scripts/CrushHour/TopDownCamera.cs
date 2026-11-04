@@ -16,6 +16,9 @@ namespace CrushHour
         public float rotateSpeed = 90f;
         /// <summary>Set by the game: false while a zone patrol is selected, because the arrow keys give zone orders then.</summary>
         [System.NonSerialized] public bool arrowKeysPan = true;
+        /// <summary>Menus own the mouse and keyboard while open.</summary>
+        [System.NonSerialized] public bool controlsEnabled = true;
+        [System.NonSerialized] public float inputSensitivity = 1f;
 
         public void Focus(Vector3 point, float? newDistance = null)
         {
@@ -26,6 +29,7 @@ namespace CrushHour
 
         void LateUpdate()
         {
+            if (!controlsEnabled) { Apply(); return; }
             var keyboard = Keyboard.current;
             var mouse = Mouse.current;
             float dt = Time.unscaledDeltaTime;
@@ -37,23 +41,23 @@ namespace CrushHour
                 if (keyboard.sKey.isPressed || (arrowKeysPan && keyboard.downArrowKey.isPressed)) move.y -= 1f;
                 if (keyboard.dKey.isPressed || (arrowKeysPan && keyboard.rightArrowKey.isPressed)) move.x += 1f;
                 if (keyboard.aKey.isPressed || (arrowKeysPan && keyboard.leftArrowKey.isPressed)) move.x -= 1f;
-                if (keyboard.qKey.isPressed) yaw += rotateSpeed * dt;
-                if (keyboard.eKey.isPressed) yaw -= rotateSpeed * dt;
+                if (keyboard.qKey.isPressed) yaw += rotateSpeed * inputSensitivity * dt;
+                if (keyboard.eKey.isPressed) yaw -= rotateSpeed * inputSensitivity * dt;
             }
 
             var yawRotation = Quaternion.Euler(0f, yaw, 0f);
             Vector3 forward = yawRotation * Vector3.forward, right = yawRotation * Vector3.right;
-            focus += (right * move.x + forward * move.y) * (panSpeed * distance * dt);
+            focus += (right * move.x + forward * move.y) * (panSpeed * inputSensitivity * distance * dt);
 
             if (mouse != null)
             {
                 if (mouse.middleButton.isPressed)
                 {
                     Vector2 delta = mouse.delta.ReadValue();
-                    focus -= (right * delta.x + forward * delta.y) * (distance * 0.0016f);
+                    focus -= (right * delta.x + forward * delta.y) * (distance * 0.0016f * inputSensitivity);
                 }
                 float scroll = mouse.scroll.ReadValue().y;
-                if (Mathf.Abs(scroll) > 0.01f) distance *= scroll > 0f ? 0.9f : 1.1f;
+                if (Mathf.Abs(scroll) > 0.01f) distance *= Mathf.Pow(scroll > 0f ? 0.9f : 1.1f, inputSensitivity);
             }
 
             distance = Mathf.Clamp(distance, minDistance, maxDistance);
