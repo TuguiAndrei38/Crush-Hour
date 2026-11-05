@@ -68,7 +68,8 @@ namespace CrushHour
         [Header("Crush")]
         [Tooltip("Crowd pressure (density x panic factor) above which people get hurt.")]
         public float crushThreshold = 8.5f;
-        public float injuryRate = 0.08f;
+        [Tooltip("Crush damage per second per unit of pressure above the threshold; 1 = injured. Was 0.08: crowds kept moving, so pressure spikes never lasted long enough to hurt anyone; 0.15 made one bad jam injure hundreds.")]
+        public float injuryRate = 0.12f;
 
         [Header("Staff")]
         public float stewardRadius = 6f;
@@ -824,7 +825,7 @@ namespace CrushHour
             else
             {
                 // Stagger about, drifting back when more than 6 m from where they started.
-                float heading = Mathf.PerlinNoise(i * 0.731f, simTime * 0.08f) * Mathf.PI * 4f;
+                float heading = SmoothNoise(i * 0.731f, simTime * 0.08f) * Mathf.PI * 4f;
                 dir = new Vector2(Mathf.Cos(heading), Mathf.Sin(heading));
                 Vector2 home = anchor[i] - p;
                 if (home.sqrMagnitude > 36f) dir = Vector2.Lerp(dir, home.normalized, 0.7f).normalized;
@@ -1132,5 +1133,95 @@ namespace CrushHour
             float pv = panic[i];
             return pv > 0.7f ? 3 : pv > 0.3f ? 2 : informed[i] && evacuating[i] ? 1 : 0;
         }
+
+        /// <summary>
+        /// Walking distance (door field, metres) from the sober person still inside who is closest to an open exit to
+        /// that exit. Infinity when nobody sober is inside or no open exit can be reached.
+        /// </summary>
+        public float ClosestSoberToExit(FestivalVenue venue)
+        {
+            float best = float.PositiveInfinity;
+            for (int i = 0; i < count; i++)
+            {
+                if (state[i] != AgentState.Active || drunk[i]) continue;
+                int c = CellOf(position[i]);
+                foreach (var door in venue.doors)
+                    if (door.IsOpen && door.field.distance[c] < best) best = door.field.distance[c];
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Smooth 2D value noise in [0, 1] (stand-in for Mathf.PerlinNoise, which is native and fails outside Unity, so
+        /// the headless runners could never step drunk people). Deterministic, no rng.
+        /// </summary>
+        public static float SmoothNoise(float x, float y)
+        {
+            int xi = (int)Math.Floor(x), yi = (int)Math.Floor(y);
+            float tx = x - xi, ty = y - yi;
+            tx = tx * tx * (3f - 2f * tx);
+            ty = ty * ty * (3f - 2f * ty);
+            float a = Hash01(xi, yi), b = Hash01(xi + 1, yi), c = Hash01(xi, yi + 1), d = Hash01(xi + 1, yi + 1);
+            float bottom = a + (b - a) * tx, top = c + (d - c) * tx;
+            return bottom + (top - bottom) * ty;
+        }
+
+        static float Hash01(int x, int y)
+        {
+            unchecked
+            {
+                uint h = (uint)(x * 374761393 + y * 668265263);
+                h = (h ^ (h >> 13)) * 1274126177u;
+                return ((h ^ (h >> 16)) & 0xFFFFFF) / (float)0xFFFFFF;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Decides when an evacuation has stalled (everyone left is trying to get out, but nothing is happening). Progress
+    /// is someone reaching safety, or the sober person closest to an open exit getting at least 1 m closer. The old rule
+    /// only counted exits, so stragglers on a long walk (15 people walking 45 m along the stadium fence, say) were cut
+    /// off after 20 s and counted as "still inside". Shared by the game and the headless runners.
+    /// </summary>
+    public sealed class EvacuationProgress
+    {
+        public const float StallTime = 20f;
+        const float CheckInterval = 0.5f, MinGain = 1f;
+        int lastSafe = -1;
+        float closest = float.PositiveInfinity, checkTimer;
+
+        /// <summary>Time (on the caller's clock) of the last progress.</summary>
+        public float LastProgress { get; private set; }
+
+        public void Reset(float time)
+        {
+            lastSafe = -1;
+            closest = float.PositiveInfinity;
+            checkTimer = 0f;
+            LastProgress = time;
+        }
+
+        public void Update(float time, float dt, CrowdSimulation sim, FestivalVenue venue)
+        {
+            if (sim.SafeCount != lastSafe)
+            {
+                lastSafe = sim.SafeCount;
+                LastProgress = time;
+                closest = float.PositiveInfinity;
+            }
+            checkTimer -= dt;
+            if (checkTimer > 0f) return;
+            checkTimer = CheckInterval;
+            float d = sim.ClosestSoberToExit(venue);
+            if (d < closest - MinGain)
+            {
+                closest = d;
+                LastProgress = time;
+            }
+        }
+
+        /// <summary>Everyone sober still inside is evacuating, and there's been no progress for <see cref="StallTime"/>.</summary>
+        public bool Stalled(float time, CrowdSimulation sim) =>
+            sim.SoberActiveCount > 0 && sim.EvacuatingCount == sim.SoberActiveCount && time - LastProgress > StallTime;
     }
 }

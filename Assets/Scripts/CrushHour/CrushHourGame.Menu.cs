@@ -283,7 +283,7 @@ namespace CrushHour
                 GUI.Label(new Rect(card.x + 27, card.y + 181, 425, 31), "PEOPLE TO PROTECT", menuSmallStyle);
                 MenuFill(new Rect(card.x + 24, card.y + 224, 432, 1), MenuRule);
                 GUI.Label(new Rect(card.x + 24, card.y + 242, 432, 96),
-                    $"{settings.drunkFraction * 100f:0}% need an escort\nUp to {settings.maxBlockedDoors} blocked exit{(settings.maxBlockedDoors == 1 ? "" : "s")}\n{settings.disasterCount} disaster{(settings.disasterCount == 1 ? "" : "s")}  /  Score x{settings.scoreMultiplier:0.#}", menuBodyStyle);
+                    $"{settings.patrolCount} patrols  /  {settings.gateCrews} gate crews\n{settings.disasterCount} disaster{(settings.disasterCount == 1 ? "" : "s")}  /  up to {settings.maxBlockedDoors} blocked exit{(settings.maxBlockedDoors == 1 ? "" : "s")}\n{settings.drunkFraction * 100f:0}% drunk  /  score x{settings.scoreMultiplier:0.#}", menuBodyStyle);
                 DrawMenuStars(new Rect(card.x + 24, card.y + 343, 432, 36), MapProgress.GetStars(selectedMap, level), 31);
                 GUI.Label(new Rect(card.x + 24, card.y + 387, 432, 27), $"BEST SCORE  {MapProgress.GetBestScore(selectedMap, level):N0}", menuCenteredStyle);
                 if (OperationsButton(new Rect(card.x + 24, card.y + 426, 432, 36), selected ? "DIFFICULTY SELECTED" : "SELECT " + level.ToString().ToUpperInvariant(), selected))
@@ -293,7 +293,7 @@ namespace CrushHour
                 }
             }
             GUI.Label(new Rect(315, 752, 710, 82),
-                "1 star: save 90%.  2 stars: injuries at most 1%.\n3 stars: everyone safe, no injuries, in half the time.", menuSmallStyle);
+                DifficultySettings.StarSummary, menuSmallStyle);
             if (OperationsButton(new Rect(1072, 754, 480, 66), "START  /  " + difficulty.ToString().ToUpperInvariant() + "  >", true))
                 deferred.Add(PlayFromMenu);
             DrawMenuBackButton();
