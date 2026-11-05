@@ -331,6 +331,7 @@ namespace CrushHour
 
         void NewGame()
         {
+            welcomeScrollPosition = resultsScrollPosition = Vector2.zero;
             if (world != null) Destroy(world.gameObject);
             if (groundTexture != null) Destroy(groundTexture);
             if (groundMaterial != null) Destroy(groundMaterial);
@@ -343,6 +344,7 @@ namespace CrushHour
             towerViews.Clear();
             towerPivots.Clear();
             towerFallTime.Clear();
+            festivalLandmarkHeights.Clear();
             smeltGas.Clear();
             gasVisible = false;
             units.Clear();
@@ -434,11 +436,15 @@ namespace CrushHour
             {
                 if (l.solid)
                 {
-                    var block = CreateBlock(l.name, l.rect, l.height, l.color, 0.15f);
+                    var block = TryBuildFestivalLandmark(l, out var festivalView)
+                        ? festivalView : CreateBlock(l.name, l.rect, l.height, l.color, 0.15f);
                     int tower = venue.lightTowers.IndexOf(l);
                     if (tower >= 0) towerViews[tower] = block.transform;
                 }
-                var p = new Vector3(l.rect.center.x, l.height + 0.5f, l.rect.center.y);
+                float labelHeight = l.height + 0.5f;
+                if (selectedMap == VenueMap.SummerFestival && festivalLandmarkHeights.TryGetValue(l, out float visualHeight))
+                    labelHeight = visualHeight + 0.5f;
+                var p = new Vector3(l.rect.center.x, labelHeight, l.rect.center.y);
                 labelPositions[l.name] = labelPositions.TryGetValue(l.name, out var acc) ? (acc.sum + p, acc.n + 1) : (p, 1);
             }
             foreach (var kv in labelPositions) labels.Add((kv.Key.ToUpperInvariant(), kv.Value.sum / kv.Value.n));
@@ -1125,6 +1131,11 @@ namespace CrushHour
 
             if (block.reason == BlockDoorIncident.Reasons[0])
             {
+                if (TryBuildFestivalTruckBlocker(root, length))
+                {
+                    blockerViews[door] = root.gameObject;
+                    return;
+                }
                 // Delivery truck, just outside, across the whole door.
                 var body = new Color(0.92f, 0.92f, 0.88f);
                 var cab = new Color(0.85f, 0.2f, 0.15f);
@@ -1707,7 +1718,8 @@ namespace CrushHour
             }
             if (keyboard.rKey.wasPressedThisFrame)
             {
-                NewGame();
+                if (phase == Phase.Results) RetryCurrentLevel();
+                else NewGame();
                 return;
             }
             if (keyboard.hKey.wasPressedThisFrame) heatmap = !heatmap;
@@ -2283,7 +2295,7 @@ namespace CrushHour
             mutedStyle = Txt(fontBody, 13, InkSoft, wrap: true);
             smallStyle = Txt(fontBody, 12, InkFaint, clip: true);
             stepTitleStyle = Txt(fontHeavy, 18, Ink);
-            resultValueStyle = Txt(fontBold, 17, Ink, TextAnchor.UpperRight);
+            resultValueStyle = Txt(fontBold, 17, Ink, TextAnchor.UpperRight, wrap: true);
             starsCaptionStyle = Txt(fontBold, 14, InkSoft, TextAnchor.UpperCenter);
             headerStyle = Txt(fontBold, 14, InkSoft);
             titleStyle = Txt(fontHeavy, 30, Ink);
@@ -3125,11 +3137,30 @@ namespace CrushHour
 
         // ---------------------------------------------------------------- Briefing and results cards
 
+        Vector2 welcomeScrollPosition, resultsScrollPosition;
+
+        Rect BriefingCardRect(float preferredWidth, float preferredHeight)
+        {
+            float width = Mathf.Min(preferredWidth, vw - 32f);
+            float top = TopBarHeight + 16f;
+            float height = Mathf.Min(preferredHeight, vh - top - 16f);
+            return new Rect((vw - width) * 0.5f, top + (vh - top - 16f - height) * 0.5f, width, height);
+        }
+
+        void RetryCurrentLevel()
+        {
+            speedIndex = 0;
+            NewGame(); // Keep the selected map and difficulty; rebuild the round in Planning.
+        }
+
         void DrawWelcome()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 300, vh * 0.5f - 250, 600, 500));
+            var rect = Panel(BriefingCardRect(640f, 700f));
             Tab(rect.x, rect.y, "00 — BRIEFING", Yellow, Ink, Ink);
-            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 38, rect.width - 56, rect.height - 56));
+            var footer = new Rect(rect.x + 28, rect.yMax - 74f, rect.width - 56, 46f);
+            var body = new Rect(rect.x + 28, rect.y + 38, rect.width - 56, footer.y - rect.y - 54f);
+            GUILayout.BeginArea(body);
+            welcomeScrollPosition = GUILayout.BeginScrollView(welcomeScrollPosition, false, false);
             GUILayout.Label("WELCOME, SAFETY COMMANDER", titleStyle);
             GUILayout.Space(2);
             GUILayout.Label($"{sim.count} people are at {MapTitle}. Soon something will go wrong: a fire, a falling light tower, a gas leak, a blocked exit... " +
@@ -3140,13 +3171,14 @@ namespace CrushHour
             WelcomeStep("1", "PLAN", $"You have {units.FindAll(x => x.role == Role.Patrolman).Count} patrols for {venue.regions.Count} zones, plus {megaphoneOfficers} megaphone police. They start at the busiest zones: move them by clicking them, then the map. A patrol looks after the zone it stands in. Draw barriers to steer the crowd.");
             WelcomeStep("2", "REACT", $"Watch for warning signs (smoke, a creaking tower). You have {difficultySettings.gateCrews} gate crews, so only {difficultySettings.gateCrews} emergency gates can be open at once: pick them, and watch the people per minute at each exit. Select a patrol and press an arrow key to send its zone out that way.");
             WelcomeStep("3", "KEEP THEM CALM", "Panicked crowds push and crush, and too much panic causes panic attacks. Put patrols where queues form: they line people up with room to breathe.");
-            GUILayout.FlexibleSpace();
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Camera: WASD, scroll to zoom, Q/E to rotate. U hides the HUD.", smallStyle);
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("LET'S GO", goodButtonStyle, GUILayout.Width(170), GUILayout.Height(46))) deferred.Add(() => welcomeDismissed = true);
-            GUILayout.EndHorizontal();
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
+
+            Fill(new Rect(footer.x, footer.y - 12f, footer.width, 1f), MenuRule);
+            GUI.Label(new Rect(footer.x, footer.y + 3f, footer.width - 190f, footer.height),
+                "Camera: WASD, scroll to zoom, Q/E to rotate. U hides the HUD.", mutedStyle);
+            if (GUI.Button(new Rect(footer.xMax - 170f, footer.y, 170f, footer.height), "LET'S GO", goodButtonStyle))
+                deferred.Add(() => welcomeDismissed = true);
         }
 
         void WelcomeStep(string number, string title, string text)
@@ -3166,9 +3198,12 @@ namespace CrushHour
 
         void DrawResults()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 260, vh * 0.5f - 256, 520, 512));
+            var rect = Panel(BriefingCardRect(620f, 720f));
             Tab(rect.x, rect.y, "RESULTS — DEBRIEF", Yellow, Ink, Ink);
-            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 36, rect.width - 56, rect.height - 54));
+            var footer = new Rect(rect.x + 28, rect.yMax - 126f, rect.width - 56, 98f);
+            var body = new Rect(rect.x + 28, rect.y + 36f, rect.width - 56, footer.y - rect.y - 52f);
+            GUILayout.BeginArea(body);
+            resultsScrollPosition = GUILayout.BeginScrollView(resultsScrollPosition, false, false);
             GUILayout.Label(resultTitle.ToUpperInvariant(), bigTitleStyle);
             GUILayout.Space(4);
 
@@ -3189,24 +3224,22 @@ namespace CrushHour
             ResultRow("Score", finalScore.ToString(), Red);
             GUILayout.Space(8);
             GUILayout.Label(resultTip, mutedStyle);
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("PLAY AGAIN  [R]", goodButtonStyle, GUILayout.Height(46))) deferred.Add(NewGame);
-            if (GUILayout.Button("MAIN MENU", buttonStyle, GUILayout.Height(34)))
-                deferred.Add(() =>
-                {
-                    NewGame();
-                    OpenMenu();
-                });
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
+
+            Fill(new Rect(footer.x, footer.y - 12f, footer.width, 1f), MenuRule);
+            if (GUI.Button(new Rect(footer.x, footer.y, footer.width, 46f), "RETRY CURRENT LEVEL  [R]", goodButtonStyle))
+                deferred.Add(RetryCurrentLevel);
+            if (GUI.Button(new Rect(footer.x, footer.y + 56f, footer.width, 42f), "SELECT NEW LEVEL", navyButtonStyle))
+                deferred.Add(SelectNewLevelFromResults);
         }
 
         void ResultRow(string caption, string value, Color color)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(caption, labelStyle, GUILayout.Width(170));
-            GUILayout.FlexibleSpace();
+            GUILayout.Label(caption, labelStyle, GUILayout.Width(154));
             SetTextColor(resultValueStyle, color);
-            GUILayout.Label(value, resultValueStyle);
+            GUILayout.Label(value, resultValueStyle, GUILayout.MinWidth(0), GUILayout.ExpandWidth(true));
             GUILayout.EndHorizontal();
             Fill(GUILayoutUtility.GetRect(10, 1, GUILayout.ExpandWidth(true)), new Color(Ink.r, Ink.g, Ink.b, 0.15f));
         }

@@ -67,6 +67,14 @@ namespace CrushHour
             menuPage = menuPage == MenuPage.Difficulty ? MenuPage.Maps : MenuPage.Home;
         }
 
+        void SelectNewLevelFromResults()
+        {
+            // Clear the finished incident before the menu's background simulation resumes.
+            NewGame();
+            OpenMenu();
+            menuPage = MenuPage.Maps;
+        }
+
         void PlayFromMenu()
         {
             selectedMap = MapCatalog.Normalize(selectedMap);
