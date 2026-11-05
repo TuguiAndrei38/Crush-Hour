@@ -173,7 +173,12 @@ namespace CrushHour
             for (int i = 0; i < 3; i++)
             {
                 var matrix = GUI.matrix;
-                GUIUtility.RotateAroundPivot(35f, new Vector2(386 + i * 18, 42));
+                // RotateAroundPivot wants the pivot in screen pixels, but the menu is drawn in its own 1600x900 space
+                // and scaled to the window, so convert it through the current matrix. Passing the layout point
+                // directly rotated the slashes around the wrong spot on any other resolution, and they drifted onto
+                // the page title.
+                Vector2 pivot = matrix.MultiplyPoint3x4(new Vector3(386 + i * 18, 42, 0f));
+                GUIUtility.RotateAroundPivot(35f, pivot);
                 MenuFill(new Rect(381 + i * 18, 26, 9, 32), MenuInk);
                 GUI.matrix = matrix;
             }
@@ -219,31 +224,42 @@ namespace CrushHour
             GUI.Label(new Rect(48, 100, 1450, 84), "SELECT A SCENARIO", menuTitleStyle);
             GUI.Label(new Rect(51, 184, 1450, 33), "Choose a venue dossier. All three maps are available to command.", menuBodyStyle);
             EnsureMenuPreviews();
+            // Same flow as the difficulty page: a card's button only selects it (red border and SELECTED badge), and
+            // the red button at the bottom right moves on to the difficulty.
             for (int i = 0; i < MapCatalog.Maps.Count; i++)
             {
                 var map = MapCatalog.Maps[i];
-                var card = new Rect(48 + i * 512, 236, 480, 566);
-                DrawMenuDossier(card, map.Id == selectedMap);
-                var preview = new Rect(card.x + 20, card.y + 22, 440, 230);
+                var card = new Rect(48 + i * 512, 236, 480, 478);
+                bool selected = map.Id == selectedMap;
+                DrawMenuDossier(card, selected);
+                var preview = new Rect(card.x + 20, card.y + 22, 440, 190);
                 MenuFill(preview, new Color(0.88f, 0.88f, 0.83f, 0.75f));
                 GUI.DrawTexture(preview, menuPreviews[i], ScaleMode.ScaleToFit);
                 GUI.Label(new Rect(preview.x + 9, preview.y + 7, 175, 30), $"VENUE 0{i + 1}", menuEyebrowStyle);
-                GUI.Label(new Rect(card.x + 22, card.y + 275, 438, 52), map.Title.ToUpperInvariant(), menuCardTitleStyle);
-                GUI.Label(new Rect(card.x + 22, card.y + 334, 436, 76), map.Description, menuBodyStyle);
+                if (selected)
+                {
+                    MenuFill(new Rect(preview.xMax - 145, preview.y, 145, 34), MenuRed);
+                    GUI.Label(new Rect(preview.xMax - 145, preview.y, 145, 34), "SELECTED", menuWhiteButtonStyle);
+                }
+                GUI.Label(new Rect(card.x + 22, card.y + 226, 438, 52), map.Title.ToUpperInvariant(), menuCardTitleStyle);
+                GUI.Label(new Rect(card.x + 22, card.y + 280, 436, 70), map.Description, menuBodyStyle);
                 for (int d = 0; d < 3; d++)
                 {
                     float dx = card.x + 20 + d * 148;
-                    GUI.Label(new Rect(dx, card.y + 417, 142, 30), ((Difficulty)d).ToString().ToUpperInvariant(), menuCenteredStyle);
-                    DrawMenuStars(new Rect(dx, card.y + 453, 142, 33), MapProgress.GetStars(map.Id, (Difficulty)d), 26);
+                    GUI.Label(new Rect(dx, card.y + 356, 142, 26), ((Difficulty)d).ToString().ToUpperInvariant(), menuCenteredStyle);
+                    DrawMenuStars(new Rect(dx, card.y + 382, 142, 33), MapProgress.GetStars(map.Id, (Difficulty)d), 26);
                 }
-                if (OperationsButton(new Rect(card.x + 20, card.y + 506, 440, 42), "SELECT SCENARIO  >", map.Id == selectedMap))
+                if (OperationsButton(new Rect(card.x + 24, card.y + 426, 432, 36), selected ? "VENUE SELECTED" : "SELECT VENUE", selected))
                 {
                     VenueMap chosen = map.Id;
-                    deferred.Add(() => { selectedMap = chosen; menuPage = MenuPage.Difficulty; });
+                    deferred.Add(() => selectedMap = chosen);
                 }
             }
+            GUI.Label(new Rect(315, 752, 710, 82),
+                "Three stars per difficulty.\nYour best stars and score are saved for every venue.", menuSmallStyle);
+            if (OperationsButton(new Rect(1072, 754, 480, 66), "NEXT  /  DIFFICULTY  >", true))
+                deferred.Add(() => menuPage = MenuPage.Difficulty);
             DrawMenuBackButton();
-            GUI.Label(new Rect(315, 843, 1220, 40), "Three stars per difficulty. Your best stars and score are saved for every venue.", menuSmallStyle);
         }
 
         void DrawDifficultyMenu()
