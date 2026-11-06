@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace CrushHour
 {
-    public enum VenueMap { SummerFestival = 0, CityStadium = 1, MetroConcourse = 2 }
+    public enum VenueMap { SummerFestival = 0, CityStadium = 1, MetroConcourse = 2, DerbyStadium = 3 }
 
     /// <summary>A playable venue, shared by the menu and the generated map.</summary>
     public sealed class MapDefinition
@@ -31,6 +31,8 @@ namespace CrushHour
                 "Clear the stands and concourse around the pitch through the stadium's exit lanes."),
             new MapDefinition(VenueMap.MetroConcourse, "Metro Concourse",
                 "Lead commuters around platforms, kiosks and crowded concourse bottlenecks."),
+            new MapDefinition(VenueMap.DerbyStadium, "Derby Stadium",
+                "A local derby: a smaller, segregated away end, narrow vomitories around the bowl, a concourse ring."),
         });
 
         public static VenueMap Normalize(VenueMap map) => (VenueMap)Mathf.Clamp((int)map, 0, Maps.Count - 1);
@@ -65,6 +67,7 @@ namespace CrushHour
             {
                 VenueMap.CityStadium => "CityStadium",
                 VenueMap.MetroConcourse => "MetroConcourse",
+                VenueMap.DerbyStadium => "DerbyStadium",
                 _ => "SummerFestival",
             };
             string difficultyId = (Difficulty)Mathf.Clamp((int)difficulty, 0, 2) switch

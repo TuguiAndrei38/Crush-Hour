@@ -78,7 +78,7 @@ namespace CrushHour
     /// Grid model of the festival grounds (1 cell = 1 m²): layout, doors, fire, and the route fields people follow.
     /// Everything outside the fence is the safe zone.
     /// </summary>
-    public class FestivalVenue
+    public partial class FestivalVenue
     {
         public const int Width = 104, Height = 76, CellCount = Width * Height;
         public const int MaxFireDistance = 32;
@@ -164,6 +164,7 @@ namespace CrushHour
             {
                 case VenueMap.CityStadium: BuildStadium(); break;
                 case VenueMap.MetroConcourse: BuildMetro(); break;
+                case VenueMap.DerbyStadium: BuildDerbyStadium(); break;
                 default: BuildFestival(); break;
             }
 

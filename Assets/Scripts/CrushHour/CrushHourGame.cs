@@ -1852,6 +1852,7 @@ namespace CrushHour
         Color MapFloorColor(int cell)
         {
             if (venue.map == VenueMap.CityStadium) return new Color(0.43f, 0.46f, 0.49f);
+            if (venue.map == VenueMap.DerbyStadium) return new Color(0.5f, 0.42f, 0.38f);
             if (venue.map == VenueMap.MetroConcourse)
                 return ((cell % W / 4 + cell / W / 4) & 1) == 0 ? new Color(0.55f, 0.58f, 0.61f) : new Color(0.49f, 0.52f, 0.56f);
             return Grass;
