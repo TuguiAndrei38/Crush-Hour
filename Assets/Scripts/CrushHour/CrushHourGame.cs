@@ -17,7 +17,7 @@ namespace CrushHour
         /// <summary>Menu (start menu, CrushHourGame.Menu.cs) → Planning → Live → Results.</summary>
         enum Phase { Menu, Planning, Live, Results }
         enum Tool { Command, Barrier }
-        enum Role { Patrolman, Megaphone }
+        enum Role { Patrolman, Megaphone, Medic }
         enum Severity { Info, Good, Warning, Danger }
         /// <summary>Escorting a drunk person: walking to them, walking them to a door, walking back to the post.</summary>
         enum EscortPhase { None, Fetching, Escorting, Returning }
@@ -25,7 +25,7 @@ namespace CrushHour
         enum OrderSide { Front, Back, Left, Right }
 
         /// <summary>A zone patrolman or police officer the player can send around.</summary>
-        class Unit
+        partial class Unit
         {
             public Role role;
             public int number;
@@ -85,6 +85,8 @@ namespace CrushHour
         public int barrierBudget = 60;
         [Tooltip("Police officers with megaphones who announce the situation to everyone in earshot.")]
         public int megaphoneOfficers = 2;
+        [Tooltip("Medics who walk to anyone badly hurt and stabilise them in place once an incident starts.")]
+        public int medicUnits = 2;
         [Tooltip("Dev override: people in this scene, whatever the difficulty (0 = the difficulty's player count). Settings upgrades never reset it.")]
         [Min(0)] public int crowdSizeOverride;
         public float evacuationTimeLimit = 240f;
@@ -121,6 +123,7 @@ namespace CrushHour
         const int MaxStepsPerFrame = 6;
         static readonly float[] Speeds = { 1f, 2f };
         static readonly Vector2[] MegaphonePosts = { new(40, 52), new(64, 52) };
+        static readonly Vector2[] MedicPosts = { new(52, 14), new(52, 60) };
 
         static readonly Color[] AgentColors =
         {
@@ -136,6 +139,8 @@ namespace CrushHour
         static readonly Color PatrolColor = new(1f, 0.92f, 0.2f); // hi-vis vest; the cap and arrow take the zone colour
         static readonly Color PoliceColor = new(0.08f, 0.14f, 0.42f);
         static readonly Color MegaphoneColor = new(0.35f, 0.85f, 1f);
+        static readonly Color MedicColor = new(0.9f, 0.16f, 0.2f);       // red cross
+        static readonly Color MedicUniformColor = new(0.92f, 0.92f, 0.9f); // white coat
         static readonly Color FenceColor = new(0.25f, 0.25f, 0.27f);
         static readonly Color BarrierColor = new(0.9f, 0.9f, 0.85f);
         static readonly Color GateClosedColor = new(0.9f, 0.25f, 0.2f);
@@ -464,6 +469,16 @@ namespace CrushHour
                 }
                 SpawnUnit(Role.Megaphone, i, post);
             }
+            for (int i = 0; i < medicUnits; i++)
+            {
+                Vector2 post = i < MedicPosts.Length ? MedicPosts[i] : new Vector2(rng.Next(10, 94) + 0.5f, rng.Next(10, 60) + 0.5f);
+                if (!venue.IsWalkable(FestivalVenue.CellAt(post)))
+                {
+                    var region = venue.regions[i % venue.regions.Count];
+                    post = new Vector2(region.post.x + 0.5f, region.post.y + 0.5f);
+                }
+                SpawnUnit(Role.Medic, i, post);
+            }
         }
 
         Unit SpawnUnit(Role role, int index, Vector2 post, int zone = -1)
@@ -486,7 +501,7 @@ namespace CrushHour
                 arrow.sharedMaterial = Unlit(zoneColor);
                 arrow.shadowCastingMode = ShadowCastingMode.Off;
             }
-            else
+            else if (role == Role.Megaphone)
             {
                 AddPart(root, new Vector3(0f, 0.9f, 0f), new Vector3(0.6f, 1.8f, 0.6f), PoliceColor);
                 AddPart(root, new Vector3(0f, 1.9f, 0f), new Vector3(0.7f, 0.2f, 0.7f), MegaphoneColor); // cap
@@ -496,6 +511,11 @@ namespace CrushHour
                 line.widthMultiplier = 0.25f;
                 line.enabled = false;
                 unit.wave = wave;
+            }
+            else // Medic
+            {
+                AddPart(root, new Vector3(0f, 0.9f, 0f), new Vector3(0.6f, 1.8f, 0.6f), MedicUniformColor);
+                AddPart(root, new Vector3(0f, 1.9f, 0f), new Vector3(0.7f, 0.2f, 0.7f), MedicColor); // cap
             }
             unit.ring = AddCircle(root.gameObject, RoleRadius(role), RoleColor(role));
             units.Add(unit);
@@ -548,13 +568,16 @@ namespace CrushHour
         }
 
         float RoleRadius(Role role) => role == Role.Megaphone ? crowd.policeAnnounceRadius : crowd.patrolRadius;
-        static Color RoleColor(Role role) => role == Role.Megaphone ? MegaphoneColor : PatrolColor;
-        static string RoleName(Role role) => role == Role.Megaphone ? "Police" : "Patrol";
+        static Color RoleColor(Role role) => role switch { Role.Megaphone => MegaphoneColor, Role.Medic => MedicColor, _ => PatrolColor };
+        static string RoleName(Role role) => role switch { Role.Megaphone => "Police", Role.Medic => "Medic", _ => "Patrol" };
         Color UnitColor(Unit u) => u.homeRegion >= 0 ? venue.regions[u.homeRegion].color : RoleColor(u.role);
 
-        static string RoleDescription(Role role) => role == Role.Megaphone
-            ? "Megaphone police: once the fire starts, announces it every few seconds to everyone in the big ring and tells them which gates are open."
-            : "Zone patrol: panicked people in the ring stop and get calmed down first, then are told which gates are open and leave in orderly, spaced-out queues. Also helps people through panic attacks. Once the fire starts, select them and press an arrow key to send their whole zone out that way.";
+        static string RoleDescription(Role role) => role switch
+        {
+            Role.Megaphone => "Megaphone police: once the fire starts, announces it every few seconds to everyone in the big ring and tells them which gates are open.",
+            Role.Medic => "Medic: once the fire starts, walks to the nearest badly hurt person and stabilises them on the spot, saving them from the injured count.",
+            _ => "Zone patrol: panicked people in the ring stop and get calmed down first, then are told which gates are open and leave in orderly, spaced-out queues. Also helps people through panic attacks. Once the fire starts, select them and press an arrow key to send their whole zone out that way.",
+        };
 
         Material Lit(Color color)
         {
@@ -647,6 +670,7 @@ namespace CrushHour
             if (!incidentStarted) return;
 
             UpdateMegaphones(dt);
+            UpdateMedics(dt);
             for (int r = 0; r < regionOrderCooldown.Length; r++) regionOrderCooldown[r] = Mathf.Max(0f, regionOrderCooldown[r] - dt);
             bool wasPlaying = !sim.ShowStopped;
             evacuationTime += dt;
@@ -2491,6 +2515,7 @@ namespace CrushHour
             EscortPhase.Escorting => "ESCORTING",
             EscortPhase.Returning => "RETURNING",
             _ => u.clearingDoor >= 0 ? "CLEARING EXIT"
+                : u.role == Role.Medic && u.treating >= 0 && u.path.Count == 0 ? "TREATING"
                 : u.path.Count > 0 ? "MOVING"
                 : u.role == Role.Megaphone && incidentStarted ? "ANNOUNCING"
                 : null, // in position: nothing to say
@@ -2499,17 +2524,18 @@ namespace CrushHour
         void DrawTeamPanel()
         {
             const float width = 252, rowHeight = 27, groupHeight = 28;
-            float height = 24 + (showTeam ? 2 * groupHeight + units.Count * rowHeight + 8 : 6);
+            float height = 24 + (showTeam ? 3 * groupHeight + units.Count * rowHeight + 8 : 6);
             var rect = Panel(new Rect(14, TopBarHeight + 16, width, height));
             if (SectionHeader(rect, "01 — YOUR TEAM", units.Count.ToString(), showTeam)) deferred.Add(() => showTeam = !showTeam);
             if (!showTeam) return;
 
             // Grouped: the zone patrols first (numbered by zone), then the police.
             float y = rect.y + 24;
-            foreach (var role in new[] { Role.Patrolman, Role.Megaphone })
+            foreach (var role in new[] { Role.Patrolman, Role.Megaphone, Role.Medic })
             {
                 var caption = new Rect(rect.x + 10, y + 8, width - 20, 17);
-                GUI.Label(caption, role == Role.Patrolman ? "ZONE PATROLS" : "MEGAPHONE POLICE", groupStyle);
+                string groupLabel = role switch { Role.Patrolman => "ZONE PATROLS", Role.Megaphone => "MEGAPHONE POLICE", _ => "MEDICS" };
+                GUI.Label(caption, groupLabel, groupStyle);
                 Fill(new Rect(caption.x, caption.yMax + 1, caption.width, 2), Ink);
                 y += groupHeight;
                 for (int i = 0; i < units.Count; i++)
@@ -2522,7 +2548,7 @@ namespace CrushHour
                     if (selected) DrawSlab(row, Red, 12);
                     if (GUI.Button(row, GUIContent.none, selected ? GUIStyle.none : hoverStyle)) SelectUnit(i, true);
                     var ink = selected ? Color.white : Ink;
-                    string number = u.role == Role.Patrolman ? $"P{u.number}" : $"M{u.number}";
+                    string number = u.role switch { Role.Patrolman => $"P{u.number}", Role.Megaphone => $"M{u.number}", _ => $"D{u.number}" };
                     Label(new Rect(row.x + 6, row.y, 24, rowHeight), number, rowNumberStyle, ink);
                     Fill(new Rect(row.x + 30, row.y + 5, 2, rowHeight - 10), selected ? new Color(1f, 1f, 1f, 0.75f) : Ink);
                     Swatch(new Rect(row.x + 39, row.y + 9, 9, 9), UnitColor(u));
@@ -3047,7 +3073,7 @@ namespace CrushHour
             GUILayout.Space(4);
             GUILayout.Label($"Difficulty: <b>{DifficultyLabel}</b>. Esc (with nobody selected) goes back to the menu.", mutedStyle);
             GUILayout.Space(10);
-            WelcomeStep("1", "PLAN", $"You have {units.FindAll(x => x.role == Role.Patrolman).Count} patrols for {venue.regions.Count} zones, plus {megaphoneOfficers} megaphone police. They start at the busiest zones: move them by clicking them, then the map. A patrol looks after the zone it stands in. Draw barriers to steer the crowd.");
+            WelcomeStep("1", "PLAN", $"You have {units.FindAll(x => x.role == Role.Patrolman).Count} patrols for {venue.regions.Count} zones, plus {megaphoneOfficers} megaphone police and {medicUnits} medics. They start at the busiest zones: move them by clicking them, then the map. A patrol looks after the zone it stands in. Medics automatically go to anyone badly hurt once the incident starts. Draw barriers to steer the crowd.");
             WelcomeStep("2", "REACT", $"Watch for warning signs (smoke, a creaking tower). You have {difficultySettings.gateCrews} gate crews, so only {difficultySettings.gateCrews} emergency gates can be open at once: pick them, and watch the people per minute at each exit. Select a patrol and press an arrow key to send its zone out that way.");
             WelcomeStep("3", "KEEP THEM CALM", "Panicked crowds push and crush, and too much panic causes panic attacks. Put patrols where queues form: they line people up with room to breathe.");
             GUILayout.FlexibleSpace();

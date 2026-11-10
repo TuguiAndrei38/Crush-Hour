@@ -770,6 +770,21 @@ namespace CrushHour
             attackTime[i] = 0f;
         }
 
+        /// <summary>How many of the injured a medic reached and stabilised in time (see <see cref="Stabilize"/>).</summary>
+        public int StabilizedCount { get; private set; }
+
+        /// <summary>
+        /// A medic reached someone badly hurt in time: they're taken off the injured count and counted as safe,
+        /// right where they are. No-op if they're not currently injured (someone else already got to them, or
+        /// they're not hurt at all).
+        /// </summary>
+        public void Stabilize(int i)
+        {
+            if (state[i] != AgentState.Injured) return;
+            state[i] = AgentState.Safe;
+            StabilizedCount++;
+        }
+
         void UpdateCounts()
         {
             int active = 0, safe = 0, injured = 0, panicked = 0, leaving = 0, attacks = 0, intoxicated = 0, drunkInside = 0, coughing = 0;
