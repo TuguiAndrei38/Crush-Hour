@@ -230,11 +230,11 @@ namespace CrushHour
                 {
                     var screen = new Material(mats[i]) { name = $"Monitor screen {feed.region + 1}" };
                     screen.SetTexture("_BaseMap", feed.texture);
-                    screen.SetColor("_BaseColor", new Color(0.25f, 0.25f, 0.25f));
+                    screen.SetColor("_BaseColor", Color.black);
                     screen.EnableKeyword("_EMISSION");
                     screen.SetTexture("_EmissionMap", feed.texture);
                     screen.SetColor("_EmissionColor", Color.white);
-                    screen.SetFloat("_Smoothness", 0.8f);
+                    Matte(screen);
                     mats[i] = screen;
                     ownedMaterials.Add(screen);
                 }
@@ -286,6 +286,7 @@ namespace CrushHour
             int tick = (int)(now * 2f);
             foreach (var feed in feeds) feed.camera.enabled = false;
             if (minimapCamera != null) minimapCamera.enabled = false;
+
             int budget = Mathf.Max(1, rendersPerFrame);
             while (used < budget)
             {

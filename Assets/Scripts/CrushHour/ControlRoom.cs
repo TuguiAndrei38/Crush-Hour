@@ -40,7 +40,7 @@ namespace CrushHour
         [Tooltip("Mouse look speed (degrees per pixel of mouse movement).")]
         public float lookSensitivity = 0.12f;
         [Tooltip("How far the operator can turn left/right from facing the video wall.")]
-        public float maxYaw = 120f;
+        public float turnLimit = 180f;   // 180 = turn all the way round (the window is behind the desk)
         public float minPitch = -55f, maxPitch = 65f;
         public float fieldOfView = 60f, zoomFieldOfView = 22f;
         [Tooltip("How fast WASD rolls the chair (m/s).")]
@@ -128,9 +128,10 @@ namespace CrushHour
         {
             if (Root != null) return;
             Root = new GameObject("Control Room (generated)").transform;
-            Root.SetPositionAndRotation(origin, Quaternion.identity);
+            Root.SetPositionAndRotation(RoomPlace(), Quaternion.identity);
 
             roomShell = Spawn(roomModel, "Room", Vector3.zero, 0f);
+            SetupWindow();
             Spawn(doorModel, "Door", DoorPos, 0f);
             VideoWall = Spawn(videoWallModel, "Video Wall", VideoWallPos, 0f);
             Desk = Spawn(deskModel, "Desk", DeskPos, 0f);
@@ -263,7 +264,7 @@ namespace CrushHour
                 // Slower turning while zoomed in, so details on the wall are easy to follow.
                 float scale = lookSensitivity * (OperatorCamera.fieldOfView / fieldOfView);
                 Vector2 delta = mouse.delta.ReadValue() * scale;
-                yaw = Mathf.Clamp(yaw + delta.x, -maxYaw, maxYaw);
+                yaw = turnLimit >= 180f ? Mathf.Repeat(yaw + delta.x + 180f, 360f) - 180f : Mathf.Clamp(yaw + delta.x, -turnLimit, turnLimit);
                 pitch = Mathf.Clamp(pitch - delta.y, minPitch, maxPitch);
             }
             if (look) MoveChair();
@@ -274,6 +275,7 @@ namespace CrushHour
             focusBlend = Mathf.MoveTowards(focusBlend, Focused ? 1f : 0f, Time.unscaledDeltaTime / FocusMoveTime);
             OperatorCamera.fieldOfView = Mathf.Lerp(OperatorCamera.fieldOfView, targetFov, 1f - Mathf.Exp(-zoomSpeed * Time.unscaledDeltaTime));
             ApplyView();
+            UpdateWindowView();
             ProcessPointer();   // after the view is placed: the pointer ray is exactly what's on screen
         }
 
@@ -312,7 +314,7 @@ namespace CrushHour
             }
             seat.x = Mathf.Clamp(seat.x, -2.6f, 2.6f);
             float zMin = 3.05f + 0.46f + Mathf.Max(0f, Mathf.Abs(seat.x) - 0.86f) * Mathf.Tan(30f * Mathf.Deg2Rad);
-            seat.z = Mathf.Clamp(seat.z, zMin, 8f);
+            seat.z = Mathf.Clamp(seat.z, zMin, 8.5f);
             if (chair != null)
             {
                 chair.localPosition = new Vector3(seat.x, 0f, seat.z + 0.05f);

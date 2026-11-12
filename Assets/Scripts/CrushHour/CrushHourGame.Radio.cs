@@ -33,7 +33,7 @@ namespace CrushHour
         bool radioBusy, radioTookEscape;
         AudioSource radioAudio;
         AudioClip radioClick;
-        const float RadioPointerRadius = 160f, RadioDeadZone = 22f;
+        const float RadioPointerRadius = 160f, RadioDeadZone = 22f, RadioScale = 1.5f;
 
         /// <summary>Every frame in the control room, before the room's and the map's input.</summary>
         void UpdateRadio()
@@ -283,8 +283,11 @@ namespace CrushHour
             if (radioStage == RadioStage.Closed || radioItems.Count == 0) return;
             var center = new Vector2(vw * 0.5f, vh * 0.5f);
             int n = radioItems.Count;
-            float radius = n > 8 ? 230f : 190f;
+            float radius = n > 8 ? 215f : 180f;
             int selected = RadioSelection();
+            // Everything 1.5× bigger around the screen centre (cards, texts, hub): easier to read.
+            var oldMatrix = GUI.matrix;
+            GUI.matrix = oldMatrix * Matrix4x4.TRS(new Vector3(center.x, center.y, 0f) * (1f - RadioScale), Quaternion.identity, new Vector3(RadioScale, RadioScale, 1f));
 
             // dim the view a little and draw the hub
             Fill(new Rect(0, 0, vw, vh), new Color(0f, 0f, 0f, 0.25f));
@@ -314,6 +317,7 @@ namespace CrushHour
             string hint = radioStage == RadioStage.Target ? "Point and release V (or click). Right click / Esc: cancel."
                         : "Point and click. Right click / Esc / V: cancel.";
             Label(new Rect(center.x - 250, center.y + radius + 40, 500, 22), hint, orderSubStyle, Paper);
+            GUI.matrix = oldMatrix;
         }
 
         // ---------------------------------------------------------------- Sound

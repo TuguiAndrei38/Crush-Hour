@@ -133,11 +133,11 @@ namespace CrushHour
                 if (mats[i] == null || !mats[i].name.StartsWith(slot)) continue;
                 result = new Material(mats[i]) { name = name };
                 result.SetTexture("_BaseMap", texture);
-                result.SetColor("_BaseColor", new Color(0.25f, 0.25f, 0.25f));
+                result.SetColor("_BaseColor", Color.black);   // only the picture's own light; lamps don't wash it out
                 result.EnableKeyword("_EMISSION");
                 result.SetTexture("_EmissionMap", texture);
                 result.SetColor("_EmissionColor", Color.white);
-                result.SetFloat("_Smoothness", 0.8f);
+                Matte(result);
                 mats[i] = result;
                 ownedMaterials.Add(result);
             }

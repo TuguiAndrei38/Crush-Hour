@@ -12,7 +12,7 @@ namespace CrushHour
     /// </summary>
     public partial class ControlRoom
     {
-        public enum ScreenKind { DeskMonitor, VideoWall, Minimap }
+        public enum ScreenKind { DeskMonitor, VideoWall, Minimap, Window }
 
         /// <summary>A screen's picture surface in world space (static: the room doesn't move).</summary>
         public class ScreenSurface
@@ -217,6 +217,12 @@ namespace CrushHour
             {
                 groundCacheRay = screen.source.ViewportPointToRay(new Vector3(hitUv.x, hitUv.y, 0f));
                 groundCacheValid = true;
+            }
+            else if (!onScreen && ThroughWindow(ray))
+            {
+                groundCacheRay = ray;   // looking out of the window: point straight at the venue
+                groundCacheValid = true;
+                debugScreen = "window";
             }
 
             if (Focused)

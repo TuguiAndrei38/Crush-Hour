@@ -12,8 +12,8 @@ namespace CrushHour
     public partial class ControlRoom
     {
         [Header("Atmosphere")]
-        [Range(0f, 1f)] public float scanlineStrength = 0.35f;
-        [Range(0f, 1f)] public float noiseStrength = 0.12f;
+        [Range(0f, 1f)] public float screenScanlines = 0.22f;
+        [Range(0f, 1f)] public float screenNoise = 0.05f;
         [Range(0f, 1f)] public float humVolume = 0.08f, alarmVolume = 0.18f;
 
         [Header("Performance")]
@@ -43,6 +43,7 @@ namespace CrushHour
             EnsureOverlayMaterials();
             foreach (var s in screens)
             {
+                if (s.kind == ScreenKind.Window) continue;   // a window, not a CCTV picture
                 var rot = Quaternion.LookRotation(-s.normal, s.up);
                 OverlayQuad(s, scanlineMaterial, 0.0012f, rot);
                 OverlayQuad(s, noiseMaterial, 0.0018f, rot);
@@ -76,7 +77,7 @@ namespace CrushHour
                 {
                     float u = x / (w - 1f) * 2f - 1f, v = y / (h - 1f) * 2f - 1f;
                     float vignette = Mathf.Clamp01((u * u * 0.6f + v * v * 0.8f) - 0.15f) * 0.9f;
-                    float line = (y % 2 == 0) ? scanlineStrength : 0f;
+                    float line = (y % 2 == 0) ? screenScanlines : 0f;
                     px[y * w + x] = new Color(0f, 0f, 0f, Mathf.Clamp01(line + vignette));
                 }
             scanlineTexture.SetPixels(px);
@@ -91,11 +92,11 @@ namespace CrushHour
             for (int i = 0; i < noise.Length; i++)
             {
                 float a = (float)rng.NextDouble();
-                noise[i] = new Color(1f, 1f, 1f, a * a * noiseStrength);
+                noise[i] = new Color(1f, 1f, 1f, a * a * screenNoise);
             }
             noiseTexture.SetPixels(noise);
             noiseTexture.Apply();
-            noiseMaterial = OverlayMaterial("CCTV noise", noiseTexture, Color.white, true);
+            noiseMaterial = OverlayMaterial("CCTV noise", noiseTexture, Color.black, true);
             noiseMaterial.SetTextureScale("_BaseMap", new Vector2(4f, 3f));
         }
 
@@ -105,15 +106,27 @@ namespace CrushHour
             m.SetTexture("_BaseMap", texture);
             m.SetColor("_BaseColor", color);
             m.SetFloat("_Smoothness", 0f);
+            Matte(m);
             if (glow)
             {
+                // Black base (the room lamps must not light the speckles up), a faint glow of its own.
                 m.EnableKeyword("_EMISSION");
                 m.SetTexture("_EmissionMap", texture);
-                m.SetColor("_EmissionColor", new Color(0.6f, 0.6f, 0.6f));
+                m.SetColor("_EmissionColor", new Color(0.35f, 0.35f, 0.35f));
             }
             MakeTransparent(m);
             ownedBoardMaterials.Add(m);
             return m;
+        }
+
+        /// <summary>No specular highlights or reflections: the ceiling lamps don't glare on it.</summary>
+        internal static void Matte(Material m)
+        {
+            m.SetFloat("_Smoothness", 0f);
+            m.SetFloat("_SpecularHighlights", 0f);
+            m.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
+            m.SetFloat("_EnvironmentReflections", 0f);
+            m.EnableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
         }
 
         /// <summary>The red beacon on the front wall, a red light that sweeps the room, and the looping sounds. Once, after Build.</summary>
