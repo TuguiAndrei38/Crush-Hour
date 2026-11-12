@@ -1,0 +1,256 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "name": "WristbandBooth",
+      "source": "wristband-booth",
+      "width": 2.86,
+      "height": 3.58506,
+      "depth": 2.93342,
+      "meshes": 10,
+      "triangles": 1828
+    },
+    {
+      "name": "SmallStage",
+      "source": "small-stage",
+      "width": 10.5,
+      "height": 6.67017,
+      "depth": 6.76303,
+      "meshes": 10,
+      "triangles": 5432
+    },
+    {
+      "name": "EventCanopy",
+      "source": "small-stage",
+      "width": 8.64,
+      "height": 5.67583,
+      "depth": 6.76303,
+      "meshes": 6,
+      "triangles": 3420
+    },
+    {
+      "name": "Speakers",
+      "source": "speakers",
+      "width": 1.16,
+      "height": 2.38582,
+      "depth": 1.01795,
+      "meshes": 7,
+      "triangles": 2140
+    },
+    {
+      "name": "PortableToilet",
+      "source": "portable-toilets",
+      "width": 1.24,
+      "height": 2.52,
+      "depth": 1.364,
+      "meshes": 8,
+      "triangles": 736
+    },
+    {
+      "name": "FoodStall01",
+      "source": "food-row",
+      "width": 2.744,
+      "height": 3.8952,
+      "depth": 2.344,
+      "meshes": 9,
+      "triangles": 1002
+    },
+    {
+      "name": "FoodStall02",
+      "source": "food-row",
+      "width": 2.66,
+      "height": 3.19091,
+      "depth": 3.18635,
+      "meshes": 10,
+      "triangles": 924
+    },
+    {
+      "name": "FoodStall03",
+      "source": "food-row",
+      "width": 3.55,
+      "height": 4.23,
+      "depth": 2.59129,
+      "meshes": 12,
+      "triangles": 972
+    },
+    {
+      "name": "LightTower",
+      "source": "lights",
+      "width": 1.31,
+      "height": 6.0,
+      "depth": 0.9,
+      "meshes": 8,
+      "triangles": 828
+    },
+    {
+      "name": "Generator",
+      "source": "lights",
+      "width": 1.68,
+      "height": 1.41,
+      "depth": 1.14466,
+      "meshes": 6,
+      "triangles": 612
+    },
+    {
+      "name": "FoodTruckBurger",
+      "source": "designersoup/burger truck.fbx",
+      "width": 6.26881,
+      "height": 4.48422,
+      "depth": 3.15822,
+      "meshes": 7,
+      "triangles": 42802
+    },
+    {
+      "name": "FoodTruckDonut",
+      "source": "designersoup/donut truck.fbx",
+      "width": 6.42291,
+      "height": 5.52139,
+      "depth": 3.23586,
+      "meshes": 7,
+      "triangles": 52430
+    }
+  ],
+  "palette": [
+    {
+      "name": "Festival_000000",
+      "r": 0.0,
+      "g": 0.0,
+      "b": 0.0,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_090A0B",
+      "r": 0.03529411764705882,
+      "g": 0.0392156862745098,
+      "b": 0.043137254901960784,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_0C0C0C",
+      "r": 0.047058823529411764,
+      "g": 0.047058823529411764,
+      "b": 0.047058823529411764,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_151619",
+      "r": 0.08235294117647059,
+      "g": 0.08627450980392157,
+      "b": 0.09803921568627451,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_1B1B22",
+      "r": 0.10588235294117647,
+      "g": 0.10588235294117647,
+      "b": 0.13333333333333333,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_3A3C40",
+      "r": 0.22745098039215686,
+      "g": 0.23529411764705882,
+      "b": 0.25098039215686274,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_3A883A",
+      "r": 0.22745098039215686,
+      "g": 0.5333333333333333,
+      "b": 0.22745098039215686,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_3D2A1C",
+      "r": 0.23921568627450981,
+      "g": 0.16470588235294117,
+      "b": 0.10980392156862745,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_575757",
+      "r": 0.3411764705882353,
+      "g": 0.3411764705882353,
+      "b": 0.3411764705882353,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_583B3E",
+      "r": 0.34509803921568627,
+      "g": 0.23137254901960785,
+      "b": 0.24313725490196078,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_70685C",
+      "r": 0.4392156862745098,
+      "g": 0.40784313725490196,
+      "b": 0.3607843137254902,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_7D828C",
+      "r": 0.49019607843137253,
+      "g": 0.5098039215686274,
+      "b": 0.5490196078431373,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_988E81",
+      "r": 0.596078431372549,
+      "g": 0.5568627450980392,
+      "b": 0.5058823529411764,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_9E2226",
+      "r": 0.6196078431372549,
+      "g": 0.13333333333333333,
+      "b": 0.14901960784313725,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_B6B3AF",
+      "r": 0.7137254901960784,
+      "g": 0.7019607843137254,
+      "b": 0.6862745098039216,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_E75746",
+      "r": 0.9058823529411765,
+      "g": 0.3411764705882353,
+      "b": 0.27450980392156865,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_E7E7E7",
+      "r": 0.9058823529411765,
+      "g": 0.9058823529411765,
+      "b": 0.9058823529411765,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_ED7E1D",
+      "r": 0.9294117647058824,
+      "g": 0.49411764705882355,
+      "b": 0.11372549019607843,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_F2EDE2",
+      "r": 0.9490196078431372,
+      "g": 0.9294117647058824,
+      "b": 0.8862745098039215,
+      "a": 1.0
+    },
+    {
+      "name": "Festival_TruckPalette",
+      "r": 1,
+      "g": 1,
+      "b": 1,
+      "a": 1,
+      "texture": "TruckPalette.png"
+    }
+  ]
+}
