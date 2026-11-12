@@ -1,0 +1,264 @@
+# Crush Hour control room - materials (colours only; screens get a RenderTexture in Unity)
+
+newmtl M_VW_Frame
+Kd 0.035 0.036 0.040
+Ks 0.15 0.15 0.15
+Ns 40
+
+newmtl M_VW_Back
+Kd 0.020 0.020 0.022
+Ks 0.00 0.00 0.00
+Ns 1
+
+newmtl M_VW_LED
+Kd 0.100 0.550 1.000
+Ks 0.00 0.00 0.00
+Ns 1
+Ke 0.100 0.550 1.000
+
+newmtl M_VW_Screen
+Kd 0.015 0.018 0.022
+Ks 0.60 0.60 0.60
+Ns 250
+
+newmtl M_Board_Body
+Kd 0.060 0.062 0.068
+Ks 0.10 0.10 0.10
+Ns 20
+
+newmtl M_Board_Plate
+Kd 0.120 0.125 0.130
+Ks 0.20 0.20 0.20
+Ns 40
+
+newmtl M_Board_Trim
+Kd 0.350 0.360 0.380
+Ks 0.50 0.50 0.50
+Ns 120
+
+newmtl M_Board_Metal
+Kd 0.550 0.560 0.580
+Ks 0.60 0.60 0.60
+Ns 150
+
+newmtl M_Board_Cover
+Kd 0.750 0.080 0.060
+Ks 0.50 0.50 0.50
+Ns 120
+d 0.55
+
+newmtl M_Board_Lamp
+Kd 0.160 0.150 0.130
+Ks 0.50 0.50 0.50
+Ns 120
+
+newmtl M_Board_Label
+Kd 0.920 0.900 0.840
+Ks 0.05 0.05 0.05
+Ns 10
+
+newmtl M_Board_Button
+Kd 0.100 0.105 0.110
+Ks 0.20 0.20 0.20
+Ns 40
+
+newmtl M_Board_ButtonAuto
+Kd 0.950 0.620 0.120
+Ks 0.20 0.20 0.20
+Ns 40
+
+newmtl M_Board_Start
+Kd 0.100 0.650 0.250
+Ks 0.30 0.30 0.30
+Ns 60
+
+newmtl M_Board_Collar
+Kd 0.950 0.800 0.100
+Ks 0.20 0.20 0.20
+Ns 40
+
+newmtl M_Board_CrewScreen
+Kd 0.015 0.018 0.022
+Ks 0.60 0.60 0.60
+Ns 250
+
+newmtl M_Walkie_Body
+Kd 0.040 0.042 0.045
+Ks 0.20 0.20 0.20
+Ns 40
+
+newmtl M_Walkie_Rubber
+Kd 0.022 0.022 0.024
+Ks 0.05 0.05 0.05
+Ns 10
+
+newmtl M_Walkie_Grille
+Kd 0.010 0.010 0.011
+Ks 0.00 0.00 0.00
+Ns 1
+
+newmtl M_Walkie_Keys
+Kd 0.150 0.155 0.160
+Ks 0.10 0.10 0.10
+Ns 20
+
+newmtl M_Walkie_Accent
+Kd 0.950 0.450 0.080
+Ks 0.20 0.20 0.20
+Ns 40
+
+newmtl M_Walkie_LED
+Kd 0.900 0.100 0.080
+Ks 0.30 0.30 0.30
+Ns 60
+
+newmtl M_Walkie_Screen
+Kd 0.015 0.018 0.022
+Ks 0.60 0.60 0.60
+Ns 250
+
+newmtl M_Chair_Fabric
+Kd 0.050 0.055 0.065
+Ks 0.02 0.02 0.02
+Ns 5
+
+newmtl M_Chair_Frame
+Kd 0.020 0.020 0.022
+Ks 0.15 0.15 0.15
+Ns 30
+
+newmtl M_Chair_Metal
+Kd 0.500 0.510 0.530
+Ks 0.60 0.60 0.60
+Ns 150
+
+newmtl M_Cctv_Body
+Kd 0.850 0.860 0.880
+Ks 0.20 0.20 0.20
+Ns 40
+
+newmtl M_Cctv_Lens
+Kd 0.020 0.020 0.025
+Ks 0.80 0.80 0.80
+Ns 300
+
+newmtl M_Cctv_LED
+Kd 0.900 0.100 0.080
+Ks 0.00 0.00 0.00
+Ns 1
+Ke 0.900 0.100 0.080
+
+newmtl M_Room_Floor
+Kd 0.160 0.170 0.190
+Ks 0.10 0.10 0.10
+Ns 20
+
+newmtl M_Room_Ceiling
+Kd 0.300 0.300 0.310
+Ks 0.00 0.00 0.00
+Ns 1
+
+newmtl M_Room_Wall
+Kd 0.420 0.430 0.450
+Ks 0.00 0.00 0.00
+Ns 1
+
+newmtl M_Room_WallDark
+Kd 0.050 0.050 0.060
+Ks 0.00 0.00 0.00
+Ns 1
+
+newmtl M_Room_Panel
+Kd 0.100 0.120 0.150
+Ks 0.00 0.00 0.00
+Ns 1
+
+newmtl M_Room_Skirting
+Kd 0.030 0.030 0.035
+Ks 0.10 0.10 0.10
+Ns 20
+
+newmtl M_Room_LampHousing
+Kd 0.030 0.030 0.035
+Ks 0.20 0.20 0.20
+Ns 40
+
+newmtl M_Room_LampLight
+Kd 0.950 0.950 0.900
+Ks 0.00 0.00 0.00
+Ns 1
+Ke 0.950 0.950 0.900
+
+newmtl M_Room_Alarm
+Kd 0.850 0.100 0.080
+Ks 0.40 0.40 0.40
+Ns 80
+
+newmtl M_Room_ExitSign
+Kd 0.100 0.750 0.300
+Ks 0.00 0.00 0.00
+Ns 1
+Ke 0.100 0.750 0.300
+
+newmtl M_Clock_Screen
+Kd 0.015 0.018 0.022
+Ks 0.60 0.60 0.60
+Ns 250
+
+newmtl M_Door
+Kd 0.320 0.350 0.400
+Ks 0.15 0.15 0.15
+Ns 30
+
+newmtl M_Door_Metal
+Kd 0.550 0.560 0.580
+Ks 0.60 0.60 0.60
+Ns 150
+
+# desk + desk monitor materials (same as ControlDesk.mtl / CCTV_Monitor.mtl)
+newmtl M_Desk_Top
+Kd 0.20 0.20 0.21
+Ks 0.15 0.15 0.15
+Ns 40
+
+newmtl M_Desk_Body
+Kd 0.055 0.057 0.062
+Ks 0.08 0.08 0.08
+Ns 20
+
+newmtl M_Desk_Edge
+Kd 0.018 0.018 0.020
+
+newmtl M_Desk_Trim
+Kd 0.33 0.34 0.36
+Ks 0.50 0.50 0.50
+Ns 120
+
+newmtl M_Minimap_Screen
+Kd 0.015 0.018 0.022
+Ks 0.60 0.60 0.60
+Ns 250
+
+newmtl M_Monitor_Plastic
+Kd 0.045 0.047 0.050
+Ks 0.20 0.20 0.20
+Ns 60
+
+newmtl M_Monitor_Back
+Kd 0.090 0.092 0.096
+Ks 0.10 0.10 0.10
+Ns 30
+
+newmtl M_Monitor_Metal
+Kd 0.30 0.31 0.33
+Ks 0.50 0.50 0.50
+Ns 120
+
+newmtl M_Monitor_Screen
+Kd 0.015 0.018 0.022
+Ks 0.60 0.60 0.60
+Ns 250
+
+newmtl M_Monitor_LED
+Kd 0.10 0.90 0.35
+Ke 0.10 0.90 0.35

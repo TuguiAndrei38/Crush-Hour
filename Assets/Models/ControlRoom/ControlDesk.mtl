@@ -1,0 +1,46 @@
+# Crush Hour control room - desk materials (+ monitor materials for the assembled version)
+newmtl M_Desk_Top
+Kd 0.20 0.20 0.21
+Ks 0.15 0.15 0.15
+Ns 40
+
+newmtl M_Desk_Body
+Kd 0.055 0.057 0.062
+Ks 0.08 0.08 0.08
+Ns 20
+
+newmtl M_Desk_Edge
+Kd 0.018 0.018 0.020
+
+newmtl M_Desk_Trim
+Kd 0.33 0.34 0.36
+Ks 0.50 0.50 0.50
+Ns 120
+
+newmtl M_Minimap_Screen
+Kd 0.015 0.018 0.022
+Ks 0.60 0.60 0.60
+Ns 250
+newmtl M_Monitor_Plastic
+Kd 0.045 0.047 0.050
+Ks 0.20 0.20 0.20
+Ns 60
+
+newmtl M_Monitor_Back
+Kd 0.090 0.092 0.096
+Ks 0.10 0.10 0.10
+Ns 30
+
+newmtl M_Monitor_Metal
+Kd 0.30 0.31 0.33
+Ks 0.50 0.50 0.50
+Ns 120
+
+newmtl M_Monitor_Screen
+Kd 0.015 0.018 0.022
+Ks 0.60 0.60 0.60
+Ns 250
+
+newmtl M_Monitor_LED
+Kd 0.10 0.90 0.35
+Ke 0.10 0.90 0.35

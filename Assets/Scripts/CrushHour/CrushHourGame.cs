@@ -198,6 +198,13 @@ namespace CrushHour
 
         Camera cam;
         TopDownCamera cameraRig;
+        /// <summary>The first-person control room (scene CrushHourControlRoom), or null in the top-down scenes.</summary>
+        ControlRoom controlRoom;
+        bool InControlRoom => controlRoom != null;
+        /// <summary>Scene the start menu's PLAY loads for every map.</summary>
+        public const string ControlRoomScene = "CrushHourControlRoom";
+        /// <summary>Set by PLAY before it loads the control room scene: open straight in Planning, with the menu's settings.</summary>
+        static bool skipMenuOnce, launchedFromMenu;
         Transform world;
         Mesh cubeMesh;
         RenderParams[] agentRenderParams;
@@ -249,8 +256,22 @@ namespace CrushHour
                 cam = go.GetComponent<Camera>();
             }
             cam.farClipPlane = 600f;
-            cameraRig = cam.GetComponent<TopDownCamera>();
-            if (cameraRig == null) cameraRig = cam.gameObject.AddComponent<TopDownCamera>();
+            controlRoom = FindAnyObjectByType<ControlRoom>();
+            if (InControlRoom)
+            {
+                // The top-down rig stays (the game still calls Focus on it) but moves an empty object, not the camera.
+                if (cam.TryGetComponent(out TopDownCamera oldRig)) { oldRig.enabled = false; Destroy(oldRig); }
+                cameraRig = new GameObject("Overview Rig (unused in the control room)").AddComponent<TopDownCamera>();
+                cameraRig.transform.SetParent(transform, false);
+                controlRoom.Build(cam);
+                controlRoom.onSwitch = BoardSwitch;
+                controlRoom.onStart = StartShow;
+            }
+            else
+            {
+                cameraRig = cam.GetComponent<TopDownCamera>();
+                if (cameraRig == null) cameraRig = cam.gameObject.AddComponent<TopDownCamera>();
+            }
 
             var temp = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cubeMesh = temp.GetComponent<MeshFilter>().sharedMesh;
@@ -272,8 +293,10 @@ namespace CrushHour
             difficulty = (Difficulty)Mathf.Clamp(PlayerPrefs.GetInt(DifficultyPref, (int)Difficulty.Medium), 0, 2);
             LoadMenuPreferences();
             LoadPersonModels();
+            if (skipMenuOnce) menuLaunchedGame = launchedFromMenu;
             NewGame();
-            OpenMenu();
+            if (skipMenuOnce) skipMenuOnce = false; // PLAY in the start menu loaded this scene: go straight to Planning
+            else OpenMenu();
         }
 
         void OnDestroy()
@@ -340,6 +363,9 @@ namespace CrushHour
             sim = new CrowdSimulation(crowd, venue, rng);
             var bounds = new Bounds(new Vector3(W * 0.5f, 1f, H * 0.5f), new Vector3(W, 4f, H));
             crowdRenderer = new CrowdRenderer(sim, cubeMesh, agentRenderParams, personModels, bounds, rng) { ShowMarkers = stateMarkers };
+            // Control room: animated models only on the video wall; the small feeds and the minimap get plain boxes.
+            if (InControlRoom && controlRoom.simpleCrowdOnMonitors)
+                crowdRenderer.SetDualDetail(ControlRoom.CrowdDetailLayer, ControlRoom.CrowdSimpleLayer);
 
             phase = Phase.Planning;
             cameraRig.controlsEnabled = true;
@@ -363,6 +389,11 @@ namespace CrushHour
             SpawnUnits();
             regionOrderCooldown = new float[venue.regions.Count];
             cameraRig.Focus(new Vector3(W * 0.5f, 0f, H * 0.45f), 85f);
+            if (InControlRoom)
+            {
+                controlRoom.SetupCctv(venue);
+                SetupMinimapMarkers();
+            }
 
             Log($"{sim.count} people are at {MapTitle}.");
             Log("Get ready: place your team and barriers, then start the show.");
@@ -612,6 +643,7 @@ namespace CrushHour
             UpdateSmoke(paused ? 0f : phase == Phase.Results ? Time.deltaTime : Time.deltaTime * Speeds[speedIndex]);
             crowdRenderer.ShowMarkers = stateMarkers;
             crowdRenderer.Render(paused ? 0f : Mathf.Max(simDt, phase == Phase.Results ? Time.deltaTime : 0f));
+            if (InControlRoom) UpdateControlRoomFeeds();
         }
 
         void Simulate(float dt)
@@ -674,6 +706,7 @@ namespace CrushHour
                 warnedIncidents.Add(incident);
                 Log(incident.WarningText, Severity.Warning);
                 ShowBanner(incident is FireIncident ? "SMOKE SEEN" : "SOMETHING'S WRONG", incident.WarningText, Severity.Warning);
+                if (InControlRoom) controlRoom.SignalWarning(RegionOf(incident), incident.WarningText);
                 if (incident.WarningCell(venue) is Vector2Int cell) warningMarkers.Add((incident, cell));
             }
             warningMarkers.RemoveAll(m => m.incident.Started);
@@ -736,6 +769,7 @@ namespace CrushHour
             var severity = incident.StartsEvacuation ? Severity.Danger : Severity.Warning;
             Log(incident.LogText, severity);
             ShowBanner(incident.Headline, incident.Advice, severity);
+            if (InControlRoom) controlRoom.OnIncident(RegionOf(incident));
             var focus = incident.FocusCell;
             cameraRig.Focus(new Vector3(focus.x, 0f, focus.y));
         }
@@ -784,6 +818,7 @@ namespace CrushHour
             }
             Log(leak.LogText, Severity.Danger);
             ShowBanner(leak.Headline, leak.Advice, Severity.Danger);
+            if (InControlRoom) controlRoom.OnIncident(RegionOf(leak));
             cameraRig.Focus(new Vector3(leak.FocusCell.x, 0f, leak.FocusCell.y));
         }
 
@@ -1429,18 +1464,22 @@ namespace CrushHour
 
         int FreeGateCrews => Mathf.Max(0, difficultySettings.gateCrews - GateCrewsInUse);
 
-        /// <summary>Opens or closes a gate. Opening needs a free gate crew (the difficulty has only a few), so the player has to choose.</summary>
-        void ToggleGate(Gate gate)
+        /// <summary>
+        /// Opens or closes a gate. Opening needs a free gate crew (the difficulty has only a few), so the player has to
+        /// choose. False when refused (no free crew).
+        /// </summary>
+        bool ToggleGate(Gate gate)
         {
             if (!gate.open && FreeGateCrews <= 0)
             {
                 Log($"No free gate crew for {gate.name}. All {difficultySettings.gateCrews} crews are on other gates: close one first.", Severity.Warning);
                 ShowBanner("NO FREE GATE CREW", $"You have {difficultySettings.gateCrews} gate crews. Close a gate to free one.", Severity.Warning);
-                return;
+                return false;
             }
             gate.open = !gate.open;
             if (gate.open) gatesOpened++;
             Log(gate.open ? $"Opening {gate.name}... ({FreeGateCrews} gate crew{(FreeGateCrews == 1 ? "" : "s")} free)" : $"Closing {gate.name}...");
+            return true;
         }
 
         Unit SelectedPatrol() =>
@@ -1648,6 +1687,14 @@ namespace CrushHour
 
         void HandleKeyboard()
         {
+            // Control room: look around (cursor locked) unless a menu or card needs the mouse.
+            if (InControlRoom)
+            {
+                controlRoom.lookEnabled = phase == Phase.Live || (phase == Phase.Planning && welcomeDismissed);
+                UpdateRadio();                   // hold V: the radio wheels (they take the mouse while open)
+                // (the room reads its pointer in its LateUpdate; we use the results here)
+            }
+            bool digitsForTools = !(InControlRoom && controlRoom.PointerOnWall);   // on the video wall, digits pick cameras
             var keyboard = Keyboard.current;
             // While a zone patrol is selected the arrow keys give orders, so they stop panning the camera.
             cameraRig.arrowKeysPan = SelectedPatrol() == null;
@@ -1666,18 +1713,22 @@ namespace CrushHour
             if (keyboard.hKey.wasPressedThisFrame) heatmap = !heatmap;
             if (keyboard.mKey.wasPressedThisFrame) stateMarkers = !stateMarkers;
             if (keyboard.lKey.wasPressedThisFrame) showLegend = !showLegend;
-            if (keyboard.uKey.wasPressedThisFrame) hudHidden = !hudHidden;
+            if (keyboard.uKey.wasPressedThisFrame)
+            {
+                if (InControlRoom) controlRoomTopBar = !controlRoomTopBar;
+                else hudHidden = !hudHidden;
+            }
             if (keyboard.gKey.wasPressedThisFrame) showRegions = !showRegions;
             if (phase == Phase.Results) return;
             if (keyboard.spaceKey.wasPressedThisFrame) paused = !paused;
             if (keyboard.tabKey.wasPressedThisFrame) speedIndex = (speedIndex + 1) % Speeds.Length;
-            if (keyboard.digit1Key.wasPressedThisFrame) SetTool(Tool.Command);
-            if (keyboard.digit2Key.wasPressedThisFrame) SetTool(Tool.Barrier);
+            if (digitsForTools && keyboard.digit1Key.wasPressedThisFrame) SetTool(Tool.Command);
+            if (digitsForTools && keyboard.digit2Key.wasPressedThisFrame) SetTool(Tool.Barrier);
             if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame) StartShow();
             if (keyboard.f1Key.wasPressedThisFrame) SetDifficulty(Difficulty.Easy);
             if (keyboard.f2Key.wasPressedThisFrame) SetDifficulty(Difficulty.Medium);
             if (keyboard.f3Key.wasPressedThisFrame) SetDifficulty(Difficulty.Hard);
-            if (keyboard.escapeKey.wasPressedThisFrame)
+            if (keyboard.escapeKey.wasPressedThisFrame && !(InControlRoom && (controlRoom.Focused || controlRoom.EscapeTakenByRoom || radioTookEscape)))
             {
                 if (selectedUnit < 0 && phase == Phase.Planning) OpenMenu(); // back to the start menu
                 else selectedUnit = -1;
@@ -1696,18 +1747,40 @@ namespace CrushHour
         void HandleMouse()
         {
             var mouse = Mouse.current;
-            if (mouse == null || phase == Phase.Results || phase == Phase.Menu)
+            if (mouse == null || phase == Phase.Results || phase == Phase.Menu || (InControlRoom && (!controlRoom.PointerActive || radioBusy)))
             {
                 CancelDrag();
                 return;
             }
-            Vector2 screen = mouse.position.ReadValue();
-            bool overGui = IsOverGui(screen);
+            Vector2 screen;
+            bool overGui, leftPressed, leftReleased, rightPressed;
+            if (InControlRoom)
+            {
+                // Through the screens: the crosshair (free look) or the cursor (focus). Left click = click,
+                // Shift + left click = the old right click (remove a barrier, turn a patrol); right mouse is zoom / leave focus.
+                screen = controlRoom.PointerScreen;
+                overGui = false;
+                bool shift = Keyboard.current != null && Keyboard.current.shiftKey.isPressed;
+                bool click = controlRoom.LeftClick && !controlRoom.ClickTakenByRoom;
+                leftPressed = click && !shift;
+                rightPressed = click && shift;
+                leftReleased = mouse.leftButton.wasReleasedThisFrame || (!mouse.leftButton.isPressed && dragging);
+            }
+            else
+            {
+                screen = mouse.position.ReadValue();
+                overGui = IsOverGui(screen);
+                leftPressed = mouse.leftButton.wasPressedThisFrame;
+                leftReleased = mouse.leftButton.wasReleasedThisFrame;
+                rightPressed = mouse.rightButton.wasPressedThisFrame;
+            }
             bool onGround = TryGetCellUnderMouse(screen, out int cell, out Vector2 ground);
+            if (InControlRoom && controlRoom.ShowDebug)
+                controlRoom.debugGame = $"tool {tool}  phase {phase}  on ground {onGround}  cell {cell}  left pressed {leftPressed}  selected {selectedUnit}";
 
             if (tool == Tool.Barrier)
             {
-                if (mouse.leftButton.wasPressedThisFrame && !overGui && onGround)
+                if (leftPressed && !overGui && onGround)
                 {
                     dragging = true;
                     dragStartCell = cell;
@@ -1722,18 +1795,18 @@ namespace CrushHour
                         dragLine.SetPosition(0, new Vector3(a.x, 0.6f, a.y));
                         dragLine.SetPosition(1, new Vector3(b.x, 0.6f, b.y));
                     }
-                    if (mouse.leftButton.wasReleasedThisFrame)
+                    if (leftReleased)
                     {
                         if (onGround) PlaceBarrierLine(dragStartCell, cell);
                         CancelDrag();
                     }
                 }
-                if (mouse.rightButton.wasPressedThisFrame && !overGui && onGround) RemoveBarrier(cell);
+                if (rightPressed && !overGui && onGround) RemoveBarrier(cell);
             }
             else
             {
-                if (mouse.leftButton.wasPressedThisFrame && !overGui && onGround) CommandClick(ground, cell);
-                if (mouse.rightButton.wasPressedThisFrame && !overGui)
+                if (leftPressed && !overGui && onGround) CommandClick(ground, cell);
+                if (rightPressed && !overGui)
                 {
                     // Right-click turns a selected patrol to look at that spot (it sets Front/Back/Left/Right); otherwise it deselects.
                     var patrol = SelectedPatrol();
@@ -1753,7 +1826,12 @@ namespace CrushHour
         {
             cell = -1;
             ground = default;
-            var ray = cam.ScreenPointToRay(screen);
+            Ray ray;
+            if (InControlRoom)
+            {
+                if (!controlRoom.TryGroundRay(screen, out ray)) return false;   // through the screen under the pointer
+            }
+            else ray = cam.ScreenPointToRay(screen);
             if (ray.direction.y > -1e-4f) return false;
             Vector3 hit = ray.origin + ray.direction * (-ray.origin.y / ray.direction.y);
             ground = new Vector2(hit.x, hit.z);
@@ -1967,6 +2045,18 @@ namespace CrushHour
             if (Event.current.type == EventType.Layout) orderPanelUnit = SelectedPatrol() != null ? selectedUnit : -1;
             if (Event.current.type == EventType.Repaint && !paused) feedClock += Time.unscaledDeltaTime * (phase == Phase.Live ? Speeds[speedIndex] : 1f);
 
+            if (InControlRoom)
+            {
+                // First person: the log, the team and the clock are on room objects (CrushHourGame.ControlRoom.cs);
+                // the top strip only on U. Banner, hover, radio and the briefing/debrief cards draw over the room.
+                if (controlRoomTopBar) DrawTopBar();
+                DrawBanner();
+                DrawHoverInfo();   // next to the crosshair / cursor when it's on a screen
+                DrawRadio();
+                if (phase == Phase.Planning && !welcomeDismissed) DrawWelcome();
+                if (phase == Phase.Results) DrawResults();
+                return;
+            }
             DrawWorldLabels();
             DrawTopBar();
             if (!hudHidden)
@@ -2975,8 +3065,9 @@ namespace CrushHour
         {
             var mouse = Mouse.current;
             if (mouse == null || phase == Phase.Results || phase == Phase.Menu) return;
-            Vector2 screen = mouse.position.ReadValue();
-            if (IsOverGui(screen) || !TryGetCellUnderMouse(screen, out int cell, out Vector2 ground)) return;
+            if (InControlRoom && (!controlRoom.PointerActive || radioBusy)) return;
+            Vector2 screen = InControlRoom ? controlRoom.PointerScreen : mouse.position.ReadValue();
+            if ((!InControlRoom && IsOverGui(screen)) || !TryGetCellUnderMouse(screen, out int cell, out Vector2 ground)) return;
 
             string text;
             int hovered = NearestUnit(ground, 1.5f);

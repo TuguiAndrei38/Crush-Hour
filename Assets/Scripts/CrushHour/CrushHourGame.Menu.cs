@@ -73,9 +73,18 @@ namespace CrushHour
             PlayerPrefs.SetInt(MapPref, (int)selectedMap);
             PlayerPrefs.SetInt(DifficultyPref, (int)difficulty);
             PlayerPrefs.Save();
-            menuLaunchedGame = true;
             speedIndex = 0;
             welcomeDismissed = false;
+            // Every map is played from the control room. Load that scene unless we're already in it; it reads the
+            // map and difficulty saved above and opens straight in Planning.
+            if (!InControlRoom && Application.CanStreamedLevelBeLoaded(ControlRoomScene))
+            {
+                skipMenuOnce = launchedFromMenu = true;
+                UnityEngine.SceneManagement.SceneManager.LoadScene(ControlRoomScene);
+                return;
+            }
+            if (!InControlRoom) Debug.LogWarning($"Crush Hour: scene {ControlRoomScene} isn't in Build Settings (Tools > Crush Hour > Create Control Room Scene); playing top-down here.");
+            menuLaunchedGame = true;
             NewGame();
         }
 
