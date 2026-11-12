@@ -32,7 +32,7 @@ namespace CrushHour
         AudioSource humSource, alarmSource;
         float smoothedFrame = 1f / 60f, slowFor, fastFor;
         int qualityLevel;   // 0 full, 1 reduced, 2 low
-        static readonly float[] FeedFpsLevels = { 12f, 8f, 5f }, WallFpsLevels = { 30f, 24f, 15f }, MinimapFpsLevels = { 10f, 6f, 4f };
+        static readonly float[] FeedFpsLevels = { 8f, 6f, 4f }, WallFpsLevels = { 30f, 20f, 15f }, MinimapFpsLevels = { 5f, 4f, 3f };
 
         /// <summary>Overlay quads in front of every screen (after BuildScreenSurfaces).</summary>
         void BuildScreenOverlays()
@@ -196,19 +196,26 @@ namespace CrushHour
             if (smoothedFrame > slowFrameTime) { slowFor += Time.unscaledDeltaTime; fastFor = 0f; }
             else if (smoothedFrame < slowFrameTime * 0.7f) { fastFor += Time.unscaledDeltaTime; slowFor = 0f; }
             int level = qualityLevel;
-            if (slowFor > 2f && level < 2) { level++; slowFor = 0f; }
+            if (slowFor > 2f && level < 2) { level++; slowFor = 0f; fastFor = -20f; }   // stay down at least ~20 s
             if (fastFor > 8f && level > 0) { level--; fastFor = 0f; }
             if (level == qualityLevel) return;
             qualityLevel = level;
-            feedFps = FeedFpsLevels[level];
-            wallFps = WallFpsLevels[level];
-            minimapFps = MinimapFpsLevels[level];
-            maxFeedsPerFrame = level == 0 ? 3 : level == 1 ? 2 : 1;
+            deskFps = FeedFpsLevels[level];
+            wallRefresh = WallFpsLevels[level];
+            minimapRefresh = MinimapFpsLevels[level];
+            rendersPerFrame = level == 2 ? 1 : 2;
             Debug.Log($"Crush Hour: control room quality {(level == 0 ? "full" : level == 1 ? "reduced" : "low")} " +
-                      $"(desk feeds {feedFps} fps, wall {wallFps} fps, minimap {minimapFps} fps).");
+                      $"(desk feeds {deskFps} fps, wall {wallRefresh} fps, minimap {minimapRefresh} fps).");
         }
 
-        /// <summary>CCTV cameras skip shadows (cheaper); the wall keeps them.</summary>
+        /// <summary>The operator's own camera: no shadow pass (nothing in the room casts shadows).</summary>
+        static void NoShadows(Camera cam)
+        {
+            var data = cam.GetUniversalAdditionalCameraData();
+            if (data != null) data.renderShadows = false;
+        }
+
+        /// <summary>CCTV cameras skip shadows, post-processing and anti-aliasing (cheaper).</summary>
         static void CheapCamera(Camera cam)
         {
             var data = cam.GetUniversalAdditionalCameraData();

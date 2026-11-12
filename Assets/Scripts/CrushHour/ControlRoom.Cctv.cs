@@ -14,13 +14,23 @@ namespace CrushHour
     {
         /// <summary>Captions live on this layer; the operator camera never draws it.</summary>
         public const int CaptionLayer = 28;
+        /// <summary>Crowd layers: person models (video wall only) and plain boxes (desk feeds and minimap).</summary>
+        public const int CrowdDetailLayer = 26, CrowdSimpleLayer = 25;
+
+        [Header("Performance: what the small screens draw")]
+        [Tooltip("Desk feeds and the minimap draw people as plain boxes coloured by state; only the video wall draws the animated models.")]
+        public bool simpleCrowdOnMonitors = true;
+        [Tooltip("A screen the operator isn't looking at refreshes this many seconds later than usual (0 = always live).")]
+        public float hiddenFeedDelay = 2f;
+        readonly Plane[] frustum = new Plane[6];
+        bool wallVisible = true, minimapVisible = true;
 
         [Header("CCTV")]
         public int feedWidth = 480, feedHeight = 270;
         [Tooltip("Frames per second of each desk monitor feed (cameras take turns).")]
-        public float feedFps = 12f;
-        [Tooltip("At most this many CCTV cameras render in one frame.")]
-        public int maxFeedsPerFrame = 3;
+        public float deskFps = 8f;
+        [Tooltip("Off-screen cameras rendered per frame in total (video wall + desk feeds + minimap), spread evenly so no frame gets a burst.")]
+        public int rendersPerFrame = 2;
         public float cameraMinHeight = 6f, cameraMaxHeight = 9f;
         [Tooltip("How far from the zone's outer corner towards its centre the camera pole stands (0 = on the corner).")]
         [Range(0f, 0.6f)] public float cameraInset = 0.3f;
@@ -37,6 +47,9 @@ namespace CrushHour
             public TextMesh caption;
             public MeshRenderer captionRenderer;
             public float nextRender;
+            public string zoneUpper;
+            public int captionTick = -1;
+            public bool visible = true;
             public Renderer monitor;
             public Material frameMaterial;
         }
@@ -60,14 +73,14 @@ namespace CrushHour
             for (int r = 0; r < venue.regions.Count; r++)
             {
                 var region = venue.regions[r];
-                var feed = new Feed { region = r, zoneName = region.name };
+                var feed = new Feed { region = r, zoneName = region.name, zoneUpper = region.name.ToUpperInvariant() };
                 feed.texture = new RenderTexture(feedWidth, feedHeight, 16) { name = $"CCTV {r + 1}", antiAliasing = 1 };
 
                 var cam = new GameObject($"CCTV {r + 1:00} - {region.name}").AddComponent<Camera>();
                 cam.transform.SetParent(cctvRoot, false);
                 PlaceCamera(cam, region.area, venueCenter);
                 cam.targetTexture = feed.texture;
-                cam.cullingMask = ~((1 << RoomLayer) | (1 << MinimapLayer));
+                cam.cullingMask = ~((1 << RoomLayer) | (1 << MinimapLayer) | (1 << CrowdDetailLayer));
                 cam.nearClipPlane = 0.5f;
                 cam.farClipPlane = 250f;
                 cam.allowHDR = false;
@@ -248,25 +261,61 @@ namespace CrushHour
         public void UpdateCctv(float clock, int[] alarm, bool[] warning)
         {
             if (feeds.Count == 0) return;
-            UpdateWallAndMinimap(clock);
+            // Screens outside the operator's view refresh late (hiddenFeedDelay): nobody is watching them.
+            float hidden = Mathf.Max(0f, hiddenFeedDelay);
+            if (OperatorCamera != null && hidden > 0f)
+            {
+                GeometryUtility.CalculateFrustumPlanes(OperatorCamera, frustum);
+                foreach (var feed in feeds) feed.visible = feed.monitor == null || GeometryUtility.TestPlanesAABB(frustum, feed.monitor.bounds);
+                wallVisible = wallScreen == null || GeometryUtility.TestPlanesAABB(frustum, wallScreen.bounds);
+                minimapVisible = minimapScreen == null || GeometryUtility.TestPlanesAABB(frustum, minimapScreen.bounds);
+            }
+            else
+            {
+                foreach (var feed in feeds) feed.visible = true;
+                wallVisible = minimapVisible = true;
+            }
+            int used = UpdateWallAndMinimap(clock) ? 1 : 0;
             int minutes = (int)clock / 60, seconds = (int)clock % 60;
             bool blink = Mathf.Repeat(Time.unscaledTime, 0.5f) < 0.25f;
             bool slowBlink = Mathf.Repeat(Time.unscaledTime, 1f) < 0.5f;
 
-            // Round-robin: render the feeds whose turn it is (at most maxFeedsPerFrame this frame).
-            float now = Time.unscaledTime, interval = 1f / Mathf.Max(1f, feedFps);
-            int rendered = 0;
+            // A fixed budget of off-screen renders per frame: the wall first (UpdateWallAndMinimap), then the most
+            // overdue desk feeds / minimap. Never a burst of cameras in one frame.
+            float now = Time.unscaledTime, interval = 1f / Mathf.Max(1f, deskFps);
+            int tick = (int)(now * 2f);
+            foreach (var feed in feeds) feed.camera.enabled = false;
+            if (minimapCamera != null) minimapCamera.enabled = false;
+            int budget = Mathf.Max(1, rendersPerFrame);
+            while (used < budget)
+            {
+                Feed best = null;
+                float bestDue = now;
+                foreach (var feed in feeds)
+                {
+                    float due = feed.nextRender + (feed.visible ? 0f : hidden);
+                    if (!feed.camera.enabled && due <= bestDue) { best = feed; bestDue = due; }
+                }
+                if (minimapCamera != null && !minimapCamera.enabled && nextMinimapRender + (minimapVisible ? 0f : hidden) <= bestDue)
+                {
+                    minimapCamera.enabled = true;
+                    nextMinimapRender = now + 1f / Mathf.Max(1f, minimapRefresh);
+                    used++;
+                    continue;
+                }
+                if (best == null) break;
+                best.camera.enabled = true;
+                best.nextRender = now + interval;
+                used++;
+                if (best.captionTick != tick)   // the text only changes twice a second
+                {
+                    best.captionTick = tick;
+                    string dot = slowBlink ? "<color=#ff3030>●</color>" : "<color=#00000000>●</color>";
+                    best.caption.text = $"CAM {best.region + 1:00} | {best.zoneUpper}  {dot} REC {minutes:00}:{seconds:00}";
+                }
+            }
             foreach (var feed in feeds)
             {
-                bool due = now >= feed.nextRender && rendered < maxFeedsPerFrame;
-                feed.camera.enabled = due;
-                if (due)
-                {
-                    rendered++;
-                    feed.nextRender = Mathf.Max(feed.nextRender + interval, now);
-                    string dot = slowBlink ? "<color=#ff3030>●</color>" : "<color=#00000000>●</color>";
-                    feed.caption.text = $"CAM {feed.region + 1:00} | {feed.zoneName.ToUpperInvariant()}  {dot} REC {minutes:00}:{seconds:00}";
-                }
 
                 if (feed.frameMaterial != null)
                 {

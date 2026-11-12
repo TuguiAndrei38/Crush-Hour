@@ -236,6 +236,10 @@ namespace CrushHour
             camera.transform.SetParent(null);
             camera.nearClipPlane = 0.03f;
             camera.farClipPlane = 60f;   // the room only: the venue is 400 m away
+            // Only the room layer: otherwise the whole crowd (instanced, no per-instance culling) and the venue are
+            // still submitted to this camera every frame, plus a shadow pass for them.
+            camera.cullingMask = 1 << RoomLayer;
+            NoShadows(camera);
             camera.fieldOfView = fieldOfView;
             yaw = pitch = 0f;
             seat = EyePos;
@@ -270,6 +274,7 @@ namespace CrushHour
             focusBlend = Mathf.MoveTowards(focusBlend, Focused ? 1f : 0f, Time.unscaledDeltaTime / FocusMoveTime);
             OperatorCamera.fieldOfView = Mathf.Lerp(OperatorCamera.fieldOfView, targetFov, 1f - Mathf.Exp(-zoomSpeed * Time.unscaledDeltaTime));
             ApplyView();
+            ProcessPointer();   // after the view is placed: the pointer ray is exactly what's on screen
         }
 
         /// <summary>Seated: the eye stays put, yaw 0 faces the video wall (-Z in the room).</summary>
@@ -358,6 +363,11 @@ namespace CrushHour
 
         void OnGUI()
         {
+            if (Event.current.type == EventType.Repaint && lookEnabled)
+            {
+                GUI.matrix = Matrix4x4.identity;
+                DrawDebug();
+            }
             if (!lookEnabled || Focused || radioOpen || OperatorCamera == null || Event.current.type != EventType.Repaint) return;
             if (crosshairTexture == null) crosshairTexture = Texture2D.whiteTexture;
             GUI.matrix = Matrix4x4.identity;

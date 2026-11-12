@@ -40,6 +40,10 @@ namespace CrushHour
         class BoardSwitch
         {
             public Transform lever, cover;
+            public Renderer leverRenderer, coverRenderer;
+            public ExitState shownState;
+            public int shownRate = -1;
+            public string shownName, shownReason;
             public Renderer lamp;
             public Material lampMaterial;
             public TextMesh label;
@@ -86,6 +90,8 @@ namespace CrushHour
             {
                 var sw = new BoardSwitch();
                 float u = SwitchU[i];
+                if (lever0(parts, i, out var lv)) sw.leverRenderer = lv;
+                if (cover0(parts, i, out var cv)) sw.coverRenderer = cv;
                 if (parts.TryGetValue($"Switch_{i + 1}_Lever", out var lever)) sw.lever = Pivot(root, lever.transform, OnPanel(u, SwitchV, 0.009f), $"Switch {i + 1} lever pivot");
                 if (parts.TryGetValue($"Switch_{i + 1}_Cover", out var cover)) sw.cover = Pivot(root, cover.transform, OnPanel(u, SwitchV + 0.026f, 0.004f), $"Switch {i + 1} cover pivot");
                 if (parts.TryGetValue($"Switch_{i + 1}_Lamp", out var lamp))
@@ -138,7 +144,12 @@ namespace CrushHour
             crewText = PanelText(root, "Crew display text", OnPanel(0.245f, 0.2065f, 0.009f), 0.02f, new Color(0.3f, 1f, 0.45f));
         }
 
+        static bool lever0(Dictionary<string, Renderer> parts, int i, out Renderer r) => parts.TryGetValue($"Switch_{i + 1}_Lever", out r);
+        static bool cover0(Dictionary<string, Renderer> parts, int i, out Renderer r) => parts.TryGetValue($"Switch_{i + 1}_Cover", out r);
+
         readonly List<Material> ownedBoardMaterials = new();
+        int shownCrewsFree = -1, shownCrewsTotal = -1;
+        static GUIStyle hoverStyle;
 
         /// <summary>An empty at <paramref name="localPivot"/> (board space) that the part hangs from, so it turns/moves about that point.</summary>
         static Transform Pivot(Transform board, Transform part, Vector3 localPivot, string name)
@@ -247,11 +258,17 @@ namespace CrushHour
                            };
                 if (sw.lampMaterial != null) sw.lampMaterial.SetColor("_EmissionColor", lamp);
 
-                string label = info.state == ExitState.Blocked
-                    ? $"<b>{info.name.ToUpperInvariant()}</b>\n<color=#b00000>BLOCKED: {(info.blockReason ?? "").ToUpperInvariant()}</color>"
-                    : $"<b>{info.name.ToUpperInvariant()}</b>\n{info.perMinute:0}/min";
-                if (label != sw.labelText)
+                // Rebuild the label text only when something on it changed (no strings every frame).
+                int rate = Mathf.RoundToInt(info.perMinute);
+                if (info.state != sw.shownState || rate != sw.shownRate || !ReferenceEquals(info.name, sw.shownName) || !ReferenceEquals(info.blockReason, sw.shownReason) || sw.labelText == null)
                 {
+                    sw.shownState = info.state;
+                    sw.shownRate = rate;
+                    sw.shownName = info.name;
+                    sw.shownReason = info.blockReason;
+                    string label = info.state == ExitState.Blocked
+                        ? $"<b>{info.name.ToUpperInvariant()}</b>\n<color=#b00000>BLOCKED: {(info.blockReason ?? "").ToUpperInvariant()}</color>"
+                        : $"<b>{info.name.ToUpperInvariant()}</b>\n{rate}/min";
                     sw.labelText = label;
                     sw.label.characterSize = 0.0075f / 6.4f;
                     sw.label.text = label;
@@ -274,10 +291,11 @@ namespace CrushHour
                 if (b.camera > 0) b.cap.enabled = b.camera <= feeds.Count;
             }
 
-            if (crewText != null)
+            if (crewText != null && (crewsFree != shownCrewsFree || crewsTotal != shownCrewsTotal))
             {
+                shownCrewsFree = crewsFree;
+                shownCrewsTotal = crewsTotal;
                 string crew = crewsTotal > 0 ? $"CREWS {crewsFree}/{crewsTotal}" : "CREWS -";
-                if (crewText.text != crew)
                 {
                     crewText.characterSize = 0.02f / 6.4f;
                     crewText.text = crew;
@@ -298,10 +316,9 @@ namespace CrushHour
             for (int i = 0; i < switches.Count && i < exits.Length; i++)
             {
                 if (exits[i].entrance) continue;
-                foreach (var t in new[] { switches[i].lever, switches[i].cover })
+                for (int k = 0; k < 2; k++)
                 {
-                    if (t == null) continue;
-                    var r = t.GetComponentInChildren<Renderer>();
+                    var r = k == 0 ? switches[i].leverRenderer : switches[i].coverRenderer;
                     if (r != null && r.enabled && r.bounds.IntersectRay(ray, out float d) && d < best && d < 3f)
                     {
                         best = d;
@@ -329,7 +346,7 @@ namespace CrushHour
             {
                 var info = exits[sw];
                 string action = info.state == ExitState.Open || info.state == ExitState.Opening ? "close" : "open";
-                boardHover = $"{info.name}: click to {action} ({crewsFree}/{crewsTotal} crews free)";
+                boardHover = $"{info.name}: E / click to {action} ({crewsFree}/{crewsTotal} crews free)";
                 if (click)
                 {
                     ClickTakenByRoom = true;
@@ -338,9 +355,9 @@ namespace CrushHour
                 }
                 return;
             }
-            boardHover = button.camera == -1 ? (planning ? "START the show" : "The show is on")
-                       : button.camera == 0 ? "Video wall: AUTO (follows the latest incident)"
-                       : $"Video wall: CAM {button.camera:00} {feeds[button.camera - 1].zoneName}";
+            boardHover = button.camera == -1 ? (planning ? "E / click: START the show" : "The show is on")
+                       : button.camera == 0 ? "E / click: video wall AUTO (follows the latest incident)"
+                       : $"E / click: video wall CAM {button.camera:00} {feeds[button.camera - 1].zoneName}";
             if (!click) return;
             ClickTakenByRoom = true;
             button.pressedUntil = Time.unscaledTime + 0.15f;
@@ -353,7 +370,9 @@ namespace CrushHour
         {
             if (string.IsNullOrEmpty(boardHover) || Focused || !lookEnabled) return;
             float s = Mathf.Max(1f, Screen.height / 900f);
-            var style = new GUIStyle(GUI.skin.box) { fontSize = Mathf.RoundToInt(13 * s), alignment = TextAnchor.MiddleCenter };
+            hoverStyle ??= new GUIStyle(GUI.skin.box) { alignment = TextAnchor.MiddleCenter };
+            var style = hoverStyle;
+            style.fontSize = Mathf.RoundToInt(13 * s);
             var content = new GUIContent(boardHover);
             var size = style.CalcSize(content);
             GUI.Box(new Rect(Screen.width * 0.5f - size.x * 0.5f, Screen.height * 0.5f + 18f * s, size.x, size.y), content, style);

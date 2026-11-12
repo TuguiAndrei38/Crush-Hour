@@ -47,6 +47,20 @@ namespace CrushHour
         public bool EscapeTakenByRoom { get; private set; }
         /// <summary>The pointer is on the video wall: digits pick cameras there, not tools.</summary>
         public bool PointerOnWall { get; private set; }
+        /// <summary>A left click this frame (button event or a released→pressed change, whichever is seen).</summary>
+        public bool LeftClick { get; private set; }
+        bool groundCacheValid;
+        Ray groundCacheRay;
+        bool leftWasDown;
+        // Diagnostics (F9): what the pointer saw this frame.
+        string debugScreen = "-";
+        int debugClicks;
+        float debugLastClick = -99f;
+        /// <summary>Set by the game: its side of the click (tool, ground hit, ...), shown in the F9 diagnostics.</summary>
+        [System.NonSerialized] public string debugGame = "";
+        bool showDebug = false;
+        /// <summary>The F9 diagnostics box is on (the game only builds its debug text then).</summary>
+        public bool ShowDebug => showDebug;
 
         void BuildScreenSurfaces()
         {
@@ -156,9 +170,9 @@ namespace CrushHour
         {
             groundRay = default;
             if (OperatorCamera == null || (!Focused && boardHover != null)) return false;   // pointing at the board, not a screen
-            if (!HitScreen(OperatorCamera.ScreenPointToRay(screenPoint), out var s, out var uv) || s.source == null) return false;
-            groundRay = s.source.ViewportPointToRay(new Vector3(uv.x, uv.y, 0f));
-            return true;
+            // What the pointer hit in the last LateUpdate (same ray as on screen); no second raycast per GUI event.
+            groundRay = groundCacheRay;
+            return groundCacheValid;
         }
 
         /// <summary>
@@ -166,10 +180,26 @@ namespace CrushHour
         /// camera keys. The game then reads <see cref="ClickTakenByRoom"/>, <see cref="EscapeTakenByRoom"/> and
         /// <see cref="PointerOnWall"/>.
         /// </summary>
-        public void UpdateRoomInput()
+        [System.Obsolete("The room reads its input in LateUpdate now (ProcessPointer).")]
+        public void UpdateRoomInput() { }
+
+        /// <summary>
+        /// The room's pointer and input, every frame in LateUpdate right after the view is placed, so the ray is the one
+        /// on screen. The game reads the results (LeftClick, ClickTakenByRoom, PointerOnWall, the cached ground ray) in its
+        /// next Update.
+        /// </summary>
+        void ProcessPointer()
         {
+            groundCacheValid = false;
             ClickTakenByRoom = EscapeTakenByRoom = PointerOnWall = false;
             boardHover = null;
+            var m = Mouse.current;
+            bool down = m != null && m.leftButton.isPressed;
+            LeftClick = m != null && (m.leftButton.wasPressedThisFrame || (down && !leftWasDown));
+            leftWasDown = down;
+            if (LeftClick) { debugClicks++; debugLastClick = Time.unscaledTime; }
+            if (Keyboard.current != null && Keyboard.current.f9Key.wasPressedThisFrame) showDebug = !showDebug;
+            debugScreen = "-";
             if (!PointerActive)
             {
                 if (Focused) ExitFocus();
@@ -180,8 +210,14 @@ namespace CrushHour
             var keyboard = Keyboard.current;
             PointerScreen = Focused && mouse != null ? mouse.position.ReadValue() : new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
             var ray = OperatorCamera.ScreenPointToRay(PointerScreen);
-            bool onScreen = HitScreen(ray, out var screen, out _);
+            bool onScreen = HitScreen(ray, out var screen, out var hitUv);
+            debugScreen = onScreen ? $"{screen.kind}{(screen.region >= 0 ? $" {screen.region + 1}" : "")}" : "none";
             PointerOnWall = onScreen && screen.kind == ScreenKind.VideoWall;
+            if (onScreen && screen.source != null)
+            {
+                groundCacheRay = screen.source.ViewportPointToRay(new Vector3(hitUv.x, hitUv.y, 0f));
+                groundCacheValid = true;
+            }
 
             if (Focused)
             {
@@ -195,12 +231,13 @@ namespace CrushHour
             }
             else
             {
-                // The exits board first (it sits in front of the minimap).
-                BoardInput(ray, mouse != null && mouse.leftButton.wasPressedThisFrame);
+                // The exits board first (it sits in front of the minimap). E or a left click presses what's aimed at.
+                bool interact = keyboard != null && keyboard.eKey.wasPressedThisFrame;
+                BoardInput(ray, LeftClick || interact);
                 if (boardHover != null) return;
-                if (keyboard != null && keyboard.eKey.wasPressedThisFrame && onScreen) EnterFocus(screen);
+                if (interact && onScreen) EnterFocus(screen);
                 // Free look: clicking a desk monitor puts its zone on the video wall (step 3).
-                if (mouse != null && mouse.leftButton.wasPressedThisFrame && onScreen && screen.kind == ScreenKind.DeskMonitor)
+                if (LeftClick && onScreen && screen.kind == ScreenKind.DeskMonitor)
                 {
                     SelectWall(screen.region, true);
                     ClickTakenByRoom = true;
@@ -213,6 +250,28 @@ namespace CrushHour
                     if (keyboard[Key.Digit1 + i].wasPressedThisFrame || keyboard[Key.Numpad1 + i].wasPressedThisFrame) SelectWall(i, true);
                 if (keyboard.digit0Key.wasPressedThisFrame || keyboard.numpad0Key.wasPressedThisFrame) SetWallAuto();
             }
+        }
+
+        /// <summary>F9: a small diagnostics box (top left) for the room's input. On by default while we're debugging.</summary>
+        void DrawDebug()
+        {
+            if (!showDebug || OperatorCamera == null) return;
+            var ray = OperatorCamera.ScreenPointToRay(PointerScreen);
+            bool boardHit = BoardPick(ray, out int sw, out var button);
+            string board = !boardHit ? "none" : sw >= 0 ? $"switch {sw + 1}" : button.camera == -1 ? "START" : button.camera == 0 ? "AUTO" : $"cam button {button.camera}";
+            string text =
+                $"<b>F9 diagnostics</b>\n" +
+                $"look {lookEnabled}  pointer {PointerActive}  focus {Focused}  radio {radioOpen}\n" +
+                $"pointer px {PointerScreen.x:0},{PointerScreen.y:0}  screen {Screen.width}x{Screen.height}\n" +
+                $"screens {screens.Count}  hit: {debugScreen}\n" +
+                $"board: switches {switches.Count}  buttons {boardButtons.Count}  exits {exits.Length}  hit: {board}\n" +
+                $"left button down {leftWasDown}  clicks seen {debugClicks}  last {(debugLastClick < 0 ? "-" : $"{Time.unscaledTime - debugLastClick:0.0}s ago")}\n" +
+                $"taken by room {ClickTakenByRoom}\n" +
+                $"game: {debugGame}";
+            var style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, richText = true, fontSize = 13, wordWrap = false };
+            var content = new GUIContent(text);
+            var size = style.CalcSize(content);
+            GUI.Box(new Rect(10, 10, size.x + 10, size.y + 6), content, style);
         }
 
         /// <summary>Moves the view in front of the screen so the picture fills most of it, and frees the cursor.</summary>

@@ -15,7 +15,7 @@ namespace CrushHour
 
         int[] zoneAlarm = System.Array.Empty<int>();
         bool[] zoneWarning = System.Array.Empty<bool>();
-        float zoneScanTimer;
+        float zoneScanTimer, minimapTimer;
 
         void UpdateControlRoomFeeds()
         {
@@ -26,7 +26,12 @@ namespace CrushHour
                 zoneWarning = new bool[n];
             }
 
-            UpdateMinimapMarkers();
+            minimapTimer -= Time.unscaledDeltaTime;
+            if (minimapTimer <= 0f)
+            {
+                minimapTimer = 0.1f;   // the minimap itself refreshes ~5 times a second
+                UpdateMinimapMarkers();
+            }
             System.Array.Clear(zoneAlarm, 0, n);
             if (phase == Phase.Live || phase == Phase.Results)
                 foreach (var incident in schedule.incidents)
@@ -73,7 +78,7 @@ namespace CrushHour
         {
             infoTimer -= Time.unscaledDeltaTime;
             if (infoTimer > 0f) return;
-            infoTimer = 0.25f;
+            infoTimer = 0.5f;
 
             if (controlRoom.LogText != null)
             {

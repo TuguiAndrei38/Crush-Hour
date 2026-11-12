@@ -15,16 +15,18 @@ namespace CrushHour
         public const int MinimapLayer = 27;
 
         [Header("Video wall")]
-        public int wallWidth = 1920, wallHeight = 1080;
-        public float wallFps = 30f;
+        public int wallPixelWidth = 1280, wallPixelHeight = 720;
+        [Tooltip("Shadows on the video wall picture. Costs a whole extra shadow pass of the crowd.")]
+        public bool wallShadows = false;
+        public float wallRefresh = 30f;
         [Tooltip("How long the big 'CAM 04 – FOOD COURT' title stays after a switch (s).")]
         public float switchTitleTime = 2.5f;
         [Tooltip("How long a warning (smoke, creaking tower) stays on the wall caption (s).")]
         public float warningTime = 12f;
 
         [Header("Minimap")]
-        public int minimapWidth = 1280, minimapHeight = 720;
-        public float minimapFps = 10f;
+        public int minimapPixelWidth = 960, minimapPixelHeight = 540;
+        public float minimapRefresh = 5f;
 
         Camera wallCamera, minimapCamera;
         RenderTexture wallTexture, minimapTexture;
@@ -51,32 +53,33 @@ namespace CrushHour
                         if (m != null && m.name.StartsWith("M_Minimap_Screen")) minimapScreen = r;
 
             // --- wall camera: takes the selected CCTV camera's place and lens, renders big
-            wallTexture = new RenderTexture(wallWidth, wallHeight, 24) { name = "Video wall", antiAliasing = 1 };
+            wallTexture = new RenderTexture(wallPixelWidth, wallPixelHeight, 24) { name = "Video wall", antiAliasing = 1 };
             wallCamera = new GameObject("Video Wall Camera").AddComponent<Camera>();
             wallCamera.transform.SetParent(cctvRoot, false);
             wallCamera.targetTexture = wallTexture;
-            wallCamera.cullingMask = ~((1 << RoomLayer) | (1 << MinimapLayer));
+            wallCamera.cullingMask = ~((1 << RoomLayer) | (1 << MinimapLayer) | (1 << CrowdSimpleLayer));
             wallCamera.nearClipPlane = 0.5f;
             wallCamera.farClipPlane = 250f;
             wallCamera.allowHDR = false;
             wallCamera.allowMSAA = false;
-            wallCamera.aspect = wallWidth / (float)wallHeight;
+            wallCamera.aspect = wallPixelWidth / (float)wallPixelHeight;
             wallCamera.enabled = false;
+            if (!wallShadows) CheapCamera(wallCamera);
             wallCaption = MakeCaption(wallCamera, font, "Caption", TextAnchor.UpperLeft, new Vector2(-0.95f, 0.93f), 0.045f);
             wallTitle = MakeCaption(wallCamera, font, "Switch Title", TextAnchor.MiddleCenter, new Vector2(0f, 0f), 0.09f);
             if (wallScreen != null) wallScreenMaterial = ScreenMaterial(wallScreen, "M_VW_Screen", wallTexture, "Video wall screen");
 
             // --- minimap: straight down over the whole venue
-            minimapTexture = new RenderTexture(minimapWidth, minimapHeight, 16) { name = "Minimap", antiAliasing = 1 };
+            minimapTexture = new RenderTexture(minimapPixelWidth, minimapPixelHeight, 16) { name = "Minimap", antiAliasing = 1 };
             minimapCamera = new GameObject("Minimap Camera").AddComponent<Camera>();
             minimapCamera.transform.SetParent(cctvRoot, false);
             minimapCamera.orthographic = true;
-            minimapCamera.aspect = minimapWidth / (float)minimapHeight;
+            minimapCamera.aspect = minimapPixelWidth / (float)minimapPixelHeight;
             minimapCamera.orthographicSize = Mathf.Max(FestivalVenue.Height * 0.5f, FestivalVenue.Width * 0.5f / minimapCamera.aspect) * 1.04f;
             minimapCamera.transform.SetPositionAndRotation(new Vector3(FestivalVenue.Width * 0.5f, 120f, FestivalVenue.Height * 0.5f), Quaternion.Euler(90f, 0f, 0f));
             minimapCamera.nearClipPlane = 1f;
             minimapCamera.farClipPlane = 200f;
-            minimapCamera.cullingMask = ~((1 << RoomLayer) | (1 << CaptionLayer));
+            minimapCamera.cullingMask = ~((1 << RoomLayer) | (1 << CaptionLayer) | (1 << CrowdDetailLayer));
             minimapCamera.allowHDR = false;
             minimapCamera.allowMSAA = false;
             minimapCamera.targetTexture = minimapTexture;
@@ -155,6 +158,7 @@ namespace CrushHour
             LayoutCaption(wallCaption, wallCamera, new Vector2(-0.95f, 0.93f), 0.045f);
             LayoutCaption(wallTitle, wallCamera, Vector2.zero, 0.09f);
             if (announce) switchTime = Time.unscaledTime;
+            wallCaptionTick = -1;
             wallTitle.text = $"CAM {region + 1:00} – {feeds[region].zoneName.ToUpperInvariant()}";
             nextWallRender = 0f;
         }
@@ -182,23 +186,33 @@ namespace CrushHour
             warningUntil = Time.unscaledTime + warningTime;
         }
 
-        void UpdateWallAndMinimap(float clock)
+        int wallCaptionTick = -1;
+
+        /// <summary>Renders the wall when due (true = it used a render this frame) and animates its switch effect.</summary>
+        bool UpdateWallAndMinimap(float clock)
         {
             float now = Time.unscaledTime;
+            bool rendered = false;
             if (wallCamera != null)
             {
-                bool due = now >= nextWallRender;
+                bool due = now >= nextWallRender + (wallVisible ? 0f : Mathf.Max(0f, hiddenFeedDelay));
                 wallCamera.enabled = due;
+                rendered = due;
                 if (due)
                 {
-                    nextWallRender = Mathf.Max(nextWallRender + 1f / Mathf.Max(1f, wallFps), now);
-                    int minutes = (int)clock / 60, seconds = (int)clock % 60;
-                    string dot = Mathf.Repeat(now, 1f) < 0.5f ? "<color=#ff3030>●</color>" : "<color=#00000000>●</color>";
-                    string mode = WallAuto ? "<color=#ffb020>AUTO</color>" : "MANUAL";
-                    var feed = feeds[WallRegion];
-                    string caption = $"CAM {feed.region + 1:00} | {feed.zoneName.ToUpperInvariant()}  {dot} REC {minutes:00}:{seconds:00}   {mode}";
-                    if (now < warningUntil && Mathf.Repeat(now, 0.8f) < 0.55f) caption += "\n" + warningText;
-                    wallCaption.text = caption;
+                    nextWallRender = now + 1f / Mathf.Max(1f, wallRefresh);
+                    int tick = (int)(now * 2.5f);   // caption text: at most 2.5 changes a second
+                    if (tick != wallCaptionTick)
+                    {
+                        wallCaptionTick = tick;
+                        int minutes = (int)clock / 60, seconds = (int)clock % 60;
+                        string dot = Mathf.Repeat(now, 1f) < 0.5f ? "<color=#ff3030>●</color>" : "<color=#00000000>●</color>";
+                        string mode = WallAuto ? "<color=#ffb020>AUTO</color>" : "MANUAL";
+                        var feed = feeds[WallRegion];
+                        string caption = $"CAM {feed.region + 1:00} | {feed.zoneUpper}  {dot} REC {minutes:00}:{seconds:00}   {mode}";
+                        if (now < warningUntil && Mathf.Repeat(now, 0.8f) < 0.55f) caption += "\n" + warningText;
+                        wallCaption.text = caption;
+                    }
                     float age = now - switchTime;
                     wallTitle.color = new Color(1f, 1f, 1f, age < switchTitleTime ? Mathf.Clamp01((switchTitleTime - age) / 0.5f) : 0f);
                 }
@@ -210,12 +224,7 @@ namespace CrushHour
                 Color emission = age < 0.08f ? Color.black : Color.white * (1f + 2.5f * Mathf.Clamp01(1f - (age - 0.08f) / 0.35f));
                 wallScreenMaterial.SetColor("_EmissionColor", emission);
             }
-            if (minimapCamera != null)
-            {
-                bool due = now >= nextMinimapRender;
-                minimapCamera.enabled = due;
-                if (due) nextMinimapRender = Mathf.Max(nextMinimapRender + 1f / Mathf.Max(1f, minimapFps), now);
-            }
+            return rendered;   // the minimap takes its turn with the desk feeds (UpdateCctv)
         }
 
         void ClearWallAndMinimap()

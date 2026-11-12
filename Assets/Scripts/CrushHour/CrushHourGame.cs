@@ -363,6 +363,9 @@ namespace CrushHour
             sim = new CrowdSimulation(crowd, venue, rng);
             var bounds = new Bounds(new Vector3(W * 0.5f, 1f, H * 0.5f), new Vector3(W, 4f, H));
             crowdRenderer = new CrowdRenderer(sim, cubeMesh, agentRenderParams, personModels, bounds, rng) { ShowMarkers = stateMarkers };
+            // Control room: animated models only on the video wall; the small feeds and the minimap get plain boxes.
+            if (InControlRoom && controlRoom.simpleCrowdOnMonitors)
+                crowdRenderer.SetDualDetail(ControlRoom.CrowdDetailLayer, ControlRoom.CrowdSimpleLayer);
 
             phase = Phase.Planning;
             cameraRig.controlsEnabled = true;
@@ -1689,7 +1692,7 @@ namespace CrushHour
             {
                 controlRoom.lookEnabled = phase == Phase.Live || (phase == Phase.Planning && welcomeDismissed);
                 UpdateRadio();                   // hold V: the radio wheels (they take the mouse while open)
-                controlRoom.UpdateRoomInput();
+                // (the room reads its pointer in its LateUpdate; we use the results here)
             }
             bool digitsForTools = !(InControlRoom && controlRoom.PointerOnWall);   // on the video wall, digits pick cameras
             var keyboard = Keyboard.current;
@@ -1725,7 +1728,7 @@ namespace CrushHour
             if (keyboard.f1Key.wasPressedThisFrame) SetDifficulty(Difficulty.Easy);
             if (keyboard.f2Key.wasPressedThisFrame) SetDifficulty(Difficulty.Medium);
             if (keyboard.f3Key.wasPressedThisFrame) SetDifficulty(Difficulty.Hard);
-            if (keyboard.escapeKey.wasPressedThisFrame && !(InControlRoom && (controlRoom.EscapeTakenByRoom || radioTookEscape)))
+            if (keyboard.escapeKey.wasPressedThisFrame && !(InControlRoom && (controlRoom.Focused || controlRoom.EscapeTakenByRoom || radioTookEscape)))
             {
                 if (selectedUnit < 0 && phase == Phase.Planning) OpenMenu(); // back to the start menu
                 else selectedUnit = -1;
@@ -1758,10 +1761,10 @@ namespace CrushHour
                 screen = controlRoom.PointerScreen;
                 overGui = false;
                 bool shift = Keyboard.current != null && Keyboard.current.shiftKey.isPressed;
-                bool click = mouse.leftButton.wasPressedThisFrame && !controlRoom.ClickTakenByRoom;
+                bool click = controlRoom.LeftClick && !controlRoom.ClickTakenByRoom;
                 leftPressed = click && !shift;
                 rightPressed = click && shift;
-                leftReleased = mouse.leftButton.wasReleasedThisFrame;
+                leftReleased = mouse.leftButton.wasReleasedThisFrame || (!mouse.leftButton.isPressed && dragging);
             }
             else
             {
@@ -1772,6 +1775,8 @@ namespace CrushHour
                 rightPressed = mouse.rightButton.wasPressedThisFrame;
             }
             bool onGround = TryGetCellUnderMouse(screen, out int cell, out Vector2 ground);
+            if (InControlRoom && controlRoom.ShowDebug)
+                controlRoom.debugGame = $"tool {tool}  phase {phase}  on ground {onGround}  cell {cell}  left pressed {leftPressed}  selected {selectedUnit}";
 
             if (tool == Tool.Barrier)
             {

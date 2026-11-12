@@ -347,6 +347,32 @@ namespace CrushHour
         public bool Animated { get; }
         public bool ShowMarkers { get; set; } = true;
 
+        // Two levels of detail on two layers (control room): the person models on one layer (video wall camera),
+        // plain state-coloured boxes on another (the small CCTV feeds and the minimap). Off by default.
+        bool dual;
+        RenderParams[] simpleParams, markerParams;
+
+        /// <summary>Draw the models (and state markers) on <paramref name="detailLayer"/> and a box per person on <paramref name="simpleLayer"/>.</summary>
+        public void SetDualDetail(int detailLayer, int simpleLayer)
+        {
+            if (!UsesModels) return;   // already boxes for everyone
+            dual = true;
+            foreach (var g in groups)
+            {
+                for (int i = 0; i < g.staticParams.Length; i++) g.staticParams[i].layer = detailLayer;
+                if (g.animatedParams != null)
+                    for (int i = 0; i < g.animatedParams.Length; i++) g.animatedParams[i].layer = detailLayer;
+            }
+            simpleParams = (RenderParams[])stateParams.Clone();
+            markerParams = (RenderParams[])stateParams.Clone();
+            for (int s = 0; s < simpleParams.Length; s++)
+            {
+                simpleParams[s].layer = simpleLayer;
+                simpleParams[s].shadowCastingMode = ShadowCastingMode.Off;
+                markerParams[s].layer = detailLayer;
+            }
+        }
+
         /// <param name="stateParams">Calm, following directions, alarmed, panicking, injured, panic attack, intoxicated by smoke.</param>
         public CrowdRenderer(CrowdSimulation sim, Mesh cube, RenderParams[] stateParams, IReadOnlyList<PersonModel> models, Bounds bounds, System.Random rng)
         {
@@ -429,6 +455,11 @@ namespace CrushHour
                 }
 
                 var rotation = Quaternion.Euler(0f, facing[i], 0f);
+                if (dual)
+                {
+                    var box = down ? cubeLying : attack ? new Vector3(0.5f, 0.55f, 0.5f) : choking ? new Vector3(0.42f, 0.8f, 0.42f) : new Vector3(0.5f, 1.7f, 0.5f);
+                    cubes[s][cubeCounts[s]++] = Matrix4x4.TRS(new Vector3(p.x, box.y * 0.5f, p.y), rotation, box);
+                }
                 var bodyScale = Vector3.one;
                 float lift = 0f;
                 if (down)
@@ -504,6 +535,15 @@ namespace CrushHour
                     for (int sub = 0; sub < group.staticParams.Length; sub++)
                         Draw(group.staticParams[sub], group.model.mesh, sub, group.matrices, group.count);
                 }
+            }
+            if (dual)
+            {
+                for (int s = 0; s < StateCount; s++)
+                {
+                    Draw(simpleParams[s], cube, 0, cubes[s], cubeCounts[s]);
+                    Draw(markerParams[s], cube, 0, markers[s], markerCounts[s]);
+                }
+                return;
             }
             for (int s = 0; s < StateCount; s++) Draw(stateParams[s], cube, 0, markers[s], markerCounts[s]);
         }

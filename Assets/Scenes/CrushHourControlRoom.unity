@@ -233,6 +233,29 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 98d466e914d7745498cbf098e7128054, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CrushHour.ControlRoom
+  scanlineStrength: 0.35
+  noiseStrength: 0.12
+  humVolume: 0.08
+  alarmVolume: 0.18
+  slowFrameTime: 0.025
+  adaptiveQuality: 1
+  feedWidth: 480
+  feedHeight: 270
+  feedFps: 12
+  maxFeedsPerFrame: 3
+  cameraMinHeight: 9
+  cameraMaxHeight: 14
+  cameraInset: 0.3
+  framing: 0.85
+  poleColor: {r: 0.32, g: 0.33, b: 0.35, a: 1}
+  wallWidth: 1920
+  wallHeight: 1080
+  wallFps: 30
+  switchTitleTime: 2.5
+  warningTime: 12
+  minimapWidth: 1280
+  minimapHeight: 720
+  minimapFps: 10
   origin: {x: -400, y: 0, z: -400}
   roomModel: {fileID: 919132149155446097, guid: 4ea3fea70ad84ef4d937375791764b7a, type: 3}
   doorModel: {fileID: 919132149155446097, guid: 2ed27dca1d439e144bd92c1b7d9dc313, type: 3}
@@ -241,6 +264,7 @@ MonoBehaviour:
   boardModel: {fileID: 919132149155446097, guid: e064f41b46f57c74f847824e09acb3fe, type: 3}
   chairModel: {fileID: 919132149155446097, guid: 89e8c47925db7b3479e0d5449b3a5556, type: 3}
   cctvModel: {fileID: 919132149155446097, guid: 56dce6ff0e607d244907470131dd0d91, type: 3}
+  walkieModel: {fileID: 0}
   litMaterial: {fileID: 2100000, guid: a0034c0234cb7034c97b0917f01ac52c, type: 2}
   lampColor: {r: 1, g: 0.96, b: 0.9, a: 1}
   lampIntensity: 20
@@ -251,6 +275,7 @@ MonoBehaviour:
   maxPitch: 65
   fieldOfView: 60
   zoomFieldOfView: 22
+  chairSpeed: 1.6
   zoomSpeed: 10
 --- !u!4 &798846173
 Transform:
@@ -262,70 +287,6 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1234868531
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1234868533}
-  - component: {fileID: 1234868532}
-  m_Layer: 0
-  m_Name: Cube Terrain
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1234868532
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1234868531}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a2915ec6819771148ab0e0b310fff250, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CubeTerrain
-  sizeX: 128
-  sizeZ: 128
-  chunkSize: 16
-  seed: 1234
-  noiseScale: 0.02
-  octaves: 4
-  persistence: 0.5
-  lacunarity: 2
-  baseHeight: 4
-  heightAmplitude: 32
-  heightExponent: 1.8
-  sandLevel: 7
-  rockLevel: 22
-  snowLevel: 28
-  dirtDepth: 3
-  grassMaterial: {fileID: 2100000, guid: 2d38925660d357641b5e1d71f9e9f5ba, type: 2}
-  dirtMaterial: {fileID: 2100000, guid: ce4eb247fbcfee24a928d428c8dfec29, type: 2}
-  stoneMaterial: {fileID: 2100000, guid: fa0da69a651c32a4f9d17ce15d7cf7c8, type: 2}
-  sandMaterial: {fileID: 2100000, guid: 1a7eaf0ca6d75824e8d927747b18bf7f, type: 2}
-  snowMaterial: {fileID: 2100000, guid: c7447502a5ac09541b3d9a924867e9df, type: 2}
---- !u!4 &1234868533
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1234868531}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -64, y: 0, z: -64}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -691,6 +652,5 @@ SceneRoots:
   m_Roots:
   - {fileID: 1977363526}
   - {fileID: 1362576001}
-  - {fileID: 1234868533}
   - {fileID: 222953580}
   - {fileID: 798846173}
