@@ -993,26 +993,39 @@ namespace CrushHour
             foreach (int s in sources) isSource[s] = false;
         }
 
+        // A goal of -1 builds a tree to every reachable cell. Admissions can then reuse a
+        // single search from each ticket lane for hundreds of different destinations.
+        void SearchPaths(int start, int goal, int[] previous)
+        {
+            Array.Fill(previous, -1);
+            previous[start] = start;
+            int head = 0, tail = 0;
+            queue[tail++] = start;
+            while (head < tail && (goal < 0 || previous[goal] == -1))
+            {
+                int c = queue[head++], cx = c % Width, cy = c / Width;
+                for (int k = 0; k < 8; k++)
+                {
+                    if (!CanStep(cx, cy, k, out int n) || previous[n] != -1) continue;
+                    previous[n] = c;
+                    queue[tail++] = n;
+                }
+            }
+        }
+
+        internal int[] WalkablePathTree(int start)
+        {
+            var previous = new int[CellCount];
+            SearchPaths(start, -1, previous);
+            return previous;
+        }
+
         /// <summary>Shortest walkable path (cell centres, ending exactly at <paramref name="to"/>), or null.</summary>
         public List<Vector2> FindPath(Vector2 from, Vector2 to)
         {
             int start = CellAt(from), goal = CellAt(to);
             if (!IsWalkable(goal) || cells[goal] == CellType.Outside) return null;
-
-            Array.Fill(parent, -1);
-            parent[start] = start;
-            int head = 0, tail = 0;
-            queue[tail++] = start;
-            while (head < tail && parent[goal] == -1)
-            {
-                int c = queue[head++], cx = c % Width, cy = c / Width;
-                for (int k = 0; k < 8; k++)
-                {
-                    if (!CanStep(cx, cy, k, out int n) || parent[n] != -1) continue;
-                    parent[n] = c;
-                    queue[tail++] = n;
-                }
-            }
+            SearchPaths(start, goal, parent);
             if (parent[goal] == -1) return null;
 
             var path = new List<Vector2>();

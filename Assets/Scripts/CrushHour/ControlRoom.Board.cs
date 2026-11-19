@@ -222,6 +222,16 @@ namespace CrushHour
 
         void AnimateBoard()
         {
+            if (PowerOut)
+            {
+                foreach (var sw in switches)
+                {
+                    if (sw.lamp != null) sw.lamp.enabled = false;
+                    if (sw.lampMaterial != null) sw.lampMaterial.SetColor("_EmissionColor", Color.black);
+                }
+                foreach (var button in boardButtons) button.material.SetColor("_EmissionColor", Color.black);
+                return;
+            }
             if (switches.Count == 0) return;
             float now = Time.unscaledTime, dt = Time.unscaledDeltaTime;
             bool blink = Mathf.Repeat(now, 0.5f) < 0.25f;
@@ -341,6 +351,7 @@ namespace CrushHour
         void BoardInput(Ray ray, bool click)
         {
             boardHover = null;
+            if (PowerOut || OnFoot) return;
             if (!BoardPick(ray, out int sw, out var button)) return;
             if (sw >= 0)
             {
@@ -368,7 +379,7 @@ namespace CrushHour
 
         void DrawBoardHover()
         {
-            if (string.IsNullOrEmpty(boardHover) || Focused || !lookEnabled) return;
+            if (PowerOut || OnFoot || string.IsNullOrEmpty(boardHover) || Focused || !lookEnabled) return;
             float s = Mathf.Max(1f, Screen.height / 900f);
             hoverStyle ??= new GUIStyle(GUI.skin.box) { alignment = TextAnchor.MiddleCenter };
             var style = hoverStyle;

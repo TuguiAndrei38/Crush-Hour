@@ -12,9 +12,9 @@ $mapCheckCsc = Get-ChildItem (Join-Path $UnityData "DotNetSdk\sdk") -Recurse -Fi
     Where-Object { $_.FullName -like "*\Roslyn\bincore\csc.dll" } | Select-Object -First 1
 $mapCheckReferences = Get-Content (Join-Path $env:TEMP "CrushHourVerify\compile.rsp") | Where-Object { $_ -like '-r:*' }
 $mapCheckSources = @((Join-Path $PSScriptRoot "MapLayoutCheck.cs")) +
-    @("FestivalVenue.cs", "CrowdSimulation.cs", "Incidents.cs", "Difficulty.cs", "MapProgress.cs" | ForEach-Object {
+    @("FestivalVenue.cs", "Incidents.cs", "Difficulty.cs", "MapProgress.cs" | ForEach-Object {
         Join-Path $mapCheckRoot "Assets\Scripts\CrushHour\$_"
-    })
+    }) + @(Get-ChildItem -LiteralPath (Join-Path $mapCheckRoot "Assets\Scripts\CrushHour") -Filter 'CrowdSimulation*.cs' | ForEach-Object { $_.FullName })
 $mapCheckOutput = Join-Path $mapCheckDir "MapLayoutCheck.dll"
 $mapCheckLines = @('-nologo', '-nostdlib', '-langversion:9.0', '-target:exe', "-out:`"$mapCheckOutput`"") +
     $mapCheckReferences + @($mapCheckSources | ForEach-Object { "`"$_`"" })

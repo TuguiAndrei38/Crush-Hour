@@ -148,6 +148,7 @@ namespace CrushHour
         /// <summary>Puts a zone on the wall. Manual picks (desk monitor click, keys, board buttons) turn AUTO off.</summary>
         public void SelectWall(int region, bool manual, bool announce = true)
         {
+            if (manual && (PowerOut || OnFoot)) return;
             if (region < 0 || region >= feeds.Count || wallCamera == null) return;
             if (manual) WallAuto = false;
             WallRegion = region;
@@ -166,6 +167,7 @@ namespace CrushHour
         /// <summary>Back to AUTO: the wall follows the latest incident again.</summary>
         public void SetWallAuto()
         {
+            if (PowerOut || OnFoot) return;
             if (feeds.Count == 0 || wallTitle == null) return;
             WallAuto = true;
             switchTime = Time.unscaledTime;
@@ -191,6 +193,7 @@ namespace CrushHour
         /// <summary>Renders the wall when due (true = it used a render this frame) and animates its switch effect.</summary>
         bool UpdateWallAndMinimap(float clock)
         {
+            if (PowerOut) return false;
             float now = Time.unscaledTime;
             bool rendered = false;
             if (wallCamera != null)

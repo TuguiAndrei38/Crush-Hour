@@ -109,7 +109,7 @@ namespace CrushHour
     /// The crowd: a few thousand people who notice the fire, run from it, then try the nearest door
     /// (and the next one if it's shut). Panic spreads, crowds compress, and too much panic causes panic attacks.
     /// </summary>
-    public class CrowdSimulation
+    public partial class CrowdSimulation
     {
         const int W = FestivalVenue.Width, H = FestivalVenue.Height, N = FestivalVenue.CellCount;
         static readonly int[] DX = { 1, -1, 0, 0, 1, 1, -1, -1 };
@@ -256,6 +256,7 @@ namespace CrushHour
             Array.Fill(exitDoor, -1);
             Spawn(venue);
             AssignDrunks(venue);
+            InitializeAmbient(venue);
             UpdateCounts();
         }
 
@@ -406,6 +407,11 @@ namespace CrushHour
 
         public void Step(float dt, FestivalVenue venue, bool incident)
         {
+            if (!ArrivalsComplete)
+            {
+                StepArrivals(dt, venue);
+                return;
+            }
             BuildSpatialHash();
             openDoorMask = venue.OpenDoorMask;
             simTime += dt;
@@ -585,10 +591,7 @@ namespace CrushHour
                 }
                 else if (!evacuating[i])
                 {
-                    // Still enjoying the show: drift back to my spot.
-                    Vector2 to = anchor[i] - p;
-                    float m = to.magnitude;
-                    desired = m > 1.2f ? to * (0.6f / m) : Vector2.zero;
+                    desired = AmbientVelocity(i, p, venue, localDensity);
                 }
                 else
                 {
@@ -634,6 +637,8 @@ namespace CrushHour
                 float giveWay = orderly ? 1f : Mathf.Lerp(1f, 0.55f, panic[i]);
                 Vector2 next = p + velocity[i] * dt + Vector2.ClampMagnitude(push * giveWay, 0.15f);
                 next = ResolveWalls(venue, p, next);
+                // A strolling guest can be jostled by neighbours, particularly near the ticket lanes.
+                if (!evacuating[i] && escortedBy[i] < 0 && venue.regionOf[CellOf(next)] < 0) next = p;
                 // Blocked people lose their momentum instead of building up endless push.
                 velocity[i] = Vector2.Lerp(velocity[i], (next - p) / dt, 0.5f);
 

@@ -132,7 +132,7 @@ namespace CrushHour
 
             roomShell = Spawn(roomModel, "Room", Vector3.zero, 0f);
             SetupWindow();
-            Spawn(doorModel, "Door", DoorPos, 0f);
+            serviceDoor = Spawn(doorModel, "Door", DoorPos, 0f)?.transform;
             VideoWall = Spawn(videoWallModel, "Video Wall", VideoWallPos, 0f);
             Desk = Spawn(deskModel, "Desk", DeskPos, 0f);
             Board = Spawn(boardModel, "Control Board", BoardPos, 0f);
@@ -161,6 +161,7 @@ namespace CrushHour
             SetupBoard();
             SetupInfo();
             SetupAtmosphere();
+            BuildPowerArea();
             TakeCamera(camera);
         }
 
@@ -267,7 +268,8 @@ namespace CrushHour
                 yaw = turnLimit >= 180f ? Mathf.Repeat(yaw + delta.x + 180f, 360f) - 180f : Mathf.Clamp(yaw + delta.x, -turnLimit, turnLimit);
                 pitch = Mathf.Clamp(pitch - delta.y, minPitch, maxPitch);
             }
-            if (look) MoveChair();
+            UpdatePowerTraversal(look);
+            if (look && !OnFoot && !radioOpen) MoveChair();
             float targetFov = zoom ? zoomFieldOfView : fieldOfView;
             AnimateBoard();
             AnimateWalkie();
@@ -276,6 +278,7 @@ namespace CrushHour
             OperatorCamera.fieldOfView = Mathf.Lerp(OperatorCamera.fieldOfView, targetFov, 1f - Mathf.Exp(-zoomSpeed * Time.unscaledDeltaTime));
             ApplyView();
             UpdateWindowView();
+            ProcessPowerInteraction();
             ProcessPointer();   // after the view is placed: the pointer ray is exactly what's on screen
         }
 
@@ -384,6 +387,7 @@ namespace CrushHour
             DrawCross(cx, cy, arm, gap, w);
             GUI.color = old;
             DrawBoardHover();
+            DrawPowerPrompt();
         }
 
         void DrawCross(float cx, float cy, float arm, float gap, float w)
@@ -396,6 +400,7 @@ namespace CrushHour
 
         void OnDisable()
         {
+            SuspendCctv();
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
@@ -403,6 +408,7 @@ namespace CrushHour
         void OnDestroy()
         {
             UnhookCctv();
+            DisposePowerArea();
             foreach (var m in materials.Values) if (m != null) Destroy(m);
             foreach (var m in ownedBoardMaterials) if (m != null) Destroy(m);
             materials.Clear();

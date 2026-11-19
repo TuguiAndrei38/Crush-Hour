@@ -30,6 +30,74 @@ static class MapLayoutCheck
         return hash;
     }
 
+    static void CheckAdmissions(VenueMap map, Difficulty difficulty)
+    {
+        var venue = new FestivalVenue(map);
+        var settings = DifficultySettings.For(difficulty);
+        CrowdSimulation NewCrowd() => new CrowdSimulation(
+            new CrowdSettings { agentCount = settings.playerCount, drunkFraction = settings.drunkFraction },
+            venue, new Random(11));
+        var sim = NewCrowd();
+        var edited = NewCrowd(); // The same walk across a cinematic time cut, then a skip.
+        sim.BeginArrivals(venue);
+        edited.BeginArrivals(venue);
+        Require(!sim.ArrivalsComplete && sim.ArrivalDuration > 0, $"{map}/{difficulty}: no entrance routes");
+        Require(sim.position.All(p => venue.cells[FestivalVenue.CellAt(p)] == CellType.Outside),
+            $"{map}/{difficulty}: attendees must begin outside");
+
+        var last = (UnityEngine.Vector2[])sim.position.Clone();
+        var entered = new bool[sim.count];
+        var entranceAt = new int[FestivalVenue.CellCount];
+        var visits = new int[venue.doors.Count];
+        for (int d = 0; d < venue.doors.Count; d++)
+            if (venue.doors[d].gate == null)
+                foreach (var p in venue.doors[d].rect.allPositionsWithin)
+                    entranceAt[FestivalVenue.Index(p.x, p.y)] = d + 1;
+
+        const float dt = 0.4f; // Even the fastest walker needs more than one tick to cross the fence.
+        int ticks = 0;
+        int cut = (int)(sim.ArrivalDuration * 0.35f / dt);
+        while (!sim.ArrivalsComplete && ticks * dt <= sim.ArrivalDuration + 1f)
+        {
+            ticks++;
+            sim.Step(dt, venue, false);
+            for (int i = 0; i < sim.count; i++)
+            {
+                var p = sim.position[i];
+                if ((p - last[i]).magnitude > sim.settings.walkSpeed * sim.personalSpeed[i] * dt + 0.01f)
+                    throw new InvalidOperationException($"{map}/{difficulty}: attendee {i} jumped at tick {ticks}");
+                last[i] = p;
+                int cell = FestivalVenue.CellAt(p);
+                if (!venue.IsWalkable(cell))
+                    throw new InvalidOperationException($"{map}/{difficulty}: attendee {i} entered a solid cell {cell}");
+                if (venue.cells[cell] == CellType.Outside) continue;
+                if (!sim.IsVisible(i)) throw new InvalidOperationException($"{map}/{difficulty}: hidden indoor attendee {i}");
+                if (entered[i]) continue;
+                int entrance = entranceAt[cell];
+                if (entrance == 0) throw new InvalidOperationException($"{map}/{difficulty}: attendee {i} bypassed a public entrance");
+                visits[entrance - 1]++;
+                entered[i] = true;
+            }
+            if (ticks == cut)
+            {
+                edited.StepArrivals(dt * cut, venue);
+                for (int i = 0; i < sim.count; i++)
+                    if ((sim.position[i] - edited.position[i]).sqrMagnitude > 0.0025f || sim.IsVisible(i) != edited.IsVisible(i))
+                        throw new InvalidOperationException($"{map}/{difficulty}: camera time cut changed attendee {i}'s route");
+                edited.FinishArrivals(venue);
+            }
+        }
+        Require(sim.ArrivalsComplete && edited.ArrivalsComplete && entered.All(v => v), $"{map}/{difficulty}: incomplete admissions");
+        Require(sim.SafeCount == 0 && sim.InjuredCount == 0 && sim.EvacuatingCount == 0 &&
+            sim.ActiveCount == sim.count && sim.exitsByDoor.All(n => n == 0), $"{map}/{difficulty}: admissions affected scoring");
+        for (int i = 0; i < sim.count; i++)
+            Require(sim.position[i] == sim.anchor[i] && sim.position[i] == edited.position[i] && sim.IsVisible(i) &&
+                sim.drunk[i] == edited.drunk[i] && sim.exitDoor[i] == -1, "Original crowd did not reach its destinations");
+        for (int d = 0; d < visits.Length; d++)
+            Require((visits[d] > 0) == (venue.doors[d].gate == null), $"{map}/{difficulty}: wrong entry door {d}");
+        Console.WriteLine($"PASS {map}/{difficulty}: {sim.count} admissions through public entrances in {sim.ArrivalDuration:F0} simulated seconds.");
+    }
+
     static void CheckLayout(VenueMap map)
     {
         var venue = new FestivalVenue(map);
@@ -104,7 +172,10 @@ static class MapLayoutCheck
         {
             CheckLayout(map);
             foreach (Difficulty difficulty in Enum.GetValues(typeof(Difficulty)))
+            {
+                CheckAdmissions(map, difficulty);
                 foreach (int seed in new[] { 11, 21, 33 }) CheckRound(map, difficulty, seed);
+            }
         }
         Console.WriteLine("PASS all 9 map/difficulty combinations across 3 seeds (27 rounds); legacy festival unchanged.");
     }

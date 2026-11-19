@@ -38,7 +38,7 @@ namespace CrushHour
         public bool Focused { get; private set; }
         public ScreenSurface FocusedScreen { get; private set; }
         /// <summary>The operator can point at things (free look or focus).</summary>
-        public bool PointerActive => lookEnabled && OperatorCamera != null;
+        public bool PointerActive => lookEnabled && !PowerOut && !OnFoot && OperatorCamera != null;
         /// <summary>Where the pointer is, in screen pixels: the crosshair (centre) in free look, the mouse in focus.</summary>
         public Vector2 PointerScreen { get; private set; }
         /// <summary>This frame's left click was used by the room (desk monitor → video wall); the game ignores it.</summary>
@@ -169,7 +169,7 @@ namespace CrushHour
         public bool TryGroundRay(Vector2 screenPoint, out Ray groundRay)
         {
             groundRay = default;
-            if (OperatorCamera == null || (!Focused && boardHover != null)) return false;   // pointing at the board, not a screen
+            if (PowerOut || OnFoot || OperatorCamera == null || (!Focused && boardHover != null)) return false;
             // What the pointer hit in the last LateUpdate (same ray as on screen); no second raycast per GUI event.
             groundRay = groundCacheRay;
             return groundCacheValid;
@@ -283,7 +283,7 @@ namespace CrushHour
         /// <summary>Moves the view in front of the screen so the picture fills most of it, and frees the cursor.</summary>
         public void EnterFocus(ScreenSurface screen)
         {
-            if (screen == null || OperatorCamera == null) return;
+            if (PowerOut || OnFoot || screen == null || OperatorCamera == null) return;
             float tan = Mathf.Tan(fieldOfView * 0.5f * Mathf.Deg2Rad);
             float distance = Mathf.Max(screen.height * 0.5f / tan, screen.width * 0.5f / (tan * OperatorCamera.aspect)) * 1.12f;
             focusPos = screen.center + screen.normal * distance;

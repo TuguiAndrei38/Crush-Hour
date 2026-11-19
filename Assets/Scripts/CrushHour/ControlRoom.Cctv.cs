@@ -124,6 +124,7 @@ namespace CrushHour
                 RenderPipelineManager.endCameraRendering += OnEndCamera;
                 hookedCameraEvents = true;
             }
+            if (PowerOut) ApplyElectricalPowerState(false);
         }
 
         /// <summary>From the region's corner farthest from the venue centre, pulled outwards, high up, looking at the middle.</summary>
@@ -260,6 +261,11 @@ namespace CrushHour
         /// </summary>
         public void UpdateCctv(float clock, int[] alarm, bool[] warning)
         {
+            if (PowerOut)
+            {
+                SuspendCctv();
+                return;
+            }
             if (feeds.Count == 0) return;
             // Screens outside the operator's view refresh late (hiddenFeedDelay): nobody is watching them.
             float hidden = Mathf.Max(0f, hiddenFeedDelay);
@@ -333,12 +339,26 @@ namespace CrushHour
 
         void OnBeginCamera(ScriptableRenderContext context, Camera cam)
         {
-            foreach (var feed in feeds) feed.captionRenderer.enabled = feed.camera == cam;
-            foreach (var r in wallCaptionRenderers) if (r != null) r.enabled = cam == wallCamera;
+            if (!isActiveAndEnabled) return;
+            foreach (var feed in feeds) feed.captionRenderer.enabled = !PowerOut && feed.camera == cam;
+            foreach (var r in wallCaptionRenderers) if (r != null) r.enabled = !PowerOut && cam == wallCamera;
+        }
+
+        void SuspendCctv()
+        {
+            foreach (var feed in feeds)
+            {
+                if (feed.camera != null) feed.camera.enabled = false;
+                if (feed.captionRenderer != null) feed.captionRenderer.enabled = false;
+            }
+            if (wallCamera != null) wallCamera.enabled = false;
+            if (minimapCamera != null) minimapCamera.enabled = false;
+            foreach (var caption in wallCaptionRenderers) if (caption != null) caption.enabled = false;
         }
 
         void OnEndCamera(ScriptableRenderContext context, Camera cam)
         {
+            if (!isActiveAndEnabled) return;
             foreach (var feed in feeds) feed.captionRenderer.enabled = false;
             foreach (var r in wallCaptionRenderers) if (r != null) r.enabled = false;
         }
