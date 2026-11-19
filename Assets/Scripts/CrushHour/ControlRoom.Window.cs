@@ -123,7 +123,7 @@ namespace CrushHour
             viewMaskSet = true;
             venueInView = see;
             OperatorCamera.cullingMask = see
-                ? ~((1 << CaptionLayer) | (1 << MinimapLayer) | (1 << CrowdSimpleLayer))
+                ? ~((1 << CaptionLayer) | (1 << MinimapLayer) | (1 << CrowdSimpleLayer) | (1 << TaskMarkerLayer))
                 : 1 << RoomLayer;
             OperatorCamera.farClipPlane = see ? 400f : 60f;
         }

@@ -107,8 +107,8 @@ namespace CrushHour
                 var sb = new System.Text.StringBuilder();
                 foreach (var u in units)
                 {
-                    string where = u.role == Role.Megaphone ? "Police" : u.homeRegion >= 0 ? venue.regions[u.homeRegion].name : "Patrol";
-                    var c = u.role == Role.Megaphone ? new Color(0.45f, 0.65f, 1f) : UnitColor(u);
+                    string where = u.role == Role.Megaphone ? "" : u.homeRegion >= 0 ? venue.regions[u.homeRegion].name : "Patrol";
+                    var c = RadioColor(u);
                     string name = $"{Callsign(u),-9} {where}";
                     if (name.Length > 24) name = name.Substring(0, 24);
                     sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGB(c)).Append('>').Append(name.PadRight(25)).Append("</color>")
@@ -170,7 +170,7 @@ namespace CrushHour
 
         // ---------------------------------------------------------------- Minimap markers (layer ControlRoom.MinimapLayer)
 
-        static readonly Color MinimapPolice = new(0.3f, 0.55f, 1f);
+        static readonly Color MinimapPolice = new(0.95f, 0.95f, 0.98f);   // white: never a zone colour
         static readonly Color MinimapOpen = new(0.15f, 0.9f, 0.3f), MinimapClosed = new(0.95f, 0.15f, 0.1f);
         static readonly Color MinimapIncident = new(1f, 0.1f, 0.05f, 0.55f), MinimapWarning = new(1f, 0.8f, 0.1f, 0.5f);
         Transform minimapRoot;
@@ -199,7 +199,7 @@ namespace CrushHour
                 for (int x = 0; x < W; x++)
                 {
                     int r = venue.regionOf[FestivalVenue.Index(x, y)];
-                    pixels[y * W + x] = r >= 0 ? new Color(venue.regions[r].color.r, venue.regions[r].color.g, venue.regions[r].color.b, 0.3f) : Color.clear;
+                    pixels[y * W + x] = r >= 0 ? new Color(venue.regions[r].color.r, venue.regions[r].color.g, venue.regions[r].color.b, 0.42f) : Color.clear;
                 }
             minimapZoneTexture.SetPixels(pixels);
             minimapZoneTexture.Apply();
@@ -215,7 +215,7 @@ namespace CrushHour
             tint.GetComponent<Renderer>().sharedMaterial = tintMaterial;
             tint.name = "Zones";
 
-            // zone numbers (same as the CAM numbers)
+            // zone codes and names (Z3 = CAM 03 = the radio's Z3), in the zone colour
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             for (int r = 0; r < venue.regions.Count; r++)
             {
@@ -225,10 +225,12 @@ namespace CrushHour
                 text.transform.SetPositionAndRotation(new Vector3(c.x, 6f, c.y), Quaternion.Euler(90f, 0f, 0f));
                 text.font = font;
                 text.fontSize = 64;
-                text.characterSize = 0.7f;
+                text.characterSize = 0.55f;
                 text.anchor = TextAnchor.MiddleCenter;
-                text.text = (r + 1).ToString();
-                text.color = Color.white;
+                text.alignment = TextAlignment.Center;
+                text.richText = true;
+                text.text = $"<b>{venue.regions[r].Code}</b>\n<size=34>{venue.regions[r].name.ToUpperInvariant()}</size>";
+                text.color = Color.Lerp(venue.regions[r].color, Color.white, 0.35f);
                 text.GetComponent<MeshRenderer>().sharedMaterial = font.material;
                 text.gameObject.layer = ControlRoom.MinimapLayer;
             }

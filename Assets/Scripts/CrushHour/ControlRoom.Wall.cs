@@ -57,7 +57,7 @@ namespace CrushHour
             wallCamera = new GameObject("Video Wall Camera").AddComponent<Camera>();
             wallCamera.transform.SetParent(cctvRoot, false);
             wallCamera.targetTexture = wallTexture;
-            wallCamera.cullingMask = ~((1 << RoomLayer) | (1 << MinimapLayer) | (1 << CrowdSimpleLayer));
+            wallCamera.cullingMask = ~((1 << RoomLayer) | (1 << MinimapLayer) | (1 << CrowdSimpleLayer) | (1 << TaskMarkerLayer));
             wallCamera.nearClipPlane = 0.5f;
             wallCamera.farClipPlane = 250f;
             wallCamera.allowHDR = false;
@@ -79,7 +79,7 @@ namespace CrushHour
             minimapCamera.transform.SetPositionAndRotation(new Vector3(FestivalVenue.Width * 0.5f, 120f, FestivalVenue.Height * 0.5f), Quaternion.Euler(90f, 0f, 0f));
             minimapCamera.nearClipPlane = 1f;
             minimapCamera.farClipPlane = 200f;
-            minimapCamera.cullingMask = ~((1 << RoomLayer) | (1 << CaptionLayer) | (1 << CrowdDetailLayer));
+            minimapCamera.cullingMask = ~((1 << RoomLayer) | (1 << CaptionLayer) | (1 << CrowdDetailLayer) | (1 << TaskMarkerLayer));
             minimapCamera.allowHDR = false;
             minimapCamera.allowMSAA = false;
             minimapCamera.targetTexture = minimapTexture;
@@ -159,7 +159,7 @@ namespace CrushHour
             LayoutCaption(wallTitle, wallCamera, Vector2.zero, 0.09f);
             if (announce) switchTime = Time.unscaledTime;
             wallCaptionTick = -1;
-            wallTitle.text = $"CAM {region + 1:00} – {feeds[region].zoneName.ToUpperInvariant()}";
+            wallTitle.text = $"CAM {region + 1:00} – {feeds[region].zoneUpper}";
             nextWallRender = 0f;
         }
 
@@ -169,7 +169,7 @@ namespace CrushHour
             if (feeds.Count == 0 || wallTitle == null) return;
             WallAuto = true;
             switchTime = Time.unscaledTime;
-            wallTitle.text = $"AUTO – CAM {WallRegion + 1:00} {feeds[WallRegion].zoneName.ToUpperInvariant()}";
+            wallTitle.text = $"AUTO – CAM {WallRegion + 1:00} {feeds[WallRegion].zoneUpper}";
         }
 
         /// <summary>The game reports a new (known) incident in this zone: AUTO switches the wall to it.</summary>
@@ -210,6 +210,7 @@ namespace CrushHour
                         string mode = WallAuto ? "<color=#ffb020>AUTO</color>" : "MANUAL";
                         var feed = feeds[WallRegion];
                         string caption = $"CAM {feed.region + 1:00} | {feed.zoneUpper}  {dot} REC {minutes:00}:{seconds:00}   {mode}";
+                        if (feed.Moved) caption += $"\n<color=#ffd040>{feed.PtzText}</color>";
                         if (now < warningUntil && Mathf.Repeat(now, 0.8f) < 0.55f) caption += "\n" + warningText;
                         wallCaption.text = caption;
                     }

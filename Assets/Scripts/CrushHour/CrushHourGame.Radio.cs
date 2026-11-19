@@ -101,9 +101,33 @@ namespace CrushHour
             return Mathf.RoundToInt(angle / (360f / n)) % n;
         }
 
-        string Callsign(Unit u) => u.role == Role.Megaphone ? $"Police {u.number}" : $"P{u.number}";
+        /// <summary>White for the police, so they never look like a zone.</summary>
+        static readonly Color RadioPolice = new(0.93f, 0.94f, 0.97f);
 
-        void RadioReply(Unit u, string text) => Log($"{Callsign(u)}: Copy, {text}", Severity.Info);
+        /// <summary>
+        /// Radio callsign: a patrol is called by the zone it covers now ("Z3"; a second patrol in the same zone "Z3-2"),
+        /// the same code as on the minimap, the CAM captions and the board. Police: "Police 1".
+        /// </summary>
+        string Callsign(Unit u)
+        {
+            if (u.role == Role.Megaphone) return $"Police {u.number}";
+            if (u.homeRegion < 0 || u.homeRegion >= venue.regions.Count) return $"P{u.number}";
+            int same = 0;
+            foreach (var other in units)
+            {
+                if (other == u) break;
+                if (other.role == Role.Patrolman && other.homeRegion == u.homeRegion) same++;
+            }
+            return same == 0 ? venue.regions[u.homeRegion].Code : $"{venue.regions[u.homeRegion].Code}-{same + 1}";
+        }
+
+        /// <summary>"Z3 West Stand" for a patrol, "Police 1" for the police: how the unit speaks on the radio.</summary>
+        string RadioName(Unit u) => u.role == Role.Patrolman && u.homeRegion >= 0 && u.homeRegion < venue.regions.Count
+            ? $"{Callsign(u)} {venue.regions[u.homeRegion].name}" : Callsign(u);
+
+        Color RadioColor(Unit u) => u.role == Role.Megaphone ? RadioPolice : UnitColor(u);
+
+        void RadioReply(Unit u, string text) => Log($"{RadioName(u)}: Copy, {text}", Severity.Info);
 
         // ---------------------------------------------------------------- Wheels
 
@@ -121,9 +145,9 @@ namespace CrushHour
                 bool police = u.role == Role.Megaphone;
                 radioItems.Add(new RadioItem
                 {
-                    label = Callsign(u),
-                    sub = police ? "Police" : u.homeRegion >= 0 ? venue.regions[u.homeRegion].name : "Patrol",
-                    color = police ? new Color(0.3f, 0.5f, 1f) : UnitColor(u),
+                    label = police ? Callsign(u).ToUpperInvariant() : $"{Callsign(u)} PATROL",
+                    sub = police ? "Police (anywhere)" : u.homeRegion >= 0 ? venue.regions[u.homeRegion].name : "Patrol",
+                    color = RadioColor(u),
                     action = () => OpenCommands(index),
                 });
             }
@@ -136,7 +160,7 @@ namespace CrushHour
             radioUnit = unitIndex;
             selectedUnit = unitIndex;
             radioStage = RadioStage.Command;
-            radioTitle = $"{Callsign(u)}\n{(u.homeRegion >= 0 ? venue.regions[u.homeRegion].name : RoleName(u.role))}";
+            radioTitle = u.role == Role.Patrolman && u.homeRegion >= 0 ? $"{Callsign(u)}\n{venue.regions[u.homeRegion].name}" : $"{Callsign(u)}\n{RoleName(u.role)}";
             radioItems.Clear();
 
             if (u.role == Role.Patrolman && u.homeRegion >= 0)
@@ -165,6 +189,8 @@ namespace CrushHour
                     });
                 }
             }
+
+            AddTaskCommands(unitIndex); // PICK UP CHILD / BREAK UP FIGHT once found on camera
 
             bool escorting = u.escortPhase == EscortPhase.Escorting;
             radioItems.Add(new RadioItem
@@ -252,7 +278,7 @@ namespace CrushHour
                 var region = venue.regions[r];
                 radioItems.Add(new RadioItem
                 {
-                    label = $"{r + 1}. {region.name.ToUpperInvariant()}",
+                    label = $"{region.Code} {region.name.ToUpperInvariant()}",
                     sub = $"{sim.CountInRegion(r, venue)} people",
                     color = region.color,
                     action = () =>
@@ -263,12 +289,12 @@ namespace CrushHour
                             u.escortPhase = EscortPhase.None;
                         }
                         var path = venue.FindPath(u.position, FestivalVenue.CellCenter(FestivalVenue.Index(region.post.x, region.post.y)));
-                        if (path == null) Log($"{u.Name} can't get to {region.name}.", Severity.Warning);
+                        if (path == null) Log($"{u.Name} can't get to {region.Label}.", Severity.Warning);
                         else
                         {
                             u.path.Clear();
                             u.path.AddRange(path);
-                            RadioReply(u, $"heading to {region.name}.");
+                            RadioReply(u, $"heading to {region.Label}.");
                         }
                         CloseRadio();
                     },
@@ -302,13 +328,17 @@ namespace CrushHour
                 var p = center + new Vector2(Mathf.Cos(a), -Mathf.Sin(a)) * radius;
                 var rect = new Rect(p.x - 82, p.y - 27, 164, 54);
                 bool on = i == selected;
-                Color fill = !item.enabled ? new Color(0.45f, 0.45f, 0.47f, 0.92f) : on ? PaperLight : new Color(Paper.r, Paper.g, Paper.b, 0.92f);
-                Frame(rect, fill, on && item.enabled ? Yellow : Ink);
-                Fill(new Rect(rect.x, rect.y, 6, rect.height), item.enabled ? item.color : Color.gray);
-                Label(new Rect(rect.x + 6, rect.y + 3, rect.width - 6, 24), item.label, orderTitleStyle, item.enabled ? Ink : new Color(0.25f, 0.25f, 0.27f));
+                // The card takes the zone's colour (same as the minimap), stronger when pointed at.
+                Color fill = !item.enabled ? new Color(0.45f, 0.45f, 0.47f, 0.92f)
+                           : Color.Lerp(Paper, item.color, on ? 0.75f : 0.45f);
+                fill.a = 0.95f;
+                Frame(rect, fill, on && item.enabled ? Ink : new Color(Ink.r, Ink.g, Ink.b, 0.6f));
+                if (on && item.enabled) Frame(new Rect(rect.x - 3, rect.y - 3, rect.width + 6, rect.height + 6), Color.clear, item.color);
+                Fill(new Rect(rect.x, rect.y, 10, rect.height), item.enabled ? item.color : Color.gray);
+                Label(new Rect(rect.x + 10, rect.y + 3, rect.width - 10, 24), item.label, orderTitleStyle, item.enabled ? Ink : new Color(0.25f, 0.25f, 0.27f));
                 string sub = item.enabled ? item.sub : item.reason ?? item.sub;
                 if (!string.IsNullOrEmpty(sub))
-                    Label(new Rect(rect.x + 6, rect.y + 27, rect.width - 6, 22), sub, orderSubStyle, item.enabled ? InkSoft : new Color(0.15f, 0.15f, 0.17f));
+                    Label(new Rect(rect.x + 10, rect.y + 27, rect.width - 10, 22), sub, orderSubStyle, item.enabled ? Ink : new Color(0.15f, 0.15f, 0.17f));
             }
 
             // where the mouse points

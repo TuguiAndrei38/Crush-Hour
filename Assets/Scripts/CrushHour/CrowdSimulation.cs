@@ -146,6 +146,14 @@ namespace CrushHour
         /// <see cref="SetEscortTarget"/>'s point instead of wandering, and <see cref="EscortOut"/> takes them out at the door.
         /// </summary>
         public readonly int[] escortedBy;
+        /// <summary>
+        /// Camera task (control room): a lost child. Wanders around (wider than a drunk, no zig-zag), follows its escort
+        /// like a drunk person does, and joins the evacuation normally once it is evacuating and not escorted.
+        /// Drawn small with a red shirt.
+        /// </summary>
+        public readonly bool[] child;
+        /// <summary>Camera task (control room): part of a fight. Stands and shoves on the spot (drawn shaking).</summary>
+        public readonly bool[] fighting;
         readonly Vector2[] escortPoint;
         readonly float[] escortSpeed;
         /// <summary>Door each person left through (-1 while inside, or injured).</summary>
@@ -246,6 +254,8 @@ namespace CrushHour
             orderedDoor = new int[count];
             drunk = new bool[count];
             escortedBy = new int[count];
+            child = new bool[count];
+            fighting = new bool[count];
             escortPoint = new Vector2[count];
             escortSpeed = new float[count];
             Array.Fill(escortedBy, -1);
@@ -574,10 +584,19 @@ namespace CrushHour
                     }
                     desired = Vector2.zero;
                 }
+                else if (fighting[i] && !InDanger(venue, c))
+                {
+                    // Shoving on the spot; the crowd still pushes them about.
+                    desired = Vector2.zero;
+                }
                 else if (listening && !InDanger(venue, c))
                 {
                     // Standing still while a steward calms them down; they'll be sent on their way once calm.
                     desired = Vector2.zero;
+                }
+                else if (child[i] && (escortedBy[i] >= 0 || !evacuating[i]))
+                {
+                    desired = ChildVelocity(i, c, p, venue, incident, fd, localDensity);
                 }
                 else if (drunk[i])
                 {
@@ -799,6 +818,38 @@ namespace CrushHour
             IntoxicatedCount = intoxicated;
             CoughingCount = coughing;
             DrunkInsideCount = drunkInside;
+        }
+
+        /// <summary>
+        /// A lost child: follows its escort when it has one; otherwise runs from close flames or wanders up to 10 m from
+        /// where it got lost, at a slow, aimless pace. Deterministic noise, like the drunk walk.
+        /// </summary>
+        Vector2 ChildVelocity(int i, int c, Vector2 p, FestivalVenue venue, bool incident, int fd, float localDensity)
+        {
+            if (escortedBy[i] >= 0)
+            {
+                Vector2 to = escortPoint[i] - p;
+                float gap = to.magnitude;
+                if (gap < 0.3f) return Vector2.zero;
+                return to / gap * (escortSpeed[i] * (gap > 1.5f ? 1.3f : 1f));
+            }
+            Vector2 dir;
+            float pace;
+            if (incident && fd < settings.fleeDistance && venue.fleeDirection[c] != Vector2.zero)
+            {
+                dir = (FestivalVenue.CellCenter(c) + venue.fleeDirection[c] - p).normalized;
+                pace = 1f;
+            }
+            else
+            {
+                float heading = SmoothNoise(i * 0.517f + 3.1f, simTime * 0.05f) * Mathf.PI * 4f;
+                dir = new Vector2(Mathf.Cos(heading), Mathf.Sin(heading));
+                Vector2 home = anchor[i] - p;
+                if (home.sqrMagnitude > 100f) dir = Vector2.Lerp(dir, home.normalized, 0.7f).normalized;
+                pace = 0.55f;
+            }
+            float slow = Mathf.Clamp(1.1f - 0.17f * localDensity, 0.12f, 1f);
+            return dir * (settings.walkSpeed * personalSpeed[i] * pace * slow);
         }
 
         /// <summary>

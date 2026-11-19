@@ -274,6 +274,7 @@ namespace CrushHour
             AnimateAtmosphere();
             focusBlend = Mathf.MoveTowards(focusBlend, Focused ? 1f : 0f, Time.unscaledDeltaTime / FocusMoveTime);
             OperatorCamera.fieldOfView = Mathf.Lerp(OperatorCamera.fieldOfView, targetFov, 1f - Mathf.Exp(-zoomSpeed * Time.unscaledDeltaTime));
+            UpdatePtz();
             ApplyView();
             UpdateWindowView();
             ProcessPointer();   // after the view is placed: the pointer ray is exactly what's on screen

@@ -351,12 +351,38 @@ namespace CrushHour
         // plain state-coloured boxes on another (the small CCTV feeds and the minimap). Off by default.
         bool dual;
         RenderParams[] simpleParams, markerParams;
+        // Camera tasks: the lost child's red shirt (models) / red box (boxes), on the right layer for each mode.
+        RenderParams childShirtParams, childBoxParams;
+        Material childMaterial;
+        readonly Matrix4x4[] childShirts = new Matrix4x4[16], childBoxes = new Matrix4x4[16];
+        int childShirtCount, childBoxCount;
+        static readonly Color ChildRed = new(1f, 0.06f, 0.04f);
+
+        void EnsureChildParams()
+        {
+            if (childMaterial != null) return;
+            childMaterial = new Material(stateParams[0].material) { name = "Lost child shirt" };
+            childMaterial.color = ChildRed;
+            if (childMaterial.HasProperty("_BaseColor")) childMaterial.SetColor("_BaseColor", ChildRed);
+            if (childMaterial.HasProperty("_EmissionColor"))
+            {
+                childMaterial.EnableKeyword("_EMISSION");
+                childMaterial.SetColor("_EmissionColor", ChildRed * 0.35f);
+            }
+            childShirtParams = stateParams[0];
+            childShirtParams.material = childMaterial;
+            childBoxParams = childShirtParams;
+            childBoxParams.shadowCastingMode = ShadowCastingMode.Off;
+        }
 
         /// <summary>Draw the models (and state markers) on <paramref name="detailLayer"/> and a box per person on <paramref name="simpleLayer"/>.</summary>
         public void SetDualDetail(int detailLayer, int simpleLayer)
         {
             if (!UsesModels) return;   // already boxes for everyone
             dual = true;
+            EnsureChildParams();
+            childShirtParams.layer = detailLayer;
+            childBoxParams.layer = simpleLayer;
             foreach (var g in groups)
             {
                 for (int i = 0; i < g.staticParams.Length; i++) g.staticParams[i].layer = detailLayer;
@@ -433,6 +459,8 @@ namespace CrushHour
             System.Array.Clear(cubeCounts, 0, cubeCounts.Length);
             System.Array.Clear(markerCounts, 0, markerCounts.Length);
             foreach (var g in groups) g.count = 0;
+            childShirtCount = childBoxCount = 0;
+            float now = Time.time;
             var cubeUpright = new Vector3(0.42f, 1f, 0.42f);
             var cubeLying = new Vector3(0.42f, 0.18f, 0.9f);
             var marker = new Vector3(0.7f, 0.04f, 0.7f);
@@ -446,6 +474,20 @@ namespace CrushHour
                 float speed = v.magnitude;
                 if (speed > 0.15f) facing[i] = Mathf.LerpAngle(facing[i], Mathf.Atan2(v.x, v.y) * Mathf.Rad2Deg, turn);
                 bool down = s == 4, attack = s == 5, choking = s == 6;
+                bool isChild = sim.child[i] && !down, isFighting = sim.fighting[i] && !down;
+                if (isFighting)
+                {
+                    // Shoving: a quick jitter on the spot, turning to and fro.
+                    p += new Vector2(Mathf.Sin(now * 23f + i * 1.7f), Mathf.Cos(now * 19f + i * 1.3f)) * 0.08f;
+                    facing[i] += Mathf.Sin(now * 7f + i) * 6f;
+                }
+                if (isChild && (!UsesModels || dual))
+                {
+                    if (childMaterial == null) EnsureChildParams();
+                    if (childBoxCount < childBoxes.Length)
+                        childBoxes[childBoxCount++] = Matrix4x4.TRS(new Vector3(p.x, 0.55f, p.y), Quaternion.Euler(0f, facing[i], 0f), new Vector3(0.38f, 1.1f, 0.38f));
+                    if (!UsesModels) continue;
+                }
 
                 if (!UsesModels)
                 {
@@ -455,13 +497,18 @@ namespace CrushHour
                 }
 
                 var rotation = Quaternion.Euler(0f, facing[i], 0f);
-                if (dual)
+                if (dual && !isChild)
                 {
                     var box = down ? cubeLying : attack ? new Vector3(0.5f, 0.55f, 0.5f) : choking ? new Vector3(0.42f, 0.8f, 0.42f) : new Vector3(0.5f, 1.7f, 0.5f);
                     cubes[s][cubeCounts[s]++] = Matrix4x4.TRS(new Vector3(p.x, box.y * 0.5f, p.y), rotation, box);
                 }
-                var bodyScale = Vector3.one;
+                var bodyScale = isChild ? new Vector3(0.62f, 0.62f, 0.62f) : Vector3.one;
                 float lift = 0f;
+                if (isChild && childShirtCount < childShirts.Length)
+                {
+                    if (childMaterial == null) EnsureChildParams();
+                    childShirts[childShirtCount++] = Matrix4x4.TRS(new Vector3(p.x, 0.72f, p.y), rotation, new Vector3(0.36f, 0.34f, 0.24f));
+                }
                 if (down)
                 {
                     rotation *= Quaternion.Euler(-90f, 0f, 0f); // lying on their back
@@ -482,7 +529,12 @@ namespace CrushHour
                 {
                     var clip = PersonModel.Clip.Idle;
                     float cyclesPerSecond = 0f;
-                    if (!down && !attack)
+                    if (isFighting)
+                    {
+                        clip = PersonModel.Clip.Wave;   // arms going: shoving
+                        cyclesPerSecond = 2.5f / group.model.clipLength[(int)clip];
+                    }
+                    else if (!down && !attack)
                     {
                         bool running = speed > 2f || (sim.panic[i] > 0.7f && speed > 0.5f);
                         if (speed > 0.2f)
@@ -516,6 +568,8 @@ namespace CrushHour
                 if (ShowMarkers) markers[s][markerCounts[s]++] = Matrix4x4.TRS(new Vector3(p.x, 0.03f, p.y), Quaternion.identity, marker);
             }
 
+            if (childBoxCount > 0) Draw(childBoxParams, cube, 0, childBoxes, childBoxCount);
+            if (childShirtCount > 0) Draw(childShirtParams, cube, 0, childShirts, childShirtCount);
             if (!UsesModels)
             {
                 for (int s = 0; s < StateCount; s++) Draw(stateParams[s], cube, 0, cubes[s], cubeCounts[s]);
@@ -557,6 +611,8 @@ namespace CrushHour
         public void Dispose()
         {
             foreach (var group in groups) group.buffer?.Release();
+            if (childMaterial != null) Object.Destroy(childMaterial);
+            childMaterial = null;
         }
     }
 }

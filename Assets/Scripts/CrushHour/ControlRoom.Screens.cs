@@ -227,8 +227,10 @@ namespace CrushHour
 
             if (Focused)
             {
+                // Right mouse held + moved turns the camera (PTZ); a plain right click (no movement) still leaves.
+                bool plainRightClick = PtzInput(mouse, keyboard);
                 bool leave = (keyboard != null && (keyboard.escapeKey.wasPressedThisFrame || keyboard.eKey.wasPressedThisFrame))
-                             || (mouse != null && mouse.rightButton.wasPressedThisFrame);
+                             || plainRightClick;
                 if (leave)
                 {
                     EscapeTakenByRoom = keyboard != null && keyboard.escapeKey.wasPressedThisFrame;
@@ -294,6 +296,7 @@ namespace CrushHour
 
         public void ExitFocus()
         {
+            rightHeld = false;
             Focused = false;
             FocusedScreen = null;
         }

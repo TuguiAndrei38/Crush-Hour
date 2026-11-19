@@ -59,6 +59,7 @@ namespace CrushHour
             public Color baseColor;
             public float pressedUntil = -99f;
             public int camera;   // 1..9, 0 = AUTO, -1 = START
+            public Color shownColor = Color.clear;
         }
 
         readonly List<BoardSwitch> switches = new();
@@ -121,7 +122,7 @@ namespace CrushHour
                     cap.sharedMaterial = b.material;
                     ownedBoardMaterials.Add(b.material);
                     var t = PanelText(b.pivot, name + " text", OnPanel(CamU[k], CamV[row], 0.0155f) - OnPanel(CamU[k], CamV[row], 0.004f), 0.009f,
-                        auto ? new Color(0.1f, 0.06f, 0f) : new Color(0.85f, 0.87f, 0.9f));
+                        new Color(0.08f, 0.08f, 0.09f));   // dark digits: the caps take their zone colour
                     t.text = auto ? "AUTO" : n.ToString();
                     FitText(t, 0.024f);
                     boardButtons.Add(b);
@@ -285,10 +286,19 @@ namespace CrushHour
                 bool lit = b.camera == -1 ? planning && blink
                          : b.camera == 0 ? WallAuto
                          : !WallAuto && WallRegion == b.camera - 1;
-                Color glow = !lit ? Color.black : b.camera == -1 ? new Color(0.1f, 1f, 0.3f) * 2f : b.camera == 0 ? new Color(1f, 0.6f, 0.1f) * 2f : new Color(0.3f, 0.6f, 1f) * 2.5f;
+                Color glow = !lit ? Color.black : b.camera == -1 ? new Color(0.1f, 1f, 0.3f) * 2f : b.camera == 0 ? new Color(1f, 0.6f, 0.1f) * 2f : (b.camera <= feeds.Count ? feeds[b.camera - 1].zoneColor : Color.white) * 2f;
                 b.material.SetColor("_EmissionColor", glow);
-                // cameras beyond this map's zones stay dark
-                if (b.camera > 0) b.cap.enabled = b.camera <= feeds.Count;
+                // camera buttons in their zone's colour (as on the minimap); beyond this map's zones they're hidden
+                if (b.camera > 0)
+                {
+                    bool shown = b.camera <= feeds.Count;
+                    b.cap.enabled = shown;
+                    if (shown && b.shownColor != feeds[b.camera - 1].zoneColor)
+                    {
+                        b.shownColor = feeds[b.camera - 1].zoneColor;
+                        b.material.SetColor("_BaseColor", b.shownColor * 0.85f);
+                    }
+                }
             }
 
             if (crewText != null && (crewsFree != shownCrewsFree || crewsTotal != shownCrewsTotal))
@@ -357,7 +367,7 @@ namespace CrushHour
             }
             boardHover = button.camera == -1 ? (planning ? "E / click: START the show" : "The show is on")
                        : button.camera == 0 ? "E / click: video wall AUTO (follows the latest incident)"
-                       : $"E / click: video wall CAM {button.camera:00} {feeds[button.camera - 1].zoneName}";
+                       : $"E / click: video wall CAM {button.camera:00} – {feeds[button.camera - 1].zoneName}";
             if (!click) return;
             ClickTakenByRoom = true;
             button.pressedUntil = Time.unscaledTime + 0.15f;

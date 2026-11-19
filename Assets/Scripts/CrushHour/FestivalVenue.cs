@@ -58,6 +58,12 @@ namespace CrushHour
     public class Region
     {
         public string name;
+        /// <summary>1-based zone number: the same on the minimap, the CAM numbers, the radio and the board.</summary>
+        public int number;
+        /// <summary>"Z3": the zone's radio code.</summary>
+        public string Code => $"Z{number}";
+        /// <summary>"Z3 West Stand".</summary>
+        public string Label => $"Z{number} {name}";
         /// <summary>Walkable cell near the middle of the region: where its patrol stands.</summary>
         public Vector2Int post;
         public Color color;
@@ -422,9 +428,28 @@ namespace CrushHour
             return new RectInt(xMin, yMin, xMax - xMin, yMax - yMin);
         }
 
+        /// <summary>
+        /// One colour per zone number, the same on every map and everywhere in the game (minimap, radio, CAM captions,
+        /// board buttons, patrol caps, the zone borders on the ground). Nine hues far apart so no two zones look alike.
+        /// </summary>
+        public static readonly Color[] ZonePalette =
+        {
+            new(1.00f, 0.32f, 0.32f),   // Z1 red
+            new(1.00f, 0.62f, 0.11f),   // Z2 orange
+            new(1.00f, 0.87f, 0.20f),   // Z3 yellow
+            new(0.48f, 0.84f, 0.24f),   // Z4 lime
+            new(0.15f, 0.77f, 0.63f),   // Z5 teal
+            new(0.25f, 0.77f, 1.00f),   // Z6 sky
+            new(0.31f, 0.43f, 1.00f),   // Z7 blue
+            new(0.67f, 0.40f, 1.00f),   // Z8 purple
+            new(1.00f, 0.40f, 0.77f),   // Z9 pink
+        };
+
+        /// <param name="color">Ignored: zones are coloured by number (<see cref="ZonePalette"/>).</param>
         void AddRegion(string name, RectInt area, Color color)
         {
-            regions.Add(new Region { name = name, area = area, color = color });
+            int n = regions.Count;
+            regions.Add(new Region { name = name, number = n + 1, area = area, color = ZonePalette[n % ZonePalette.Length] });
         }
 
         /// <summary>

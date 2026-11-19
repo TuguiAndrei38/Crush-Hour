@@ -161,6 +161,43 @@ namespace CrushHour
                     if (!towersUsed.Contains(t)) schedule.Add(TowerCollapseIncident.WhenFireNear(venue, t, rng));
         }
 
+        /// <summary>A "find it on the cameras" side task (control room only): what, where (zone index) and when (s after the show starts).</summary>
+        public struct CameraTaskPlan
+        {
+            public bool lostChild;   // false = a fight
+            public int region;
+            public float time;
+        }
+
+        /// <summary>
+        /// 0–2 camera tasks for a round: Easy 0–1, Medium 1–2, Hard 2. Two tasks are of different kinds and in different
+        /// zones. A lost child is reported 15–50 s into the show, a fight 25–80 s. Uses its own random stream (seeded
+        /// from <paramref name="seed"/>), so it never changes the disasters of a round.
+        /// </summary>
+        public static List<CameraTaskPlan> BuildCameraTasks(DifficultySettings settings, int zoneCount, int seed)
+        {
+            var rng = new System.Random(seed);
+            var tasks = new List<CameraTaskPlan>();
+            if (zoneCount <= 0) return tasks;
+            int count = settings.difficulty switch
+            {
+                Difficulty.Easy => rng.Next(0, 2),
+                Difficulty.Medium => rng.Next(1, 3),
+                _ => 2,
+            };
+            bool child = rng.Next(2) == 0;
+            int firstZone = -1;
+            for (int t = 0; t < count; t++, child = !child)
+            {
+                int zone = rng.Next(zoneCount);
+                if (zone == firstZone && zoneCount > 1) zone = (zone + 1 + rng.Next(zoneCount - 1)) % zoneCount;
+                if (t == 0) firstZone = zone;
+                float time = child ? 15f + (float)rng.NextDouble() * 35f : 25f + (float)rng.NextDouble() * 55f;
+                tasks.Add(new CameraTaskPlan { lostChild = child, region = zone, time = time });
+            }
+            return tasks;
+        }
+
         static List<int> Range(int count)
         {
             var list = new List<int>(count);

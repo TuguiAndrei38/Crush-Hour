@@ -48,10 +48,25 @@ namespace CrushHour
             public MeshRenderer captionRenderer;
             public float nextRender;
             public string zoneUpper;
+            public Color zoneColor;
             public int captionTick = -1;
             public bool visible = true;
             public Renderer monitor;
             public Material frameMaterial;
+            // PTZ (ControlRoom.Ptz.cs): the camera's resting pose and where it is pointed now.
+            public Transform housing;
+            public float baseYaw, basePitch, baseFov;
+            public float pan, pitch, fov, fovTarget;
+            public float lastTouch = -999f;
+            public bool resetting;
+            public float resetT, resetFromPan, resetFromPitch, resetFromFov;
+            /// <summary>Pointed or zoomed away from its resting pose.</summary>
+            public bool Moved => Mathf.Abs(pan) > 0.5f || Mathf.Abs(pitch - basePitch) > 0.5f || fov < baseFov - 0.3f;
+            /// <summary>How much it is zoomed in (1 = resting).</summary>
+            public float Zoom => Mathf.Tan(baseFov * 0.5f * Mathf.Deg2Rad) / Mathf.Tan(Mathf.Max(1f, fov) * 0.5f * Mathf.Deg2Rad);
+            /// <summary>Being driven by the operator right now: refreshes faster.</summary>
+            public bool live;
+            public string PtzText => $"PTZ  P{pan:+0;-0;0}\u00b0 T-{pitch:0}\u00b0 x{Zoom:0.0}";
         }
 
         readonly List<Feed> feeds = new();
@@ -73,14 +88,19 @@ namespace CrushHour
             for (int r = 0; r < venue.regions.Count; r++)
             {
                 var region = venue.regions[r];
-                var feed = new Feed { region = r, zoneName = region.name, zoneUpper = region.name.ToUpperInvariant() };
+                var feed = new Feed
+                {
+                    region = r, zoneName = region.Label, zoneColor = region.color,
+                    // "Z3 WEST STAND" in the zone's colour (the CAM number is the zone number)
+                    zoneUpper = $"<color=#{ColorUtility.ToHtmlStringRGB(Color.Lerp(region.color, Color.white, 0.2f))}>{region.Code} {region.name.ToUpperInvariant()}</color>",
+                };
                 feed.texture = new RenderTexture(feedWidth, feedHeight, 16) { name = $"CCTV {r + 1}", antiAliasing = 1 };
 
                 var cam = new GameObject($"CCTV {r + 1:00} - {region.name}").AddComponent<Camera>();
                 cam.transform.SetParent(cctvRoot, false);
-                PlaceCamera(cam, region.area, venueCenter);
+                feed.housing = PlaceCamera(cam, region.area, venueCenter);
                 cam.targetTexture = feed.texture;
-                cam.cullingMask = ~((1 << RoomLayer) | (1 << MinimapLayer) | (1 << CrowdDetailLayer));
+                cam.cullingMask = ~((1 << RoomLayer) | (1 << MinimapLayer) | (1 << CrowdDetailLayer) | (1 << TaskMarkerLayer));
                 cam.nearClipPlane = 0.5f;
                 cam.farClipPlane = 250f;
                 cam.allowHDR = false;
@@ -109,6 +129,7 @@ namespace CrushHour
                 text.gameObject.layer = CaptionLayer;
                 feed.caption = text;
                 feed.captionRenderer = mr;
+                InitPtz(feed);
 
                 if (r < deskMonitors.Count) AttachToMonitor(feed, deskMonitors[r]);
                 feeds.Add(feed);
@@ -116,7 +137,7 @@ namespace CrushHour
             if (feeds.Count > deskMonitors.Count)
                 Debug.LogWarning($"Crush Hour: {feeds.Count} zones but only {deskMonitors.Count} desk monitors.");
 
-            if (OperatorCamera != null) OperatorCamera.cullingMask &= ~((1 << CaptionLayer) | (1 << MinimapLayer));
+            if (OperatorCamera != null) OperatorCamera.cullingMask &= ~((1 << CaptionLayer) | (1 << MinimapLayer) | (1 << TaskMarkerLayer));
             SetupWallAndMinimap(venue, font);
             if (!hookedCameraEvents)
             {
@@ -127,7 +148,8 @@ namespace CrushHour
         }
 
         /// <summary>From the region's corner farthest from the venue centre, pulled outwards, high up, looking at the middle.</summary>
-        void PlaceCamera(Camera cam, RectInt area, Vector3 venueCenter)
+        /// <returns>The camera housing on the pole (it turns with the camera).</returns>
+        Transform PlaceCamera(Camera cam, RectInt area, Vector3 venueCenter)
         {
             var center = new Vector3(area.center.x, 0f, area.center.y);
             var corners = new[]
@@ -150,7 +172,8 @@ namespace CrushHour
             // The camera hangs on a short arm off the pole top, towards the zone (keeps the pole out of the picture).
             var position = foot + inward * 0.9f + Vector3.up * (height - 0.35f);
             cam.transform.SetPositionAndRotation(position, Quaternion.LookRotation(center - position, Vector3.up));
-            BuildPole(cam.name, foot, inward, height);
+            var housing = BuildPole(cam.name, foot, inward, height);
+            housing.SetPositionAndRotation(position, cam.transform.rotation);
 
             // Field of view that fits every corner of the zone (with a small margin).
             cam.aspect = feedWidth / (float)feedHeight;
@@ -163,12 +186,13 @@ namespace CrushHour
                 need = Mathf.Max(need, Mathf.Abs(local.y) / local.z, Mathf.Abs(local.x) / (local.z * cam.aspect));
             }
             cam.fieldOfView = Mathf.Clamp(2f * Mathf.Atan(need) * Mathf.Rad2Deg, 20f, 90f);
+            return housing;
         }
 
         Material poleMaterial, poleCameraMaterial;
 
         /// <summary>A CCTV pole in the venue: mast, arm, camera housing (seen by the other cameras, like in real life).</summary>
-        void BuildPole(string name, Vector3 foot, Vector3 inward, float height)
+        Transform BuildPole(string name, Vector3 foot, Vector3 inward, float height)
         {
             if (poleMaterial == null)
             {
@@ -185,7 +209,12 @@ namespace CrushHour
             Part(pole, PrimitiveType.Cylinder, poleMaterial, new Vector3(0f, 0.08f, 0f), new Vector3(0.5f, 0.08f, 0.5f), Quaternion.identity);   // base plate
             Part(pole, PrimitiveType.Cube, poleMaterial, new Vector3(0f, height - 0.15f, 0.45f), new Vector3(0.1f, 0.1f, 0.95f), Quaternion.identity);   // arm
             var tilt = Quaternion.Euler(35f, 0f, 0f);
-            Part(pole, PrimitiveType.Cube, poleCameraMaterial, new Vector3(0f, height - 0.35f, 0.85f), new Vector3(0.18f, 0.16f, 0.42f), tilt);   // housing
+            // housing: on its own pivot at the lens, so PTZ can turn it like the camera
+            var pivot = new GameObject("Housing").transform;
+            pivot.SetParent(pole, false);
+            pivot.SetLocalPositionAndRotation(new Vector3(0f, height - 0.35f, 0.9f), tilt);
+            Part(pivot, PrimitiveType.Cube, poleCameraMaterial, new Vector3(0f, 0f, -0.08f), new Vector3(0.18f, 0.16f, 0.42f), Quaternion.identity);
+            return pivot;
         }
 
         static void Part(Transform parent, PrimitiveType type, Material material, Vector3 localPos, Vector3 scale, Quaternion localRot)
@@ -306,13 +335,14 @@ namespace CrushHour
                 }
                 if (best == null) break;
                 best.camera.enabled = true;
-                best.nextRender = now + interval;
+                best.nextRender = now + (best.live ? 1f / 20f : interval);   // a camera being driven refreshes at 20 fps
                 used++;
                 if (best.captionTick != tick)   // the text only changes twice a second
                 {
                     best.captionTick = tick;
                     string dot = slowBlink ? "<color=#ff3030>●</color>" : "<color=#00000000>●</color>";
-                    best.caption.text = $"CAM {best.region + 1:00} | {best.zoneUpper}  {dot} REC {minutes:00}:{seconds:00}";
+                    string ptz = best.Moved ? $"\n<color=#ffd040>{best.PtzText}</color>" : "";
+                    best.caption.text = $"CAM {best.region + 1:00} | {best.zoneUpper}  {dot} REC {minutes:00}:{seconds:00}{ptz}";
                 }
             }
             foreach (var feed in feeds)

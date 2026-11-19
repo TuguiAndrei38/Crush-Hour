@@ -336,6 +336,7 @@ namespace CrushHour
             if (groundMaterial != null) Destroy(groundMaterial);
             crowdRenderer?.Dispose();
             world = new GameObject($"{MapTitle} (generated)").transform;
+            ResetCameraTasks();
             barrierViews.Clear();
             fireViews.Clear();
             gateViews.Clear();
@@ -478,7 +479,7 @@ namespace CrushHour
                 var post = new Vector2(region.post.x + 0.5f, region.post.y + 0.5f);
                 var unit = SpawnUnit(Role.Patrolman, n, post, r);
                 unit.homeRegion = r;
-                unit.label = $"Patrol {n + 1}";
+                unit.label = $"{region.Code} Patrol";
                 unit.root.name = unit.label;
                 // Face the middle of the zone; if the post already is the middle, face the middle of the grounds.
                 Vector2 look = region.Center - post;
@@ -672,6 +673,7 @@ namespace CrushHour
             venue.UpdateDoorFields(3);
             MoveUnits(dt);
             UpdateEscorts(dt);
+            UpdateCameraTasks(dt);
             UpdateDoorClearing(dt);
             sim.Step(dt, venue, incidentStarted);
             sim.ApplyStewards(patrolPositions, dt, incidentStarted, crowd.patrolRadius);
@@ -749,6 +751,7 @@ namespace CrushHour
             welcomeDismissed = true;
             // A random round for the chosen difficulty: disasters, blocked exits, chained tower collapses.
             if (schedule.incidents.Count == 0) RoundGenerator.Build(difficultySettings, venue, rng, schedule);
+            PlanCameraTasks(); // control room only: lost child / fight to find on the cameras
             Log($"{MapTitle} is open ({difficultySettings.Name}). Stay sharp...");
         }
 
@@ -793,7 +796,7 @@ namespace CrushHour
             {
                 if (smeltGas.Contains(u) || !GasLeakIncident.Smells(venue, u.position, RoleRadius(u.role))) continue;
                 smeltGas.Add(u);
-                string who = u.homeRegion >= 0 ? $"{venue.regions[u.homeRegion].name} patrol" : u.Name;
+                string who = u.homeRegion >= 0 ? $"{venue.regions[u.homeRegion].Label} patrol" : u.Name;
                 Log($"{who} smells gas!", Severity.Danger);
                 DetectGas(leak, $"the {who}");
             }
@@ -1044,6 +1047,8 @@ namespace CrushHour
         void SetPatrolZone(Unit u, int zone)
         {
             u.homeRegion = zone;
+            u.label = $"{venue.regions[zone].Code} Patrol";
+            if (u.root != null) u.root.name = u.label;
             var color = venue.regions[zone].color;
             if (u.cap != null) u.cap.sharedMaterial = Lit(color);
             if (u.arrow != null) u.arrow.sharedMaterial = Unlit(color);
@@ -1412,6 +1417,7 @@ namespace CrushHour
             finalDrunkInside = sim.DrunkInsideCount;
             finalAttacks = sim.PanicAttacksTotal;
             finalScore = difficultySettings.Score(finalSafe, finalInjured, finalTrapped, finalDrunkInside, finalAttacks, evacuationTime, evacuationTimeLimit);
+            finalScore += CameraTaskScore; // control room camera tasks (already × difficulty)
 
             int drunkTotal = 0;
             for (int i = 0; i < sim.count; i++)
@@ -1513,9 +1519,9 @@ namespace CrushHour
             u.orderDoor = door;
             UpdateOrderArrow(u);
             if (door >= 0)
-                Log($"{region.name} patrol: evacuating via {venue.doors[door].name} ({people} people, {side.ToString().ToLowerInvariant()})", Severity.Good);
+                Log($"{region.Label} patrol: evacuating via {venue.doors[door].name} ({people} people, {side.ToString().ToLowerInvariant()})", Severity.Good);
             else
-                Log($"{region.name} patrol: no open exit they can reach. {people} people told to get out anyway.", Severity.Warning);
+                Log($"{region.Label} patrol: no open exit they can reach. {people} people told to get out anyway.", Severity.Warning);
         }
 
         /// <summary>Big ground arrow from the patrolman to the door of their last zone order; hidden while that door is shut.</summary>
@@ -1705,7 +1711,7 @@ namespace CrushHour
                 if (keyboard.escapeKey.wasPressedThisFrame) MenuBack();
                 return;
             }
-            if (keyboard.rKey.wasPressedThisFrame)
+            if (keyboard.rKey.wasPressedThisFrame && !(InControlRoom && controlRoom.Focused))   // in focus, R resets the camera (PTZ)
             {
                 NewGame();
                 return;
@@ -1805,7 +1811,7 @@ namespace CrushHour
             }
             else
             {
-                if (leftPressed && !overGui && onGround) CommandClick(ground, cell);
+                if (leftPressed && !overGui && onGround && !CameraTaskClick(ground)) CommandClick(ground, cell);
                 if (rightPressed && !overGui)
                 {
                     // Right-click turns a selected patrol to look at that spot (it sets Front/Back/Left/Right); otherwise it deselects.
@@ -2617,7 +2623,7 @@ namespace CrushHour
                     Swatch(new Rect(row.x + 39, row.y + 9, 9, 9), UnitColor(u));
                     string status = UnitStatus(u);
                     float statusWidth = status != null ? TextWidth(status, rowStatusStyle) + 6 : 0;
-                    Label(new Rect(row.x + 55, row.y, row.width - 55 - 22 - statusWidth, rowHeight), zone ? venue.regions[u.homeRegion].name : u.Name, rowNameStyle, ink);
+                    Label(new Rect(row.x + 55, row.y, row.width - 55 - 22 - statusWidth, rowHeight), zone ? venue.regions[u.homeRegion].Label : u.Name, rowNameStyle, ink);
                     if (status != null)
                         Label(new Rect(row.x, row.y, row.width - 22, rowHeight), status, rowStatusStyle,
                             selected ? Color.white : status == "CLEARING EXIT" ? Red : InkSoft);
@@ -2809,7 +2815,7 @@ namespace CrushHour
 
             const float width = 372, height = 232, bh = 50, gap = 6;
             var rect = Panel(new Rect(vw * 0.5f - width * 0.5f, vh - 14 - ToolbarHeight - 36 - height, width, height));
-            Tab(rect.x, rect.y, $"{u.homeRegion + 1:00} — EVACUATE {region.name.ToUpperInvariant()}", Yellow, Ink, Ink);
+            Tab(rect.x, rect.y, $"{region.Code} — EVACUATE {region.name.ToUpperInvariant()}", Yellow, Ink, Ink);
             Label(new Rect(rect.x, rect.y, rect.width - 12, 24), $"{sim.CountInRegion(u.homeRegion, venue)} PEOPLE", headerRightStyle, Ink);
             float cooldown = regionOrderCooldown.Length > u.homeRegion ? regionOrderCooldown[u.homeRegion] : 0f;
             string status = !incidentStarted ? "Orders unlock once a disaster starts."
@@ -3109,7 +3115,7 @@ namespace CrushHour
                     _ => venue.DescribeLocation(cell),
                 };
                 var region = venue.RegionAt(cell);
-                if (region != null) text += $"\n<color=#{Hex(Color.Lerp(region.color, Ink, 0.4f))}><b>Zone: {region.name}</b></color>";
+                if (region != null) text += $"\n<color=#{Hex(Color.Lerp(region.color, Ink, 0.4f))}><b>Zone: {region.Label}</b></color>";
                 if (selectedUnit >= 0 && tool == Tool.Command && venue.cells[cell] == CellType.Open)
                     text += $"\nClick to send {units[selectedUnit].Name} here.";
             }
@@ -3166,7 +3172,8 @@ namespace CrushHour
 
         void DrawResults()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 260, vh * 0.5f - 256, 520, 512));
+            float taskRow = cameraTasks.Count > 0 ? 30f : 0f;
+            var rect = Panel(new Rect(vw * 0.5f - 260, vh * 0.5f - 256 - taskRow * 0.5f, 520, 512 + taskRow));
             Tab(rect.x, rect.y, "RESULTS — DEBRIEF", Yellow, Ink, Ink);
             GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 36, rect.width - 56, rect.height - 54));
             GUILayout.Label(resultTitle.ToUpperInvariant(), bigTitleStyle);
@@ -3184,6 +3191,7 @@ namespace CrushHour
             ResultRow("Panic attacks", finalAttacks.ToString(), finalAttacks > 0 ? PanicInk : Ink);
             ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : Ink);
             ResultRow("Drunk left inside", finalDrunkInside == 0 ? "0" : $"{finalDrunkInside}  (-{finalDrunkInside * 50} points)", finalDrunkInside > 0 ? PanicInk : Ink);
+            if (cameraTasks.Count > 0) ResultRow("Camera tasks", CameraTaskSummary, CameraTasksSolved == cameraTasks.Count ? ExitGreen : WarningColor);
             ResultRow("Evacuation time", FormatTime(evacuationTime), Ink);
             ResultRow("Difficulty", DifficultyLabel, Ink);
             ResultRow("Score", finalScore.ToString(), Red);
