@@ -61,10 +61,11 @@ namespace CrushHour
                 }
             }
 
-            controlRoom.alarm = incidentStarted && phase == Phase.Live;
+            controlRoom.alarm = incidentStarted && phase == Phase.Live && !CalmExodus;
             controlRoom.UpdateCctv(feedClock, zoneAlarm, zoneWarning);
             UpdateBoard();
             UpdateInfoScreens();
+            UpdateEveningFrame();   // week 8: phases timeline, music, lights, moment markers
         }
 
         // ---------------------------------------------------------------- Info screens and wall clock (step 7)

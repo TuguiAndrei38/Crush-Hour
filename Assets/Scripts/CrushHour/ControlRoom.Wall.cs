@@ -67,6 +67,7 @@ namespace CrushHour
             if (!wallShadows) CheapCamera(wallCamera);
             wallCaption = MakeCaption(wallCamera, font, "Caption", TextAnchor.UpperLeft, new Vector2(-0.95f, 0.93f), 0.045f);
             wallTitle = MakeCaption(wallCamera, font, "Switch Title", TextAnchor.MiddleCenter, new Vector2(0f, 0f), 0.09f);
+            SetupWallEvening(font);
             if (wallScreen != null) wallScreenMaterial = ScreenMaterial(wallScreen, "M_VW_Screen", wallTexture, "Video wall screen");
 
             // --- minimap: straight down over the whole venue
@@ -157,6 +158,7 @@ namespace CrushHour
             wallCamera.fieldOfView = source.fieldOfView;
             LayoutCaption(wallCaption, wallCamera, new Vector2(-0.95f, 0.93f), 0.045f);
             LayoutCaption(wallTitle, wallCamera, Vector2.zero, 0.09f);
+            LayoutWallEvening();
             if (announce) switchTime = Time.unscaledTime;
             wallCaptionTick = -1;
             wallTitle.text = $"CAM {region + 1:00} – {feeds[region].zoneUpper}";
@@ -213,9 +215,11 @@ namespace CrushHour
                         if (feed.Moved) caption += $"\n<color=#ffd040>{feed.PtzText}</color>";
                         if (now < warningUntil && Mathf.Repeat(now, 0.8f) < 0.55f) caption += "\n" + warningText;
                         wallCaption.text = caption;
+                        UpdateWallEveningText();
                     }
                     float age = now - switchTime;
                     wallTitle.color = new Color(1f, 1f, 1f, age < switchTitleTime ? Mathf.Clamp01((switchTitleTime - age) / 0.5f) : 0f);
+                    UpdateWallBanner(now);
                 }
             }
             if (wallScreenMaterial != null)
@@ -223,6 +227,7 @@ namespace CrushHour
                 // Switch effect: a short blank cut, then the picture comes in over-bright and settles.
                 float age = now - switchTime;
                 Color emission = age < 0.08f ? Color.black : Color.white * (1f + 2.5f * Mathf.Clamp01(1f - (age - 0.08f) / 0.35f));
+                emission *= 1f + FlashAmount(now) * 8f;   // fireworks: the picture whites out
                 wallScreenMaterial.SetColor("_EmissionColor", emission);
             }
             return rendered;   // the minimap takes its turn with the desk feeds (UpdateCctv)

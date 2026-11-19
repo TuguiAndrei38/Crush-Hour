@@ -159,6 +159,7 @@ namespace CrushHour
                     wallFovShown = wallCamera.fieldOfView = source.camera.fieldOfView;
                     LayoutCaption(wallCaption, wallCamera, new Vector2(-0.95f, 0.93f), 0.045f);
                     LayoutCaption(wallTitle, wallCamera, Vector2.zero, 0.09f);
+                    LayoutWallEvening();
                 }
                 bool wallMarkers = source == focusedFeed && FocusedScreen != null && FocusedScreen.kind == ScreenKind.VideoWall && source.Zoom > taskMarkerZoom;
                 SetLayerBit(wallCamera, TaskMarkerLayer, wallMarkers);

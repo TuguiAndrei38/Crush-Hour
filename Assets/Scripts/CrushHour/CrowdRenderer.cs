@@ -354,6 +354,8 @@ namespace CrushHour
         // Camera tasks: the lost child's red shirt (models) / red box (boxes), on the right layer for each mode.
         RenderParams childShirtParams, childBoxParams;
         Material childMaterial;
+        /// <summary>Evening phases: beats of music played so far (continuous), or negative for no music. Dancers move with it.</summary>
+        [System.NonSerialized] public float beatTime = -1f;
         readonly Matrix4x4[] childShirts = new Matrix4x4[16], childBoxes = new Matrix4x4[16];
         int childShirtCount, childBoxCount;
         static readonly Color ChildRed = new(1f, 0.06f, 0.04f);
@@ -474,7 +476,8 @@ namespace CrushHour
                 float speed = v.magnitude;
                 if (speed > 0.15f) facing[i] = Mathf.LerpAngle(facing[i], Mathf.Atan2(v.x, v.y) * Mathf.Rad2Deg, turn);
                 bool down = s == 4, attack = s == 5, choking = s == 6;
-                bool isChild = sim.child[i] && !down, isFighting = sim.fighting[i] && !down;
+                bool isChild = sim.child[i] && !down, isFighting = sim.fighting[i] && !down, isSurfer = sim.surfer[i] && !down;
+                bool isDancing = beatTime >= 0f && sim.dancing[i] && !down && !attack && !sim.evacuating[i] && speed < 0.4f;
                 if (isFighting)
                 {
                     // Shoving: a quick jitter on the spot, turning to and fro.
@@ -491,16 +494,16 @@ namespace CrushHour
 
                 if (!UsesModels)
                 {
-                    var scale = down ? cubeLying : attack ? new Vector3(0.5f, 0.55f, 0.5f) : choking ? new Vector3(0.42f, 0.8f, 0.42f) : cubeUpright;
-                    cubes[s][cubeCounts[s]++] = Matrix4x4.TRS(new Vector3(p.x, scale.y * 0.5f, p.y), Quaternion.Euler(0f, facing[i], 0f), scale);
+                    var scale = down || isSurfer ? cubeLying : attack ? new Vector3(0.5f, 0.55f, 0.5f) : choking ? new Vector3(0.42f, 0.8f, 0.42f) : cubeUpright;
+                    cubes[s][cubeCounts[s]++] = Matrix4x4.TRS(new Vector3(p.x, isSurfer ? 1.75f : scale.y * 0.5f, p.y), Quaternion.Euler(0f, facing[i], 0f), scale);
                     continue;
                 }
 
                 var rotation = Quaternion.Euler(0f, facing[i], 0f);
                 if (dual && !isChild)
                 {
-                    var box = down ? cubeLying : attack ? new Vector3(0.5f, 0.55f, 0.5f) : choking ? new Vector3(0.42f, 0.8f, 0.42f) : new Vector3(0.5f, 1.7f, 0.5f);
-                    cubes[s][cubeCounts[s]++] = Matrix4x4.TRS(new Vector3(p.x, box.y * 0.5f, p.y), rotation, box);
+                    var box = down || isSurfer ? cubeLying : attack ? new Vector3(0.5f, 0.55f, 0.5f) : choking ? new Vector3(0.42f, 0.8f, 0.42f) : new Vector3(0.5f, 1.7f, 0.5f);
+                    cubes[s][cubeCounts[s]++] = Matrix4x4.TRS(new Vector3(p.x, isSurfer ? 1.75f : box.y * 0.5f, p.y), rotation, box);
                 }
                 var bodyScale = isChild ? new Vector3(0.62f, 0.62f, 0.62f) : Vector3.one;
                 float lift = 0f;
@@ -513,6 +516,15 @@ namespace CrushHour
                 {
                     rotation *= Quaternion.Euler(-90f, 0f, 0f); // lying on their back
                     lift = 0.15f;
+                }
+                else if (isSurfer)
+                {
+                    rotation *= Quaternion.Euler(-90f, 0f, 0f); // carried on their back over the heads
+                    lift = 1.75f + 0.08f * Mathf.Sin(now * 5f + i);
+                }
+                else if (isDancing)
+                {
+                    lift = 0.07f * Mathf.Abs(Mathf.Sin(beatTime * Mathf.PI)); // bouncing on the beat
                 }
                 else if (attack)
                 {
@@ -529,10 +541,18 @@ namespace CrushHour
                 {
                     var clip = PersonModel.Clip.Idle;
                     float cyclesPerSecond = 0f;
-                    if (isFighting)
+                    bool synced = false;
+                    if (isFighting || isSurfer)
                     {
-                        clip = PersonModel.Clip.Wave;   // arms going: shoving
-                        cyclesPerSecond = 2.5f / group.model.clipLength[(int)clip];
+                        clip = PersonModel.Clip.Wave;   // arms going: shoving / waving up there
+                        cyclesPerSecond = (isSurfer ? 1f : 2.5f) / group.model.clipLength[(int)clip];
+                    }
+                    else if (isDancing)
+                    {
+                        // Everyone at the front on the same beat: one wave every two beats.
+                        clip = PersonModel.Clip.Wave;
+                        animClock[i] = Mathf.Repeat(beatTime * 0.5f + (cheers[i] ? 0f : 0.5f), 1f);
+                        synced = true;
                     }
                     else if (!down && !attack)
                     {
@@ -553,7 +573,7 @@ namespace CrushHour
                     {
                         cyclesPerSecond = 2f / group.model.clipLength[(int)clip]; // trembling
                     }
-                    animClock[i] = Mathf.Repeat(animClock[i] + dt * cyclesPerSecond, 1f);
+                    if (!synced) animClock[i] = Mathf.Repeat(animClock[i] + dt * cyclesPerSecond, 1f);
                     int k = (int)clip;
                     group.instances[group.count++] = new CrowdInstance
                     {

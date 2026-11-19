@@ -337,6 +337,7 @@ namespace CrushHour
             crowdRenderer?.Dispose();
             world = new GameObject($"{MapTitle} (generated)").transform;
             ResetCameraTasks();
+            ResetEvening();
             barrierViews.Clear();
             fireViews.Clear();
             gateViews.Clear();
@@ -394,6 +395,7 @@ namespace CrushHour
             {
                 controlRoom.SetupCctv(venue);
                 SetupMinimapMarkers();
+                SetupEvening(); // late arrivals queue at the entrances
             }
 
             Log($"{sim.count} people are at {MapTitle}.");
@@ -674,6 +676,7 @@ namespace CrushHour
             MoveUnits(dt);
             UpdateEscorts(dt);
             UpdateCameraTasks(dt);
+            UpdateEvening(dt);
             UpdateDoorClearing(dt);
             sim.Step(dt, venue, incidentStarted);
             sim.ApplyStewards(patrolPositions, dt, incidentStarted, crowd.patrolRadius);
@@ -752,6 +755,7 @@ namespace CrushHour
             // A random round for the chosen difficulty: disasters, blocked exits, chained tower collapses.
             if (schedule.incidents.Count == 0) RoundGenerator.Build(difficultySettings, venue, rng, schedule);
             PlanCameraTasks(); // control room only: lost child / fight to find on the cameras
+            PlanEvening();     // control room only: the evening's phases and moments (moves the disasters into their phase)
             Log($"{MapTitle} is open ({difficultySettings.Name}). Stay sharp...");
         }
 
@@ -1417,7 +1421,8 @@ namespace CrushHour
             finalDrunkInside = sim.DrunkInsideCount;
             finalAttacks = sim.PanicAttacksTotal;
             finalScore = difficultySettings.Score(finalSafe, finalInjured, finalTrapped, finalDrunkInside, finalAttacks, evacuationTime, evacuationTimeLimit);
-            finalScore += CameraTaskScore; // control room camera tasks (already × difficulty)
+            CloseEvening();
+            finalScore += CameraTaskScore + MomentScore; // control room camera tasks and evening moments (already × difficulty and combo)
 
             int drunkTotal = 0;
             for (int i = 0; i < sim.count; i++)
@@ -3172,7 +3177,7 @@ namespace CrushHour
 
         void DrawResults()
         {
-            float taskRow = cameraTasks.Count > 0 ? 30f : 0f;
+            float taskRow = EveningOn ? 60f : CameraTasksCounted > 0 ? 30f : 0f;
             var rect = Panel(new Rect(vw * 0.5f - 260, vh * 0.5f - 256 - taskRow * 0.5f, 520, 512 + taskRow));
             Tab(rect.x, rect.y, "RESULTS — DEBRIEF", Yellow, Ink, Ink);
             GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 36, rect.width - 56, rect.height - 54));
@@ -3191,7 +3196,12 @@ namespace CrushHour
             ResultRow("Panic attacks", finalAttacks.ToString(), finalAttacks > 0 ? PanicInk : Ink);
             ResultRow("Still inside", finalTrapped.ToString(), finalTrapped > 0 ? WarningColor : Ink);
             ResultRow("Drunk left inside", finalDrunkInside == 0 ? "0" : $"{finalDrunkInside}  (-{finalDrunkInside * 50} points)", finalDrunkInside > 0 ? PanicInk : Ink);
-            if (cameraTasks.Count > 0) ResultRow("Camera tasks", CameraTaskSummary, CameraTasksSolved == cameraTasks.Count ? ExitGreen : WarningColor);
+            if (EveningOn)
+            {
+                ResultRow("Evening", EveningGrades, Ink);
+                ResultRow("Moments", MomentSummary, momentScore >= 0 ? ExitGreen : WarningColor);
+            }
+            else if (CameraTasksCounted > 0) ResultRow("Camera tasks", CameraTaskSummary, CameraTasksSolved == CameraTasksCounted ? ExitGreen : WarningColor);
             ResultRow("Evacuation time", FormatTime(evacuationTime), Ink);
             ResultRow("Difficulty", DifficultyLabel, Ink);
             ResultRow("Score", finalScore.ToString(), Red);

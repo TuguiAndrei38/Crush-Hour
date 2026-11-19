@@ -190,7 +190,8 @@ namespace CrushHour
                 }
             }
 
-            AddTaskCommands(unitIndex); // PICK UP CHILD / BREAK UP FIGHT once found on camera
+            AddTaskCommands(unitIndex);    // PICK UP CHILD / BREAK UP FIGHT / CATCH SURFER ... once found on camera
+            AddEveningCommands(unitIndex); // STEP BACK while a drop is counting down
 
             bool escorting = u.escortPhase == EscortPhase.Escorting;
             radioItems.Add(new RadioItem

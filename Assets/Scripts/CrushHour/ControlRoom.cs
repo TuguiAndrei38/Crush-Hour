@@ -152,6 +152,7 @@ namespace CrushHour
                 light.shadows = LightShadows.None;
                 light.cullingMask = 1 << RoomLayer;
                 light.gameObject.layer = RoomLayer;
+                lampLights.Add(light);
             }
             // The venue's sun (and any other light already in the scene) must not light the room through its ceiling.
             foreach (var light in FindObjectsByType<Light>(FindObjectsSortMode.None))
@@ -275,6 +276,7 @@ namespace CrushHour
             focusBlend = Mathf.MoveTowards(focusBlend, Focused ? 1f : 0f, Time.unscaledDeltaTime / FocusMoveTime);
             OperatorCamera.fieldOfView = Mathf.Lerp(OperatorCamera.fieldOfView, targetFov, 1f - Mathf.Exp(-zoomSpeed * Time.unscaledDeltaTime));
             UpdatePtz();
+            UpdateEveningFx();
             ApplyView();
             UpdateWindowView();
             ProcessPointer();   // after the view is placed: the pointer ray is exactly what's on screen

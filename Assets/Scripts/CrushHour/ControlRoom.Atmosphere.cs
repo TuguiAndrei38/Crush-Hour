@@ -181,13 +181,17 @@ namespace CrushHour
                 noiseMaterial.SetTextureOffset("_BaseMap", new Vector2(Random.value, Random.value));
 
             // Beacon: a rotating red sweep and a pulsing glow while the incident is on.
-            float pulse = alarm ? 0.5f + 0.5f * Mathf.Sin(now * Mathf.PI * 2f * 1.2f) : 0f;
+            // Red while an incident is on; yellow (slower, softer, no siren) when the evening's HEAT is above 90 %.
+            bool yellow = !alarm && heatAlarm, beacon = alarm || yellow;
+            var beaconColor = yellow ? new Color(1f, 0.75f, 0.05f) : new Color(1f, 0.08f, 0.04f);
+            float pulse = beacon ? 0.5f + 0.5f * Mathf.Sin(now * Mathf.PI * 2f * (yellow ? 0.8f : 1.2f)) : 0f;
             if (alarmLight != null)
             {
-                alarmLight.intensity = alarm ? 6f + 10f * pulse : 0f;
-                alarmLight.transform.rotation = Root.rotation * Quaternion.Euler(25f, now * 220f, 0f);
+                alarmLight.color = beaconColor;
+                alarmLight.intensity = beacon ? (yellow ? 3f + 6f * pulse : 6f + 10f * pulse) : 0f;
+                alarmLight.transform.rotation = Root.rotation * Quaternion.Euler(25f, now * (yellow ? 160f : 220f), 0f);
             }
-            if (alarmMaterial != null) alarmMaterial.SetColor("_EmissionColor", new Color(1f, 0.08f, 0.04f) * (alarm ? 1f + 5f * pulse : 0f));
+            if (alarmMaterial != null) alarmMaterial.SetColor("_EmissionColor", beaconColor * (beacon ? 1f + 5f * pulse : 0f));
 
             if (alarmSource != null)
             {

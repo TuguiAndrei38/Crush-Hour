@@ -53,6 +53,8 @@ namespace CrushHour
             public bool visible = true;
             public Renderer monitor;
             public Material frameMaterial;
+            /// <summary>The monitor's screen material (its emission flashes white on fireworks).</summary>
+            public Material screenMaterial;
             // PTZ (ControlRoom.Ptz.cs): the camera's resting pose and where it is pointed now.
             public Transform housing;
             public float baseYaw, basePitch, baseFov;
@@ -266,6 +268,7 @@ namespace CrushHour
                     Matte(screen);
                     mats[i] = screen;
                     ownedMaterials.Add(screen);
+                    feed.screenMaterial = screen;
                 }
                 else if (name.StartsWith("M_Monitor_Plastic"))
                 {

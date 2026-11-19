@@ -154,6 +154,19 @@ namespace CrushHour
         public readonly bool[] child;
         /// <summary>Camera task (control room): part of a fight. Stands and shoves on the spot (drawn shaking).</summary>
         public readonly bool[] fighting;
+
+        // ---- Evening phases (control room, driven by the game; all off by default)
+        /// <summary>Seconds left rushing to <see cref="anchor"/> (ticket waves, bar rush, rain, the drop) instead of strolling.</summary>
+        public readonly float[] hurry;
+        /// <summary>0–1: shoving forward while rushing (gives way less, counts a little like panic in the pressure). Fades after the rush.</summary>
+        public readonly float[] surge;
+        /// <summary>Mosh pit: running round <see cref="moshCenter"/> at <see cref="moshRadius"/> (> 0 = in a pit).</summary>
+        public readonly Vector2[] moshCenter;
+        public readonly float[] moshRadius;
+        /// <summary>Crowd surfer: carried over everyone's heads towards <see cref="anchor"/>; nobody bumps into them. Drawn lying up high.</summary>
+        public readonly bool[] surfer;
+        /// <summary>Dancing to the beat (HEADLINER): only how they're drawn.</summary>
+        public readonly bool[] dancing;
         readonly Vector2[] escortPoint;
         readonly float[] escortSpeed;
         /// <summary>Door each person left through (-1 while inside, or injured).</summary>
@@ -256,6 +269,12 @@ namespace CrushHour
             escortedBy = new int[count];
             child = new bool[count];
             fighting = new bool[count];
+            hurry = new float[count];
+            surge = new float[count];
+            moshCenter = new Vector2[count];
+            moshRadius = new float[count];
+            surfer = new bool[count];
+            dancing = new bool[count];
             escortPoint = new Vector2[count];
             escortSpeed = new float[count];
             Array.Fill(escortedBy, -1);
@@ -331,7 +350,7 @@ namespace CrushHour
                 cellCount[c]++;
                 if (state[i] != AgentState.Active) continue;
                 cellActive[c]++;
-                cellPanic[c] += panic[i];
+                cellPanic[c] += Mathf.Max(panic[i], 0.4f * surge[i]);
             }
             int run = 0;
             for (int c = 0; c < N; c++)
@@ -464,7 +483,7 @@ namespace CrushHour
                         for (int s = cellStart[nc]; s < end; s++)
                         {
                             int j = sorted[s];
-                            if (j == i) continue;
+                            if (j == i || surfer[j]) continue;   // a crowd surfer is above everyone's heads
                             Vector2 d = p - position[j];
                             float dsq = d.sqrMagnitude;
                             bool fallen = state[j] == AgentState.Injured;
@@ -486,6 +505,8 @@ namespace CrushHour
                     }
                 }
 
+                if (surfer[i]) push = Vector2.zero;
+                if (surge[i] > 0f && hurry[i] <= 0f) surge[i] = Mathf.Max(0f, surge[i] - 0.5f * dt);
                 float localDensity = density[c];
                 int fd = venue.fireDistance[c];
                 float pv = panic[i];
@@ -604,10 +625,29 @@ namespace CrushHour
                 }
                 else if (!evacuating[i])
                 {
-                    // Still enjoying the show: drift back to my spot.
                     Vector2 to = anchor[i] - p;
                     float m = to.magnitude;
-                    desired = m > 1.2f ? to * (0.6f / m) : Vector2.zero;
+                    if (surfer[i])
+                    {
+                        // Passed over the heads towards the front.
+                        desired = m > 0.3f ? to * (0.75f / m) : Vector2.zero;
+                    }
+                    else if (moshRadius[i] > 0f)
+                    {
+                        desired = MoshVelocity(i, p, localDensity);
+                    }
+                    else if (hurry[i] > 0f)
+                    {
+                        // Rushing somewhere (the bar, out of the rain, forward on the drop): push on through the crowd.
+                        hurry[i] -= dt;
+                        float slow = Mathf.Lerp(Mathf.Clamp(1.1f - 0.17f * localDensity, 0.12f, 1f), 1f, surge[i]);
+                        desired = m > 0.6f ? to / m * (settings.walkSpeed * personalSpeed[i] * (1.15f + 0.5f * surge[i]) * slow) : Vector2.zero;
+                    }
+                    else
+                    {
+                        // Still enjoying the show: drift back to my spot.
+                        desired = m > 1.2f ? to * (0.6f / m) : Vector2.zero;
+                    }
                 }
                 else
                 {
@@ -650,7 +690,7 @@ namespace CrushHour
 
                 velocity[i] = Vector2.MoveTowards(velocity[i], desired, settings.acceleration * dt);
                 // Panicked people give way less, so they compress the crowd around them; organised queues don't.
-                float giveWay = orderly ? 1f : Mathf.Lerp(1f, 0.55f, panic[i]);
+                float giveWay = orderly ? 1f : Mathf.Lerp(1f, 0.55f, Mathf.Max(panic[i], surge[i]));
                 Vector2 next = p + velocity[i] * dt + Vector2.ClampMagnitude(push * giveWay, 0.15f);
                 next = ResolveWalls(venue, p, next);
                 // Blocked people lose their momentum instead of building up endless push.
@@ -777,6 +817,43 @@ namespace CrushHour
             if (fy < r && !venue.IsWalkableAt(x, y - 1)) to.y = y + r;
             else if (fy > 1f - r && !venue.IsWalkableAt(x, y + 1)) to.y = y + 1f - r;
             return to;
+        }
+
+        /// <summary>Mosh pit: run round the pit's centre, keeping to about 60 % of its radius, at a jog.</summary>
+        Vector2 MoshVelocity(int i, Vector2 p, float localDensity)
+        {
+            Vector2 from = p - moshCenter[i];
+            float dist = from.magnitude;
+            if (dist < 0.01f) from = new Vector2(1f, 0f);
+            Vector2 radial = from / Mathf.Max(0.01f, dist);
+            Vector2 tangent = new Vector2(-radial.y, radial.x);
+            float ring = moshRadius[i] * 0.6f;
+            Vector2 dir = (tangent - radial * Mathf.Clamp((dist - ring) / Mathf.Max(1f, ring), -1f, 1f)).normalized;
+            return dir * (settings.walkSpeed * personalSpeed[i] * 1.7f);
+        }
+
+        /// <summary>The game hurts someone directly (fell at the gate, landed badly, trampled in a pit): counted as crushed.</summary>
+        public void InjureByCrush(int i)
+        {
+            if (state[i] != AgentState.Active) return;
+            surfer[i] = false;
+            moshRadius[i] = 0f;
+            Injure(i);
+            InjuredByCrush++;
+        }
+
+        /// <summary>Show's over: everyone who can still walk out (not the drunk) starts heading for the exits.</summary>
+        public void StartExodus()
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (state[i] != AgentState.Active || drunk[i]) continue;
+                evacuating[i] = true;
+                hurry[i] = 0f;
+                moshRadius[i] = 0f;
+                surfer[i] = false;
+                dancing[i] = false;
+            }
         }
 
         /// <summary>Close to the flames or in smoke: no time to stand and listen or queue patiently, get out first.</summary>
