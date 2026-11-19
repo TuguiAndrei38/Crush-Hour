@@ -67,6 +67,14 @@ namespace CrushHour
             menuPage = menuPage == MenuPage.Difficulty ? MenuPage.Maps : MenuPage.Home;
         }
 
+        void SelectNewLevelFromResults()
+        {
+            // Clear the finished incident before the menu's background simulation resumes.
+            NewGame(playArrivals: false);
+            OpenMenu();
+            menuPage = MenuPage.Maps;
+        }
+
         void PlayFromMenu()
         {
             selectedMap = MapCatalog.Normalize(selectedMap);
@@ -76,7 +84,7 @@ namespace CrushHour
             speedIndex = 0;
             welcomeDismissed = false;
             // Every map is played from the control room. Load that scene unless we're already in it; it reads the
-            // map and difficulty saved above and opens straight in Planning.
+            // map and difficulty saved above and opens with that venue's arrivals.
             if (!InControlRoom && Application.CanStreamedLevelBeLoaded(ControlRoomScene))
             {
                 skipMenuOnce = launchedFromMenu = true;

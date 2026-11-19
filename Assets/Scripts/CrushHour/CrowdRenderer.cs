@@ -380,14 +380,16 @@ namespace CrushHour
             this.cube = cube;
             this.stateParams = stateParams;
             modelOf = new int[sim.count];
-            facing = new float[sim.count]; // 0 = facing +Z, towards the stage
+            facing = new float[sim.count];
             animClock = new float[sim.count];
             cheers = new bool[sim.count];
             for (int i = 0; i < sim.count; i++)
             {
                 modelOf[i] = models.Count > 0 ? rng.Next(models.Count) : 0;
                 animClock[i] = (float)rng.NextDouble();
-                cheers[i] = rng.NextDouble() < 0.35; // some fans are dancing/waving at the show
+                cheers[i] = rng.NextDouble() < 0.35;
+                Vector2 look = sim.RestFacing(i);
+                facing[i] = Mathf.Atan2(look.x, look.y) * Mathf.Rad2Deg;
             }
 
             var perModel = new int[Mathf.Max(1, models.Count)];
@@ -440,11 +442,17 @@ namespace CrushHour
 
             for (int i = 0; i < sim.count; i++)
             {
+                if (!sim.IsVisible(i)) continue;
                 int s = sim.DisplayState(i);
                 if (s < 0) continue;
                 Vector2 p = sim.position[i], v = sim.velocity[i];
                 float speed = v.magnitude;
                 if (speed > 0.15f) facing[i] = Mathf.LerpAngle(facing[i], Mathf.Atan2(v.x, v.y) * Mathf.Rad2Deg, turn);
+                else if ((s == 0 || s == 1) && !sim.evacuating[i])
+                {
+                    Vector2 look = sim.RestFacing(i);
+                    facing[i] = Mathf.LerpAngle(facing[i], Mathf.Atan2(look.x, look.y) * Mathf.Rad2Deg, turn * 0.45f);
+                }
                 bool down = s == 4, attack = s == 5, choking = s == 6;
 
                 if (!UsesModels)
@@ -484,7 +492,7 @@ namespace CrushHour
                     float cyclesPerSecond = 0f;
                     if (!down && !attack)
                     {
-                        bool running = speed > 2f || (sim.panic[i] > 0.7f && speed > 0.5f);
+                        bool running = sim.evacuating[i] && (speed > 2f || (sim.panic[i] > 0.7f && speed > 0.5f));
                         if (speed > 0.2f)
                         {
                             clip = running ? PersonModel.Clip.Run : PersonModel.Clip.Walk;
@@ -492,8 +500,7 @@ namespace CrushHour
                         }
                         else
                         {
-                            // Fans enjoying the show cheer until they realise what's happening.
-                            clip = cheers[i] && !sim.evacuating[i] ? PersonModel.Clip.Wave : PersonModel.Clip.Idle;
+                            clip = cheers[i] && !sim.evacuating[i] && sim.WatchingShow(i) ? PersonModel.Clip.Wave : PersonModel.Clip.Idle;
                             cyclesPerSecond = 1f / group.model.clipLength[(int)clip];
                         }
                     }

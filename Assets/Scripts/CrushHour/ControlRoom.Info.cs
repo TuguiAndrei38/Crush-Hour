@@ -33,6 +33,21 @@ namespace CrushHour
             SetupClock();
         }
 
+        void SetInfoPower(bool powered)
+        {
+            SetInfoTextPower(LogTitle, powered);
+            SetInfoTextPower(LogText, powered);
+            SetInfoTextPower(TeamTitle, powered);
+            SetInfoTextPower(TeamText, powered);
+            SetInfoTextPower(ClockText, powered);
+            SetInfoTextPower(crewText, powered);
+        }
+
+        static void SetInfoTextPower(TextMesh text, bool powered)
+        {
+            if (text != null && text.TryGetComponent<Renderer>(out var renderer)) renderer.enabled = powered;
+        }
+
         (TextMesh title, TextMesh body) InfoScreen(string name, Vector3 localCenter, string heading)
         {
             var root = new GameObject(name).transform;

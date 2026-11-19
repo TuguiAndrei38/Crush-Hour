@@ -15,7 +15,7 @@ namespace CrushHour
     public partial class CrushHourGame : MonoBehaviour
     {
         /// <summary>Menu (start menu, CrushHourGame.Menu.cs) → Planning → Live → Results.</summary>
-        enum Phase { Menu, Planning, Live, Results }
+        enum Phase { Menu, Arrivals, Planning, Live, Results }
         enum Tool { Command, Barrier }
         enum Role { Patrolman, Megaphone }
         enum Severity { Info, Good, Warning, Danger }
@@ -264,6 +264,7 @@ namespace CrushHour
                 cameraRig = new GameObject("Overview Rig (unused in the control room)").AddComponent<TopDownCamera>();
                 cameraRig.transform.SetParent(transform, false);
                 controlRoom.Build(cam);
+                BindControlRoomPower();
                 controlRoom.onSwitch = BoardSwitch;
                 controlRoom.onStart = StartShow;
             }
@@ -294,13 +295,15 @@ namespace CrushHour
             LoadMenuPreferences();
             LoadPersonModels();
             if (skipMenuOnce) menuLaunchedGame = launchedFromMenu;
-            NewGame();
-            if (skipMenuOnce) skipMenuOnce = false; // PLAY in the start menu loaded this scene: go straight to Planning
+            NewGame(playArrivals: skipMenuOnce);
+            if (skipMenuOnce) skipMenuOnce = false;
             else OpenMenu();
         }
 
         void OnDestroy()
         {
+            EndArrivalCamera();
+            if (controlRoom != null) controlRoom.PowerRestored -= OnControlRoomPowerRestored;
             crowdRenderer?.Dispose();
             DisposeMenuAssets();
         }
@@ -329,8 +332,11 @@ namespace CrushHour
 
         // ================================================================ Setup
 
-        void NewGame()
+        void NewGame(bool playArrivals = true)
         {
+            EndArrivalCamera();
+            arrivalHandoffFade = 0f;
+            welcomeScrollPosition = resultsScrollPosition = Vector2.zero;
             if (world != null) Destroy(world.gameObject);
             if (groundTexture != null) Destroy(groundTexture);
             if (groundMaterial != null) Destroy(groundMaterial);
@@ -343,6 +349,7 @@ namespace CrushHour
             towerViews.Clear();
             towerPivots.Clear();
             towerFallTime.Clear();
+            festivalLandmarkHeights.Clear();
             smeltGas.Clear();
             gasVisible = false;
             units.Clear();
@@ -367,7 +374,7 @@ namespace CrushHour
             if (InControlRoom && controlRoom.simpleCrowdOnMonitors)
                 crowdRenderer.SetDualDetail(ControlRoom.CrowdDetailLayer, ControlRoom.CrowdSimpleLayer);
 
-            phase = Phase.Planning;
+            phase = playArrivals ? Phase.Arrivals : Phase.Planning;
             cameraRig.controlsEnabled = true;
             tool = Tool.Command;
             paused = incidentStarted = dragging = false;
@@ -391,12 +398,14 @@ namespace CrushHour
             cameraRig.Focus(new Vector3(W * 0.5f, 0f, H * 0.45f), 85f);
             if (InControlRoom)
             {
+                ResetControlRoomPower();
                 controlRoom.SetupCctv(venue);
                 SetupMinimapMarkers();
             }
 
             Log($"{sim.count} people are at {MapTitle}.");
             Log("Get ready: place your team and barriers, then start the show.");
+            if (playArrivals) BeginArrivalSequence();
         }
 
         void BuildVenueViews()
@@ -434,11 +443,15 @@ namespace CrushHour
             {
                 if (l.solid)
                 {
-                    var block = CreateBlock(l.name, l.rect, l.height, l.color, 0.15f);
+                    var block = TryBuildFestivalLandmark(l, out var festivalView)
+                        ? festivalView : CreateBlock(l.name, l.rect, l.height, l.color, 0.15f);
                     int tower = venue.lightTowers.IndexOf(l);
                     if (tower >= 0) towerViews[tower] = block.transform;
                 }
-                var p = new Vector3(l.rect.center.x, l.height + 0.5f, l.rect.center.y);
+                float labelHeight = l.height + 0.5f;
+                if (selectedMap == VenueMap.SummerFestival && festivalLandmarkHeights.TryGetValue(l, out float visualHeight))
+                    labelHeight = visualHeight + 0.5f;
+                var p = new Vector3(l.rect.center.x, labelHeight, l.rect.center.y);
                 labelPositions[l.name] = labelPositions.TryGetValue(l.name, out var acc) ? (acc.sum + p, acc.n + 1) : (p, 1);
             }
             foreach (var kv in labelPositions) labels.Add((kv.Key.ToUpperInvariant(), kv.Value.sum / kv.Value.n));
@@ -621,7 +634,13 @@ namespace CrushHour
                 foreach (var action in actions) action();
             }
 
-            HandleKeyboard();
+            if (phase != Phase.Arrivals) HandleKeyboard();
+            if (phase == Phase.Arrivals)
+            {
+                UpdateArrivalSequence();
+                return;
+            }
+            arrivalHandoffFade = Mathf.Max(0f, arrivalHandoffFade - Time.unscaledDeltaTime / ArrivalFadeSeconds);
             HandleMouse();
 
             float simDt = 0f;
@@ -643,7 +662,12 @@ namespace CrushHour
             UpdateSmoke(paused ? 0f : phase == Phase.Results ? Time.deltaTime : Time.deltaTime * Speeds[speedIndex]);
             crowdRenderer.ShowMarkers = stateMarkers;
             crowdRenderer.Render(paused ? 0f : Mathf.Max(simDt, phase == Phase.Results ? Time.deltaTime : 0f));
-            if (InControlRoom) UpdateControlRoomFeeds();
+            if (InControlRoom)
+            {
+                controlRoom.lookEnabled = !paused && (phase == Phase.Live || (phase == Phase.Planning && welcomeDismissed));
+                UpdateControlRoomPower();
+                UpdateControlRoomFeeds();
+            }
         }
 
         void Simulate(float dt)
@@ -737,7 +761,7 @@ namespace CrushHour
             difficulty = d;
             PlayerPrefs.SetInt(DifficultyPref, (int)d);
             PlayerPrefs.Save();
-            deferred.Add(NewGame);
+            deferred.Add(() => NewGame(playArrivals: false));
         }
 
         string DifficultyLabel => $"{difficultySettings.Name} (score \u00d7{difficultySettings.scoreMultiplier:0.#})";
@@ -1125,6 +1149,11 @@ namespace CrushHour
 
             if (block.reason == BlockDoorIncident.Reasons[0])
             {
+                if (TryBuildFestivalTruckBlocker(root, length))
+                {
+                    blockerViews[door] = root.gameObject;
+                    return;
+                }
                 // Delivery truck, just outside, across the whole door.
                 var body = new Color(0.92f, 0.92f, 0.88f);
                 var cab = new Color(0.85f, 0.2f, 0.15f);
@@ -1405,6 +1434,7 @@ namespace CrushHour
         void EndGame()
         {
             phase = Phase.Results;
+            FinishControlRoomPower();
             CancelDrag();
             finalSafe = sim.SafeCount;
             finalInjured = sim.InjuredCount;
@@ -1690,7 +1720,7 @@ namespace CrushHour
             // Control room: look around (cursor locked) unless a menu or card needs the mouse.
             if (InControlRoom)
             {
-                controlRoom.lookEnabled = phase == Phase.Live || (phase == Phase.Planning && welcomeDismissed);
+                controlRoom.lookEnabled = !paused && (phase == Phase.Live || (phase == Phase.Planning && welcomeDismissed));
                 UpdateRadio();                   // hold V: the radio wheels (they take the mouse while open)
                 // (the room reads its pointer in its LateUpdate; we use the results here)
             }
@@ -1707,7 +1737,8 @@ namespace CrushHour
             }
             if (keyboard.rKey.wasPressedThisFrame)
             {
-                NewGame();
+                if (phase == Phase.Results) RetryCurrentLevel();
+                else NewGame();
                 return;
             }
             if (keyboard.hKey.wasPressedThisFrame) heatmap = !heatmap;
@@ -1910,7 +1941,7 @@ namespace CrushHour
                 groundPixels[i] = venue.cells[i] switch
                 {
                     CellType.Outside => Asphalt,
-                    CellType.Open => Color.Lerp(heatmap ? PressureColor(sim.pressure[i]) : MapFloorColor(i), SmokeShade, venue.smoke[i] * 0.6f),
+                    CellType.Open => Color.Lerp(heatmap && phase != Phase.Arrivals ? PressureColor(sim.pressure[i]) : MapFloorColor(i), SmokeShade, venue.smoke[i] * 0.6f),
                     CellType.Fire => Scorched,
                     _ => Blocked,
                 };
@@ -1922,7 +1953,7 @@ namespace CrushHour
                     if (venue.gas[i] > GasLeakIncident.DetectLevel && venue.cells[i] != CellType.Outside)
                         groundPixels[i] = Color.Lerp(groundPixels[i], GasColor, Mathf.Min(0.75f, 0.2f + venue.gas[i] * 0.6f));
             }
-            if (showRegions) DrawRegionOutlines();
+            if (showRegions && phase != Phase.Arrivals) DrawRegionOutlines();
             groundTexture.SetPixels32(groundPixels);
             groundTexture.Apply(false);
         }
@@ -2042,6 +2073,11 @@ namespace CrushHour
                 DrawMenu();
                 return;
             }
+            if (phase == Phase.Arrivals)
+            {
+                DrawArrivalSequence();
+                return;
+            }
             if (Event.current.type == EventType.Layout) orderPanelUnit = SelectedPatrol() != null ? selectedUnit : -1;
             if (Event.current.type == EventType.Repaint && !paused) feedClock += Time.unscaledDeltaTime * (phase == Phase.Live ? Speeds[speedIndex] : 1f);
 
@@ -2055,6 +2091,7 @@ namespace CrushHour
                 DrawRadio();
                 if (phase == Phase.Planning && !welcomeDismissed) DrawWelcome();
                 if (phase == Phase.Results) DrawResults();
+                DrawArrivalFade(arrivalHandoffFade);
                 return;
             }
             DrawWorldLabels();
@@ -2073,6 +2110,7 @@ namespace CrushHour
             DrawHoverInfo();
             if (phase == Phase.Planning && !welcomeDismissed) DrawWelcome();
             if (phase == Phase.Results) DrawResults();
+            DrawArrivalFade(arrivalHandoffFade);
         }
 
         // ---------------------------------------------------------------- Textures
@@ -2283,7 +2321,7 @@ namespace CrushHour
             mutedStyle = Txt(fontBody, 13, InkSoft, wrap: true);
             smallStyle = Txt(fontBody, 12, InkFaint, clip: true);
             stepTitleStyle = Txt(fontHeavy, 18, Ink);
-            resultValueStyle = Txt(fontBold, 17, Ink, TextAnchor.UpperRight);
+            resultValueStyle = Txt(fontBold, 17, Ink, TextAnchor.UpperRight, wrap: true);
             starsCaptionStyle = Txt(fontBold, 14, InkSoft, TextAnchor.UpperCenter);
             headerStyle = Txt(fontBold, 14, InkSoft);
             titleStyle = Txt(fontHeavy, 30, Ink);
@@ -3125,11 +3163,30 @@ namespace CrushHour
 
         // ---------------------------------------------------------------- Briefing and results cards
 
+        Vector2 welcomeScrollPosition, resultsScrollPosition;
+
+        Rect BriefingCardRect(float preferredWidth, float preferredHeight)
+        {
+            float width = Mathf.Min(preferredWidth, vw - 32f);
+            float top = TopBarHeight + 16f;
+            float height = Mathf.Min(preferredHeight, vh - top - 16f);
+            return new Rect((vw - width) * 0.5f, top + (vh - top - 16f - height) * 0.5f, width, height);
+        }
+
+        void RetryCurrentLevel()
+        {
+            speedIndex = 0;
+            NewGame(); // Keep the selected map and difficulty; rebuild the round in Planning.
+        }
+
         void DrawWelcome()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 300, vh * 0.5f - 250, 600, 500));
+            var rect = Panel(BriefingCardRect(640f, 700f));
             Tab(rect.x, rect.y, "00 — BRIEFING", Yellow, Ink, Ink);
-            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 38, rect.width - 56, rect.height - 56));
+            var footer = new Rect(rect.x + 28, rect.yMax - 74f, rect.width - 56, 46f);
+            var body = new Rect(rect.x + 28, rect.y + 38, rect.width - 56, footer.y - rect.y - 54f);
+            GUILayout.BeginArea(body);
+            welcomeScrollPosition = GUILayout.BeginScrollView(welcomeScrollPosition, false, false);
             GUILayout.Label("WELCOME, SAFETY COMMANDER", titleStyle);
             GUILayout.Space(2);
             GUILayout.Label($"{sim.count} people are at {MapTitle}. Soon something will go wrong: a fire, a falling light tower, a gas leak, a blocked exit... " +
@@ -3140,13 +3197,17 @@ namespace CrushHour
             WelcomeStep("1", "PLAN", $"You have {units.FindAll(x => x.role == Role.Patrolman).Count} patrols for {venue.regions.Count} zones, plus {megaphoneOfficers} megaphone police. They start at the busiest zones: move them by clicking them, then the map. A patrol looks after the zone it stands in. Draw barriers to steer the crowd.");
             WelcomeStep("2", "REACT", $"Watch for warning signs (smoke, a creaking tower). You have {difficultySettings.gateCrews} gate crews, so only {difficultySettings.gateCrews} emergency gates can be open at once: pick them, and watch the people per minute at each exit. Select a patrol and press an arrow key to send its zone out that way.");
             WelcomeStep("3", "KEEP THEM CALM", "Panicked crowds push and crush, and too much panic causes panic attacks. Put patrols where queues form: they line people up with room to breathe.");
-            GUILayout.FlexibleSpace();
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Camera: WASD, scroll to zoom, Q/E to rotate. U hides the HUD.", smallStyle);
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("LET'S GO", goodButtonStyle, GUILayout.Width(170), GUILayout.Height(46))) deferred.Add(() => welcomeDismissed = true);
-            GUILayout.EndHorizontal();
+            if (InControlRoom && powerOutagesEnabled)
+                WelcomeStep("4", "RESTORE POWER", "During an emergency the breaker may trip. Press C to stand, walk to the rear service door, press E to open it, then hold E at the outside panel to raise the breaker. The radio stays on battery; existing evacuation orders keep running.");
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
+
+            Fill(new Rect(footer.x, footer.y - 12f, footer.width, 1f), MenuRule);
+            GUI.Label(new Rect(footer.x, footer.y + 3f, footer.width - 190f, footer.height),
+                InControlRoom ? "C: stand/sit · WASD: move · E: interact · V: radio · Space: pause" :
+                "Camera: WASD, scroll to zoom, Q/E to rotate. U hides the HUD.", mutedStyle);
+            if (GUI.Button(new Rect(footer.xMax - 170f, footer.y, 170f, footer.height), "LET'S GO", goodButtonStyle))
+                deferred.Add(() => welcomeDismissed = true);
         }
 
         void WelcomeStep(string number, string title, string text)
@@ -3166,9 +3227,12 @@ namespace CrushHour
 
         void DrawResults()
         {
-            var rect = Panel(new Rect(vw * 0.5f - 260, vh * 0.5f - 256, 520, 512));
+            var rect = Panel(BriefingCardRect(620f, 720f));
             Tab(rect.x, rect.y, "RESULTS — DEBRIEF", Yellow, Ink, Ink);
-            GUILayout.BeginArea(new Rect(rect.x + 28, rect.y + 36, rect.width - 56, rect.height - 54));
+            var footer = new Rect(rect.x + 28, rect.yMax - 126f, rect.width - 56, 98f);
+            var body = new Rect(rect.x + 28, rect.y + 36f, rect.width - 56, footer.y - rect.y - 52f);
+            GUILayout.BeginArea(body);
+            resultsScrollPosition = GUILayout.BeginScrollView(resultsScrollPosition, false, false);
             GUILayout.Label(resultTitle.ToUpperInvariant(), bigTitleStyle);
             GUILayout.Space(4);
 
@@ -3189,24 +3253,22 @@ namespace CrushHour
             ResultRow("Score", finalScore.ToString(), Red);
             GUILayout.Space(8);
             GUILayout.Label(resultTip, mutedStyle);
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("PLAY AGAIN  [R]", goodButtonStyle, GUILayout.Height(46))) deferred.Add(NewGame);
-            if (GUILayout.Button("MAIN MENU", buttonStyle, GUILayout.Height(34)))
-                deferred.Add(() =>
-                {
-                    NewGame();
-                    OpenMenu();
-                });
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
+
+            Fill(new Rect(footer.x, footer.y - 12f, footer.width, 1f), MenuRule);
+            if (GUI.Button(new Rect(footer.x, footer.y, footer.width, 46f), "RETRY CURRENT LEVEL  [R]", goodButtonStyle))
+                deferred.Add(RetryCurrentLevel);
+            if (GUI.Button(new Rect(footer.x, footer.y + 56f, footer.width, 42f), "SELECT NEW LEVEL", navyButtonStyle))
+                deferred.Add(SelectNewLevelFromResults);
         }
 
         void ResultRow(string caption, string value, Color color)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(caption, labelStyle, GUILayout.Width(170));
-            GUILayout.FlexibleSpace();
+            GUILayout.Label(caption, labelStyle, GUILayout.Width(154));
             SetTextColor(resultValueStyle, color);
-            GUILayout.Label(value, resultValueStyle);
+            GUILayout.Label(value, resultValueStyle, GUILayout.MinWidth(0), GUILayout.ExpandWidth(true));
             GUILayout.EndHorizontal();
             Fill(GUILayoutUtility.GetRect(10, 1, GUILayout.ExpandWidth(true)), new Color(Ink.r, Ink.g, Ink.b, 0.15f));
         }

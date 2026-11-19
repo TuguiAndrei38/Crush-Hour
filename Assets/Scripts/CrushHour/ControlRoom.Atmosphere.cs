@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -33,6 +34,81 @@ namespace CrushHour
         float smoothedFrame = 1f / 60f, slowFor, fastFor;
         int qualityLevel;   // 0 full, 1 reduced, 2 low
         static readonly float[] FeedFpsLevels = { 8f, 6f, 4f }, WallFpsLevels = { 30f, 20f, 15f }, MinimapFpsLevels = { 5f, 4f, 3f };
+
+        readonly Dictionary<Light, bool> poweredLights = new();
+        readonly Dictionary<Material, Color> poweredEmission = new();
+
+        /// <summary>Blank every display and stop mains-powered equipment immediately; battery guidance stays usable.</summary>
+        internal void ApplyElectricalPowerState(bool powered)
+        {
+            if (!powered)
+            {
+                ExitFocus();
+                focusBlend = 0f;
+                groundCacheValid = false;
+                PointerOnWall = false;
+                boardHover = null;
+                SuspendCctv();
+                foreach (var feed in feeds)
+                {
+                    ClearScreenTexture(feed.texture);
+                    if (feed.frameMaterial != null) feed.frameMaterial.SetColor("_EmissionColor", Color.black);
+                }
+                ClearScreenTexture(wallTexture);
+                ClearScreenTexture(minimapTexture);
+                if (Root != null)
+                {
+                    foreach (var light in Root.GetComponentsInChildren<Light>(true))
+                    {
+                        if (light.name.StartsWith("Battery ")) continue;
+                        if (!poweredLights.ContainsKey(light)) poweredLights.Add(light, light.enabled);
+                        light.enabled = false;
+                    }
+                    foreach (var renderer in Root.GetComponentsInChildren<Renderer>(true))
+                        foreach (var material in renderer.sharedMaterials)
+                        {
+                            if (material == null || !material.HasProperty("_EmissionColor") ||
+                                material.name.StartsWith("Battery ") || material.name.StartsWith("M_Room_ExitSign")) continue;
+                            if (!poweredEmission.ContainsKey(material)) poweredEmission.Add(material, material.GetColor("_EmissionColor"));
+                            material.SetColor("_EmissionColor", Color.black);
+                        }
+                }
+                if (humSource != null) { humSource.volume = 0f; humSource.Stop(); }
+                if (alarmSource != null) { alarmSource.volume = 0f; alarmSource.Stop(); }
+                if (alarmLight != null) alarmLight.intensity = 0f;
+                if (alarmMaterial != null) alarmMaterial.SetColor("_EmissionColor", Color.black);
+            }
+            else
+            {
+                foreach (var light in poweredLights) if (light.Key != null) light.Key.enabled = light.Value;
+                foreach (var material in poweredEmission) if (material.Key != null) material.Key.SetColor("_EmissionColor", material.Value);
+                poweredLights.Clear();
+                poweredEmission.Clear();
+                foreach (var feed in feeds) { feed.nextRender = 0f; feed.captionTick = -1; }
+                nextWallRender = nextMinimapRender = 0f;
+                wallCaptionTick = -1;
+                if (humSource != null)
+                {
+                    humSource.volume = humVolume;
+                    if (!humSource.isPlaying) humSource.Play();
+                }
+            }
+            if (overlayRoot != null) overlayRoot.gameObject.SetActive(powered);
+            SetInfoPower(powered);
+        }
+
+        static void ClearScreenTexture(RenderTexture texture)
+        {
+            if (texture == null) return;
+            var previous = RenderTexture.active;
+            try
+            {
+                if (!texture.IsCreated()) texture.Create();
+                RenderTexture.active = texture;
+                GL.Clear(true, true, Color.black);
+            }
+            finally { RenderTexture.active = previous; }
+        }
 
         /// <summary>Overlay quads in front of every screen (after BuildScreenSurfaces).</summary>
         void BuildScreenOverlays()
@@ -176,6 +252,14 @@ namespace CrushHour
 
         void AnimateAtmosphere()
         {
+            if (PowerOut)
+            {
+                if (alarmLight != null) alarmLight.intensity = 0f;
+                if (alarmMaterial != null) alarmMaterial.SetColor("_EmissionColor", Color.black);
+                if (humSource != null) humSource.volume = 0f;
+                if (alarmSource != null) alarmSource.volume = 0f;
+                return;
+            }
             float now = Time.unscaledTime;
             if (noiseMaterial != null)
                 noiseMaterial.SetTextureOffset("_BaseMap", new Vector2(Random.value, Random.value));

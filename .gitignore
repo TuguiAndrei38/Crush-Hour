@@ -58,3 +58,6 @@ crashlytics-build.properties
 __pycache__/
 .DS_Store
 Thumbs.db
+
+# Local third-party downloads and inspection files; imported game assets carry provenance separately.
+/Tools~/Art/FestivalSource/
