@@ -142,7 +142,7 @@ namespace CrushHour
             if (u.role == Role.Patrolman && u.homeRegion >= 0)
             {
                 string why = phase != Phase.Live ? "show not started"
-                           : !incidentStarted ? "before the incident"
+                           : !ZoneAlerted(u.homeRegion) ? "awaiting a confirmed report"
                            : regionOrderCooldown[u.homeRegion] > 0f ? $"cooldown {Mathf.CeilToInt(regionOrderCooldown[u.homeRegion])} s"
                            : null;
                 foreach (OrderSide side in new[] { OrderSide.Front, OrderSide.Right, OrderSide.Back, OrderSide.Left })

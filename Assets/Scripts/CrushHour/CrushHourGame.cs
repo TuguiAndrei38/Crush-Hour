@@ -200,6 +200,7 @@ namespace CrushHour
         TopDownCamera cameraRig;
         /// <summary>The first-person control room (scene CrushHourControlRoom), or null in the top-down scenes.</summary>
         ControlRoom controlRoom;
+        TurningPointReplay turningPoint;
         bool InControlRoom => controlRoom != null;
         /// <summary>Scene the start menu's PLAY loads for every map.</summary>
         public const string ControlRoomScene = "CrushHourControlRoom";
@@ -228,8 +229,6 @@ namespace CrushHour
         readonly Dictionary<TowerCollapseIncident, float> towerFallTime = new();
         /// <summary>The gas layer is drawn on the ground once someone has noticed the gas.</summary>
         bool gasVisible;
-        /// <summary>Units that have already reported smelling gas.</summary>
-        readonly HashSet<Unit> smeltGas = new();
         readonly List<Unit> units = new();
         readonly List<Puff> smoke = new();
         float smokeBudget, lastSpotFireLog;
@@ -302,6 +301,7 @@ namespace CrushHour
 
         void OnDestroy()
         {
+            if (replayHeatTexture != null) Destroy(replayHeatTexture);
             EndArrivalCamera();
             if (controlRoom != null) controlRoom.PowerRestored -= OnControlRoomPowerRestored;
             crowdRenderer?.Dispose();
@@ -350,7 +350,10 @@ namespace CrushHour
             towerPivots.Clear();
             towerFallTime.Clear();
             festivalLandmarkHeights.Clear();
-            smeltGas.Clear();
+            fieldReports.Clear();
+            earlyOrderRegions.Clear();
+            selectedReport = null;
+            gasReportScan = warningPuffTimer = 0f;
             gasVisible = false;
             units.Clear();
             smoke.Clear();
@@ -364,6 +367,7 @@ namespace CrushHour
             seed = Environment.TickCount & int.MaxValue;
             rng = new System.Random(seed);
             venue = new FestivalVenue(selectedMap);
+            EnsureMenuPreviews(venue); // The replay uses this clean floor plan, before any incident changes the venue.
             difficultySettings = DifficultySettings.For(difficulty);
             crowd.agentCount = !menuLaunchedGame && crowdSizeOverride > 0 ? Mathf.Max(100, crowdSizeOverride) : difficultySettings.playerCount;
             crowd.drunkFraction = difficultySettings.drunkFraction;
@@ -382,6 +386,7 @@ namespace CrushHour
             barriersUsed = lastInjured = lastSmokeInjured = lastAttacks = gatesOpened = 0;
             simAccumulator = evacuationTime = warningTimer = 0f;
             evacuationProgress.Reset(0f);
+            turningPoint = new TurningPointReplay(venue);
             exitSnapshots.Clear();
             exitSampleTimer = 0f;
             warnedIncidents.Clear();
@@ -659,6 +664,7 @@ namespace CrushHour
             }
 
             UpdateViews();
+            if (phase == Phase.Results) AdvanceDebriefPlayback(Time.unscaledDeltaTime);
             UpdateSmoke(paused ? 0f : phase == Phase.Results ? Time.deltaTime : Time.deltaTime * Speeds[speedIndex]);
             crowdRenderer.ShowMarkers = stateMarkers;
             crowdRenderer.Render(paused ? 0f : Mathf.Max(simDt, phase == Phase.Results ? Time.deltaTime : 0f));
@@ -688,24 +694,26 @@ namespace CrushHour
                 foreach (var incident in startedIncidents) OnIncidentStarted(incident);
                 foreach (var incident in schedule.incidents)
                     if (incident is TowerCollapseIncident tower && tower.Collapsed && !tower.collapseShown) OnTowerCollapsed(tower);
-                CheckGas();
+                CheckGas(dt);
                 CheckWarningSigns();
                 if (fireChanged) OnFireChanged();
             }
 
             venue.UpdateDoorFields(3);
+            if (phase == Phase.Live) UpdateInvestigations(dt);
+            if (incidentStarted && evacuationTime == 0f) turningPoint.Record(0f, sim);
             MoveUnits(dt);
             UpdateEscorts(dt);
             UpdateDoorClearing(dt);
             sim.Step(dt, venue, incidentStarted);
             sim.ApplyStewards(patrolPositions, dt, incidentStarted, crowd.patrolRadius);
             UpdateThroughput(dt);
-            if (!incidentStarted) return;
-
-            UpdateMegaphones(dt);
             for (int r = 0; r < regionOrderCooldown.Length; r++) regionOrderCooldown[r] = Mathf.Max(0f, regionOrderCooldown[r] - dt);
+            if (!incidentStarted) return;
+            UpdateMegaphones(dt);
             bool wasPlaying = !sim.ShowStopped;
             evacuationTime += dt;
+            turningPoint.Record(evacuationTime, sim);
             CheckWarnings(dt);
             if (wasPlaying && sim.ShowStopped)
                 Log("The band has stopped playing. Everyone is starting to realise something is wrong.", Severity.Warning);
@@ -728,10 +736,14 @@ namespace CrushHour
                 if (incident.Started || incident.WarningText == null || warnedIncidents.Contains(incident)) continue;
                 if (incident.TimeToStart > Incident.WarningLead) continue;
                 warnedIncidents.Add(incident);
-                Log(incident.WarningText, Severity.Warning);
-                ShowBanner(incident is FireIncident ? "SMOKE SEEN" : "SOMETHING'S WRONG", incident.WarningText, Severity.Warning);
-                if (InControlRoom) controlRoom.SignalWarning(RegionOf(incident), incident.WarningText);
-                if (incident.WarningCell(venue) is Vector2Int cell) warningMarkers.Add((incident, cell));
+                if (incident.WarningCell(venue) is Vector2Int cell)
+                {
+                    warningMarkers.Add((incident, cell));
+                    OpenReport(incident, cell, incident is FireIncident
+                        ? $"Someone saw smoke near {incident.SiteName}. Can you check?"
+                        : $"Crew heard creaking near {incident.SiteName}. Please check the rigging.");
+                    if (incident is TowerCollapseIncident tower) HingeTower(tower);
+                }
             }
             warningMarkers.RemoveAll(m => m.incident.Started);
         }
@@ -800,34 +812,6 @@ namespace CrushHour
 
         // ---------------------------------------------------------------- Gas leak
 
-        /// <summary>
-        /// Every step while Live: a gas leak nobody knows about is given away by the first cough or by a patrolman or
-        /// police officer getting gas in their ring ("Food Court patrol smells gas!"; each unit reports once).
-        /// </summary>
-        void CheckGas()
-        {
-            if (!venue.HasGas) return;
-            // The leak to report: the first one nobody has noticed yet, otherwise any that's still leaking gas.
-            GasLeakIncident leak = null;
-            foreach (var incident in schedule.incidents)
-                if (incident is GasLeakIncident g && g.Started && !g.Ignited && (leak == null || (leak.Detected && !g.Detected))) leak = g;
-            if (leak == null) return;
-
-            foreach (var u in units)
-            {
-                if (smeltGas.Contains(u) || !GasLeakIncident.Smells(venue, u.position, RoleRadius(u.role))) continue;
-                smeltGas.Add(u);
-                string who = u.homeRegion >= 0 ? $"{venue.regions[u.homeRegion].name} patrol" : u.Name;
-                Log($"{who} smells gas!", Severity.Danger);
-                DetectGas(leak, $"the {who}");
-            }
-            if (!leak.Detected && sim.CoughingCount > 0)
-            {
-                Log($"People are coughing near {leak.SiteName}. There's gas in the air!", Severity.Danger);
-                DetectGas(leak, "coughing people");
-            }
-        }
-
         /// <summary>The leak has been noticed: show the gas, raise the alarm (if nothing else has), banner and camera.</summary>
         void DetectGas(GasLeakIncident leak, string by)
         {
@@ -869,9 +853,11 @@ namespace CrushHour
         {
             foreach (var incident in schedule.incidents)
             {
-                if (incident is not TowerCollapseIncident t || !t.Started || !towerPivots.TryGetValue(t.towerIndex, out var pivot)) continue;
+                if (incident is not TowerCollapseIncident t || !towerPivots.TryGetValue(t.towerIndex, out var pivot)) continue;
                 float angle;
-                if (!t.Collapsed)
+                if (!t.Started)
+                    angle = 2f + 1.5f * Mathf.Sin(t.TimeToStart * 4f);
+                else if (!t.Collapsed)
                     angle = Mathf.Sin(t.Age * 7f) * (1.5f + 6f * t.SwayProgress) + 4f * t.SwayProgress; // leaning further each swing
                 else
                 {
@@ -956,13 +942,23 @@ namespace CrushHour
         void UpdateSmoke(float dt)
         {
             if (dt <= 0f) return;
+            if (phase == Phase.Live && warningMarkers.Count > 0)
+            {
+                warningPuffTimer -= dt;
+                if (warningPuffTimer <= 0f)
+                {
+                    warningPuffTimer = 0.6f;
+                    foreach (var (incident, cell) in warningMarkers)
+                        if (incident is FireIncident) SpawnPuff(FestivalVenue.Index(cell.x, cell.y));
+                }
+            }
             if (venue.fireCells.Count > 0)
             {
                 smokeBudget += dt * Mathf.Min(45f, 3f + venue.fireCells.Count * 0.25f);
                 while (smokeBudget >= 1f)
                 {
                     smokeBudget -= 1f;
-                    SpawnPuff();
+                    SpawnPuff(venue.fireCells[UnityEngine.Random.Range(0, venue.fireCells.Count)]);
                 }
             }
             foreach (var puff in smoke)
@@ -981,7 +977,7 @@ namespace CrushHour
             }
         }
 
-        void SpawnPuff()
+        void SpawnPuff(int cell)
         {
             Puff puff = null;
             foreach (var p in smoke)
@@ -1003,7 +999,6 @@ namespace CrushHour
                 puff = new Puff { transform = go.transform };
                 smoke.Add(puff);
             }
-            int cell = venue.fireCells[UnityEngine.Random.Range(0, venue.fireCells.Count)];
             var c = FestivalVenue.CellCenter(cell);
             puff.transform.localPosition = new Vector3(c.x + UnityEngine.Random.Range(-0.4f, 0.4f), venue.blockHeight[cell] + 1.6f, c.y + UnityEngine.Random.Range(-0.4f, 0.4f));
             puff.velocity = Wind + new Vector3(UnityEngine.Random.Range(-0.3f, 0.3f), UnityEngine.Random.Range(1.2f, 2.2f), UnityEngine.Random.Range(-0.3f, 0.3f));
@@ -1434,6 +1429,8 @@ namespace CrushHour
         void EndGame()
         {
             phase = Phase.Results;
+            turningPoint.Finish(evacuationTime, sim);
+            StartDebriefPlayback();
             FinishControlRoomPower();
             CancelDrag();
             finalSafe = sim.SafeCount;
@@ -1523,16 +1520,18 @@ namespace CrushHour
             _ => new Vector2(u.facing.y, -u.facing.x),
         };
 
+        bool ZoneAlerted(int region) => incidentStarted || earlyOrderRegions.Contains(region);
+
         bool CanOrderZone(Unit u) =>
-            phase == Phase.Live && incidentStarted && u.homeRegion >= 0 && regionOrderCooldown[u.homeRegion] <= 0f;
+            phase == Phase.Live && u.homeRegion >= 0 && ZoneAlerted(u.homeRegion) && regionOrderCooldown[u.homeRegion] <= 0f;
 
         /// <summary>The patrol orders everyone in its zone out through the open door that best matches <paramref name="side"/>.</summary>
         void OrderZone(Unit u, OrderSide side)
         {
             if (u.homeRegion < 0) return;
-            if (!incidentStarted)
+            if (!ZoneAlerted(u.homeRegion))
             {
-                Log("Zone orders become available once the fire starts.");
+                Log("Confirm the report in this zone to authorize an early evacuation.");
                 return;
             }
             if (!CanOrderZone(u)) return; // still on cooldown
@@ -1752,6 +1751,7 @@ namespace CrushHour
             if (keyboard.gKey.wasPressedThisFrame) showRegions = !showRegions;
             if (phase == Phase.Results) return;
             if (keyboard.spaceKey.wasPressedThisFrame) paused = !paused;
+            HandleReportKeys(keyboard);
             if (keyboard.tabKey.wasPressedThisFrame) speedIndex = (speedIndex + 1) % Speeds.Length;
             if (digitsForTools && keyboard.digit1Key.wasPressedThisFrame) SetTool(Tool.Command);
             if (digitsForTools && keyboard.digit2Key.wasPressedThisFrame) SetTool(Tool.Barrier);
@@ -1790,7 +1790,7 @@ namespace CrushHour
                 // Through the screens: the crosshair (free look) or the cursor (focus). Left click = click,
                 // Shift + left click = the old right click (remove a barrier, turn a patrol); right mouse is zoom / leave focus.
                 screen = controlRoom.PointerScreen;
-                overGui = false;
+                overGui = controlRoom.Focused && IsOverGui(screen);
                 bool shift = Keyboard.current != null && Keyboard.current.shiftKey.isPressed;
                 bool click = controlRoom.LeftClick && !controlRoom.ClickTakenByRoom;
                 leftPressed = click && !shift;
@@ -1950,7 +1950,7 @@ namespace CrushHour
             {
                 // Yellow-green haze where the gas is.
                 for (int i = 0; i < groundPixels.Length; i++)
-                    if (venue.gas[i] > GasLeakIncident.DetectLevel && venue.cells[i] != CellType.Outside)
+                    if (venue.cells[i] != CellType.Outside && KnownGasAt(i))
                         groundPixels[i] = Color.Lerp(groundPixels[i], GasColor, Mathf.Min(0.75f, 0.2f + venue.gas[i] * 0.6f));
             }
             if (showRegions && phase != Phase.Arrivals) DrawRegionOutlines();
@@ -2087,6 +2087,7 @@ namespace CrushHour
                 // the top strip only on U. Banner, hover, radio and the briefing/debrief cards draw over the room.
                 if (controlRoomTopBar) DrawTopBar();
                 DrawBanner();
+                DrawFieldReports();
                 DrawHoverInfo();   // next to the crosshair / cursor when it's on a screen
                 DrawRadio();
                 if (phase == Phase.Planning && !welcomeDismissed) DrawWelcome();
@@ -2107,6 +2108,7 @@ namespace CrushHour
             DrawViewToggles();
             if (!hudHidden) DrawLegend();
             DrawBanner();
+            DrawFieldReports();
             DrawHoverInfo();
             if (phase == Phase.Planning && !welcomeDismissed) DrawWelcome();
             if (phase == Phase.Results) DrawResults();
@@ -2850,7 +2852,7 @@ namespace CrushHour
             Tab(rect.x, rect.y, $"{u.homeRegion + 1:00} — EVACUATE {region.name.ToUpperInvariant()}", Yellow, Ink, Ink);
             Label(new Rect(rect.x, rect.y, rect.width - 12, 24), $"{sim.CountInRegion(u.homeRegion, venue)} PEOPLE", headerRightStyle, Ink);
             float cooldown = regionOrderCooldown.Length > u.homeRegion ? regionOrderCooldown[u.homeRegion] : 0f;
-            string status = !incidentStarted ? "Orders unlock once a disaster starts."
+            string status = !ZoneAlerted(u.homeRegion) ? "Confirm this zone's warning to give an early order."
                 : cooldown > 0f ? $"Order given. Next one in {Mathf.CeilToInt(cooldown)} s."
                 : "Send the whole zone out: arrow keys or the buttons. Right-click the map to turn the patrol.";
             Label(new Rect(rect.x + 12, rect.y + 28, rect.width - 24, 18), status, smallStyle, InkSoft);
@@ -3105,7 +3107,7 @@ namespace CrushHour
             if (mouse == null || phase == Phase.Results || phase == Phase.Menu) return;
             if (InControlRoom && (!controlRoom.PointerActive || radioBusy)) return;
             Vector2 screen = InControlRoom ? controlRoom.PointerScreen : mouse.position.ReadValue();
-            if ((!InControlRoom && IsOverGui(screen)) || !TryGetCellUnderMouse(screen, out int cell, out Vector2 ground)) return;
+            if (((!InControlRoom || controlRoom.Focused) && IsOverGui(screen)) || !TryGetCellUnderMouse(screen, out int cell, out Vector2 ground)) return;
 
             string text;
             int hovered = NearestUnit(ground, 1.5f);
@@ -3140,7 +3142,7 @@ namespace CrushHour
                     CellType.Open => $"{sim.density[cell]:0.0} people per m²   pressure {sim.pressure[cell]:0.0}" +
                                      (sim.pressure[cell] > crowd.crushThreshold * 0.8f ? $"  <color=#{Hex(Red)}><b>CRUSH RISK</b></color>" : "") +
                                      (venue.smoke[cell] > 0.1f ? $"\nSmoke {venue.smoke[cell] * 100f:0}%" + (venue.smoke[cell] > crowd.smokeHarmLevel ? $" <color=#{Hex(Red)}><b>TOXIC</b></color>" : "") : "") +
-                                     (gasVisible && venue.gas[cell] > GasLeakIncident.DetectLevel ? $"\nGas {venue.gas[cell] * 100f:0}%" + (venue.gas[cell] > crowd.gasHarmLevel ? $" <color=#{Hex(Red)}><b>POISONOUS</b></color>" : "") : ""),
+                                     (KnownGasAt(cell) ? $"\nGas {venue.gas[cell] * 100f:0}%" + (venue.gas[cell] > crowd.gasHarmLevel ? $" <color=#{Hex(Red)}><b>POISONOUS</b></color>" : "") : ""),
                     CellType.Fire => "Fire",
                     CellType.Barrier => "Barrier (right-click with the Barrier tool to remove)",
                     CellType.Outside => "Outside: safe",
@@ -3195,7 +3197,7 @@ namespace CrushHour
             GUILayout.Label($"Difficulty: <b>{DifficultyLabel}</b>. Esc (with nobody selected) goes back to the menu.", mutedStyle);
             GUILayout.Space(10);
             WelcomeStep("1", "PLAN", $"You have {units.FindAll(x => x.role == Role.Patrolman).Count} patrols for {venue.regions.Count} zones, plus {megaphoneOfficers} megaphone police. They start at the busiest zones: move them by clicking them, then the map. A patrol looks after the zone it stands in. Draw barriers to steer the crowd.");
-            WelcomeStep("2", "REACT", $"Watch for warning signs (smoke, a creaking tower). You have {difficultySettings.gateCrews} gate crews, so only {difficultySettings.gateCrews} emergency gates can be open at once: pick them, and watch the people per minute at each exit. Select a patrol and press an arrow key to send its zone out that way.");
+            WelcomeStep("2", "REACT", $"Field reports carry the first signs of trouble. Press J to inspect the area or K to send an officer. You have {difficultySettings.gateCrews} gate crews. Watch the people per minute at each exit, then select a patrol and press an arrow key to direct its zone.");
             WelcomeStep("3", "KEEP THEM CALM", "Panicked crowds push and crush, and too much panic causes panic attacks. Put patrols where queues form: they line people up with room to breathe.");
             if (InControlRoom && powerOutagesEnabled)
                 WelcomeStep("4", "RESTORE POWER", "During an emergency the breaker may trip. Press C to stand, walk to the rear service door, press E to open it, then hold E at the outside panel to raise the breaker. The radio stays on battery; existing evacuation orders keep running.");
@@ -3227,7 +3229,7 @@ namespace CrushHour
 
         void DrawResults()
         {
-            var rect = Panel(BriefingCardRect(620f, 720f));
+            var rect = Panel(BriefingCardRect(990f, 770f));
             Tab(rect.x, rect.y, "RESULTS — DEBRIEF", Yellow, Ink, Ink);
             var footer = new Rect(rect.x + 28, rect.yMax - 126f, rect.width - 56, 98f);
             var body = new Rect(rect.x + 28, rect.y + 36f, rect.width - 56, footer.y - rect.y - 52f);
@@ -3242,6 +3244,14 @@ namespace CrushHour
             GUILayout.Label($"{MapTitle.ToUpperInvariant()}  |  {stars}/3 STARS  |  BEST {MapProgress.GetStars(selectedMap, difficultySettings.difficulty)}/3", starsCaptionStyle);
             GUILayout.Space(8);
 
+            bool sideBySide = body.width >= 780f;
+            if (sideBySide) GUILayout.BeginHorizontal();
+            GUILayout.BeginVertical(sideBySide ? GUILayout.Width(body.width * 0.49f) : GUILayout.ExpandWidth(true));
+            DrawDebriefReplay();
+            GUILayout.EndVertical();
+            GUILayout.Space(sideBySide ? 24f : 12f);
+            GUILayout.BeginVertical(GUILayout.ExpandWidth(true));
+            GUILayout.Label("ROUND TOTALS", headerStyle);
             ResultRow("Safe", $"{finalSafe} / {sim.count}  ({finalSafe * 100f / sim.count:0}%)", ExitGreen);
             ResultRow("Injured", finalInjured == 0 ? "0" : $"{finalInjured}  ({sim.InjuredByCrush} crushed, {sim.InjuredByFire} burnt, {sim.InjuredBySmoke} smoke, {sim.InjuredByGas} gas)", finalInjured > 0 ? Red : Ink);
             if (sim.InjuredByCollapse > 0) ResultRow("Crushed by collapse", sim.InjuredByCollapse.ToString(), Red);
@@ -3253,6 +3263,8 @@ namespace CrushHour
             ResultRow("Score", finalScore.ToString(), Red);
             GUILayout.Space(8);
             GUILayout.Label(resultTip, mutedStyle);
+            GUILayout.EndVertical();
+            if (sideBySide) GUILayout.EndHorizontal();
             GUILayout.EndScrollView();
             GUILayout.EndArea();
 

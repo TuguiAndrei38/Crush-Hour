@@ -292,6 +292,23 @@ namespace CrushHour
             Focused = true;
         }
 
+        /// <summary>Bring the operator to the video wall and put the reported zone on it.</summary>
+        public bool FocusReportFeed(int region)
+        {
+            if (!PointerActive || region < 0 || region >= feeds.Count) return false;
+            var wall = screens.Find(s => s.kind == ScreenKind.VideoWall && s.source != null);
+            if (wall != null)
+            {
+                SelectWall(region, true);
+                EnterFocus(wall);
+                return FocusedScreen == wall;
+            }
+            var monitor = screens.Find(s => s.kind == ScreenKind.DeskMonitor && s.region == region && s.source != null);
+            if (monitor == null) return false;
+            EnterFocus(monitor);
+            return FocusedScreen == monitor;
+        }
+
         public void ExitFocus()
         {
             Focused = false;

@@ -425,13 +425,13 @@ namespace CrushHour
             return texture;
         }
 
-        void EnsureMenuPreviews()
+        void EnsureMenuPreviews(FestivalVenue roundVenue = null)
         {
-            if (menuPreviews != null) return;
-            menuPreviews = new Texture2D[MapCatalog.Maps.Count];
+            menuPreviews ??= new Texture2D[MapCatalog.Maps.Count];
             for (int m = 0; m < menuPreviews.Length; m++)
             {
-                var previewVenue = new FestivalVenue(MapCatalog.Maps[m].Id);
+                if (menuPreviews[m] != null || (roundVenue != null && roundVenue.map != MapCatalog.Maps[m].Id)) continue;
+                var previewVenue = roundVenue ?? new FestivalVenue(MapCatalog.Maps[m].Id);
                 var pixels = new Color32[FestivalVenue.CellCount];
                 for (int y = 0; y < FestivalVenue.Height; y++)
                     for (int x = 0; x < FestivalVenue.Width; x++)
