@@ -166,6 +166,7 @@ static class MapLayoutCheck
     static void Run()
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        TurningPointCheck.Run();
         // Captured before extracting the legacy festival constructor; verifies cells, routes' geometry and spawn data.
         Require(Fingerprint(new FestivalVenue()) == 0x667B39CBF31A1580UL, "Default festival layout changed");
         foreach (VenueMap map in Enum.GetValues(typeof(VenueMap)))

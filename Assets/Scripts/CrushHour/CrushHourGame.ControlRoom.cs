@@ -11,7 +11,6 @@ namespace CrushHour
         const float NewIncidentFlash = 20f;
         /// <summary>Pressure (fraction of the crush threshold) that turns a zone's monitor yellow.</summary>
         const float WarnPressure = 0.6f;
-        const float GasWarnLevel = 0.05f;
 
         int[] zoneAlarm = System.Array.Empty<int>();
         bool[] zoneWarning = System.Array.Empty<bool>();
@@ -49,15 +48,12 @@ namespace CrushHour
             {
                 zoneScanTimer = 0.25f;
                 System.Array.Clear(zoneWarning, 0, n);
-                bool gasKnown = false;
-                foreach (var incident in schedule.incidents)
-                    if (incident is GasLeakIncident leak && leak.Detected) gasKnown = true;
                 float warn = crowd.crushThreshold * WarnPressure;
                 for (int i = 0; i < FestivalVenue.CellCount; i++)
                 {
                     int region = venue.regionOf[i];
                     if (region < 0 || region >= n || zoneWarning[region]) continue;
-                    if (sim.pressure[i] > warn || (gasKnown && venue.gas[i] > GasWarnLevel)) zoneWarning[region] = true;
+                    if (sim.pressure[i] > warn || KnownGasAt(i)) zoneWarning[region] = true;
                 }
             }
 

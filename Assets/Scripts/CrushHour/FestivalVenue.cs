@@ -1027,7 +1027,35 @@ namespace CrushHour
             if (!IsWalkable(goal) || cells[goal] == CellType.Outside) return null;
             SearchPaths(start, goal, parent);
             if (parent[goal] == -1) return null;
+            return ReconstructPath(start, goal, to);
+        }
 
+        // Reported sites can be inside a stall or a tower. Choose the closest reachable
+        // inspection spot on clear ground using one search from this officer.
+        public List<Vector2> FindInspectionPath(Vector2 from, Vector2 site)
+        {
+            int start = CellAt(from);
+            SearchPaths(start, -1, parent);
+            int goal = -1;
+            float bestDistance = 36f, bestFrom = float.PositiveInfinity;
+            int cx = Mathf.FloorToInt(site.x), cy = Mathf.FloorToInt(site.y);
+            for (int y = Mathf.Max(0, cy - 6); y <= Mathf.Min(Height - 1, cy + 6); y++)
+                for (int x = Mathf.Max(0, cx - 6); x <= Mathf.Min(Width - 1, cx + 6); x++)
+                {
+                    int cell = Index(x, y);
+                    if (parent[cell] < 0 || cells[cell] != CellType.Open || regionOf[cell] < 0 || !IsWalkable(cell)) continue;
+                    Vector2 center = CellCenter(cell);
+                    float distance = (center - site).sqrMagnitude, fromOfficer = (center - from).sqrMagnitude;
+                    if (distance > bestDistance || (distance == bestDistance && fromOfficer >= bestFrom)) continue;
+                    goal = cell;
+                    bestDistance = distance;
+                    bestFrom = fromOfficer;
+                }
+            return goal >= 0 ? ReconstructPath(start, goal, CellCenter(goal)) : null;
+        }
+
+        List<Vector2> ReconstructPath(int start, int goal, Vector2 to)
+        {
             var path = new List<Vector2>();
             for (int c = goal; c != start; c = parent[c]) path.Add(CellCenter(c));
             path.Reverse();
