@@ -119,13 +119,21 @@ namespace CrushHour
                 GeometryUtility.CalculateFrustumPlanes(OperatorCamera, viewPlanes);
                 see = GeometryUtility.TestPlanesAABB(viewPlanes, windowBounds);
             }
+            // Out on the service balcony (past the back wall), or with the service door open, the venue is right
+            // there: draw everything. Before, only the room and the landscape were drawn there, so the venue vanished.
+            if (!see && Root != null)
+            {
+                var local = Root.InverseTransformPoint(OperatorCamera.transform.position);
+                see = local.z > BackWallZ - 0.6f || serviceDoorAngle > 1f;
+            }
             if (see == venueInView && viewMaskSet) return;
             viewMaskSet = true;
             venueInView = see;
+            // The landscape around the venue is always drawn (seen from the balcony too); it's a few merged meshes.
             OperatorCamera.cullingMask = see
                 ? ~((1 << CaptionLayer) | (1 << MinimapLayer) | (1 << CrowdSimpleLayer))
-                : 1 << RoomLayer;
-            OperatorCamera.farClipPlane = see ? 400f : 60f;
+                : (1 << RoomLayer) | (1 << CrushHourGame.LandscapeLayer);
+            OperatorCamera.farClipPlane = 600f; // the landscape's horizon reaches ~540 m
         }
 
         /// <summary>The pointer ray goes out through the window opening (so it can be used directly on the venue).</summary>

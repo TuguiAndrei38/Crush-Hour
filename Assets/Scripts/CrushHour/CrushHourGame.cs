@@ -399,6 +399,8 @@ namespace CrushHour
 
             BuildVenueViews();
             SpawnUnits();
+            BuildLandscape(); // the world around the venue (kept until the map changes)
+            ApplyTimeOfDay(); // day or night for this level (sky, sun/moon, ambient, fog, floodlights)
             regionOrderCooldown = new float[venue.regions.Count];
             cameraRig.Focus(new Vector3(W * 0.5f, 0f, H * 0.45f), 85f);
             if (InControlRoom)
@@ -408,7 +410,7 @@ namespace CrushHour
                 SetupMinimapMarkers();
             }
 
-            Log($"{sim.count} people are at {MapTitle}.");
+            Log($"{sim.count} people are at {MapTitle}. {(IsNight ? "It's a night show: the floodlights are on." : "It's a day show.")}");
             Log("Get ready: place your team and barriers, then start the show.");
             if (playArrivals) BeginArrivalSequence();
         }
@@ -665,6 +667,7 @@ namespace CrushHour
 
             UpdateViews();
             if (phase == Phase.Results) AdvanceDebriefPlayback(Time.unscaledDeltaTime);
+            UpdateFloodlights();
             UpdateSmoke(paused ? 0f : phase == Phase.Results ? Time.deltaTime : Time.deltaTime * Speeds[speedIndex]);
             crowdRenderer.ShowMarkers = stateMarkers;
             crowdRenderer.Render(paused ? 0f : Mathf.Max(simDt, phase == Phase.Results ? Time.deltaTime : 0f));

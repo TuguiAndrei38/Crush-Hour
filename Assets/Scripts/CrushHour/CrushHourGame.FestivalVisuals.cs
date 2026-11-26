@@ -20,10 +20,13 @@ namespace CrushHour
             return prefab;
         }
 
-        bool TryBuildFestivalLandmark(Landmark landmark, out GameObject view)
+        /// <param name="parent">Where to build it (default: the played level's world). The landscape passes its copy of the festival.</param>
+        /// <param name="map">Which map it's for (default: the played one).</param>
+        /// <param name="recordHeight">Record the visual height for the level's labels (only for the played level).</param>
+        bool TryBuildFestivalLandmark(Landmark landmark, out GameObject view, Transform parent = null, VenueMap? map = null, bool recordHeight = true)
         {
             view = null;
-            if (selectedMap != VenueMap.SummerFestival) return false;
+            if ((map ?? selectedMap) != VenueMap.SummerFestival) return false;
             string primary;
             switch (landmark.name)
             {
@@ -42,7 +45,7 @@ namespace CrushHour
 
             view = new GameObject(landmark.name);
             var root = view.transform;
-            root.SetParent(world, false);
+            root.SetParent(parent != null ? parent : world, false);
             root.localPosition = new Vector3(landmark.rect.center.x, 0f, landmark.rect.center.y);
             var size = landmark.rect.size;
             switch (landmark.name)
@@ -100,7 +103,7 @@ namespace CrushHour
                     FestivalProp("Generator", root, Vector3.zero, new Vector3(size.x - 0.4f, 2f, size.y - 0.4f), 180f);
                     break;
             }
-            festivalLandmarkHeights[landmark] = FestivalBounds(root, root).max.y;
+            if (recordHeight) festivalLandmarkHeights[landmark] = FestivalBounds(root, root).max.y;
             return true;
         }
 
