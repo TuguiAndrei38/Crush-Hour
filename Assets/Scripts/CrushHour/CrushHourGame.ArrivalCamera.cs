@@ -55,7 +55,7 @@ namespace CrushHour
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
             cam.orthographic = false;
-            cam.farClipPlane = 250f;
+            cam.farClipPlane = 600f; // the landscape's horizon reaches ~540 m (fog hides the rest)
             int venueMask = InControlRoom ? ~0 : maskBeforeArrivals;
             cam.cullingMask = venueMask & ~((1 << ControlRoom.RoomLayer) | (1 << ControlRoom.CaptionLayer)
                 | (1 << ControlRoom.MinimapLayer) | (1 << ControlRoom.CrowdSimpleLayer));

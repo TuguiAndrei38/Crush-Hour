@@ -39,6 +39,7 @@ namespace CrushHour
             stateMarkers = PlayerPrefs.GetInt(OptionsPref + "StateMarkers", stateMarkers ? 1 : 0) != 0;
             cameraSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(OptionsPref + "CameraSensitivity", 1f), 0.5f, 2f);
             cameraRig.inputSensitivity = cameraSensitivity;
+            timeOfDayChoice = Mathf.Clamp(PlayerPrefs.GetInt(TimeOfDayPref, 0), 0, 2);
         }
 
         void SaveMenuPreferences()
@@ -47,6 +48,7 @@ namespace CrushHour
             PlayerPrefs.SetInt(OptionsPref + "PressureMap", heatmap ? 1 : 0);
             PlayerPrefs.SetInt(OptionsPref + "StateMarkers", stateMarkers ? 1 : 0);
             PlayerPrefs.SetFloat(OptionsPref + "CameraSensitivity", cameraSensitivity);
+            PlayerPrefs.SetInt(TimeOfDayPref, timeOfDayChoice);
             PlayerPrefs.Save();
             menuOptionsDirty = false;
         }
@@ -221,7 +223,6 @@ namespace CrushHour
             if (DrawHomeCommand(new Rect(48, 766, 674, 76), "03", "QUIT", false))
                 deferred.Add(QuitFromMenu);
             MenuFill(new Rect(48, 858, 1504, 2), MenuInk);
-            GUI.Label(new Rect(52, 865, 1030, 32), "3 MAPS    /    3 DIFFICULTIES    /    27 STARS", menuEyebrowStyle);
         }
 
         bool DrawHomeCommand(Rect rect, string index, string label, bool primary)
@@ -320,19 +321,22 @@ namespace CrushHour
         {
             GUI.Label(new Rect(48, 100, 1450, 84), "COMMAND PREFERENCES", menuTitleStyle);
             GUI.Label(new Rect(51, 184, 1450, 35), "Adjust your view and camera controls. Preferences are saved automatically.", menuBodyStyle);
-            DrawMenuDossier(new Rect(240, 250, 1120, 498), false);
-            DrawMenuOption(280, "Zone boundaries", "Show the areas assigned to each patrol.", showRegions,
+            DrawMenuDossier(new Rect(240, 236, 1120, 576), false);
+            DrawMenuOption(258, "Zone boundaries", "Show the areas assigned to each patrol.", showRegions,
                 () => { showRegions = !showRegions; SaveMenuPreferences(); });
-            DrawMenuOption(386, "Pressure map", "Colour the ground where the crowd is under pressure.", heatmap,
+            DrawMenuOption(350, "Pressure map", "Colour the ground where the crowd is under pressure.", heatmap,
                 () => { heatmap = !heatmap; SaveMenuPreferences(); });
-            DrawMenuOption(492, "Crowd state markers", "Show coloured tiles for panic, injury and escort needs.", stateMarkers,
+            DrawMenuOption(442, "Crowd state markers", "Show coloured tiles for panic, injury and escort needs.", stateMarkers,
                 () => { stateMarkers = !stateMarkers; SaveMenuPreferences(); });
-            MenuFill(new Rect(276, 598, 1048, 1), MenuRule);
-            GUI.Label(new Rect(280, 622, 520, 47), "CAMERA SENSITIVITY", menuCardTitleStyle);
-            GUI.Label(new Rect(281, 676, 520, 35), "Pan, rotate, drag and zoom speed.", menuSmallStyle);
+            // Time of day: cycles Random -> Day -> Night; applied at once (the crowd behind the menu shows it) and to every new level.
+            DrawMenuChoice(534, "Time of day", "Random picks day or night every time a level starts.", TimeOfDayLabel(timeOfDayChoice),
+                () => { timeOfDayChoice = (timeOfDayChoice + 1) % 3; SaveMenuPreferences(); ApplyTimeOfDay(); });
+            MenuFill(new Rect(276, 628, 1048, 1), MenuRule);
+            GUI.Label(new Rect(280, 650, 520, 47), "CAMERA SENSITIVITY", menuCardTitleStyle);
+            GUI.Label(new Rect(281, 704, 520, 35), "Pan, rotate, drag and zoom speed.", menuSmallStyle);
             var previous = GUI.color;
             GUI.color = MenuInk;
-            float adjusted = GUI.HorizontalSlider(new Rect(865, 663, 350, 32), cameraSensitivity, 0.5f, 2f, menuSliderStyle, menuThumbStyle);
+            float adjusted = GUI.HorizontalSlider(new Rect(865, 691, 350, 32), cameraSensitivity, 0.5f, 2f, menuSliderStyle, menuThumbStyle);
             GUI.color = previous;
             if (!Mathf.Approximately(adjusted, cameraSensitivity))
             {
@@ -340,7 +344,7 @@ namespace CrushHour
                 cameraRig.inputSensitivity = cameraSensitivity;
                 menuOptionsDirty = true;
             }
-            GUI.Label(new Rect(1240, 639, 94, 50), $"{cameraSensitivity:0.0}x", menuCardTitleStyle);
+            GUI.Label(new Rect(1240, 667, 94, 50), $"{cameraSensitivity:0.0}x", menuCardTitleStyle);
             if (menuOptionsDirty && (Event.current.rawType == EventType.MouseUp || Event.current.rawType == EventType.KeyUp))
                 deferred.Add(SaveMenuPreferences);
             DrawMenuBackButton();
@@ -353,6 +357,15 @@ namespace CrushHour
             GUI.Label(new Rect(281, y + 51, 790, 37), description, menuSmallStyle);
             if (OperationsButton(new Rect(1145, y + 12, 178, 58), enabled ? "ON" : "OFF", enabled))
                 deferred.Add(toggle);
+        }
+
+        /// <summary>Like <see cref="DrawMenuOption"/>, but the button shows a value (RANDOM / DAY / NIGHT) and cycles it.</summary>
+        void DrawMenuChoice(float y, string title, string description, string value, System.Action next)
+        {
+            GUI.Label(new Rect(280, y, 790, 46), title.ToUpperInvariant(), menuCardTitleStyle);
+            GUI.Label(new Rect(281, y + 51, 790, 37), description, menuSmallStyle);
+            if (OperationsButton(new Rect(1145, y + 12, 178, 58), value, true))
+                deferred.Add(next);
         }
 
         void DrawMenuBackButton()

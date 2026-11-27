@@ -79,7 +79,7 @@ namespace CrushHour
             minimapCamera.transform.SetPositionAndRotation(new Vector3(FestivalVenue.Width * 0.5f, 120f, FestivalVenue.Height * 0.5f), Quaternion.Euler(90f, 0f, 0f));
             minimapCamera.nearClipPlane = 1f;
             minimapCamera.farClipPlane = 200f;
-            minimapCamera.cullingMask = ~((1 << RoomLayer) | (1 << CaptionLayer) | (1 << CrowdDetailLayer));
+            minimapCamera.cullingMask = ~((1 << RoomLayer) | (1 << CaptionLayer) | (1 << CrowdDetailLayer) | (1 << CrushHourGame.LandscapeLayer));
             minimapCamera.allowHDR = false;
             minimapCamera.allowMSAA = false;
             minimapCamera.targetTexture = minimapTexture;
